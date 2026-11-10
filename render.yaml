@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: aculyze-studio
+    env: node
+    buildCommand: npm install --legacy-peer-deps
+    startCommand: npm start
+    envVars:
+      - key: NVIDIA_API_KEY
+        value: nvapi-4pjOVOL7CR9r...
+      - key: SEARCH_PROVIDER
+        value: duckduckgo
+      - key: AI_PROVIDER
+        value: hybrid
+      - key: LMS_API_KEY
+        value: ak_live_...
+      - key: GOOGLE_CLIENT_ID
+        value: ""
+      - key: GOOGLE_CLIENT_SECRET
+        value: ""
+    plan: starter  # $7/month, 0.5 CPU, 512MB
