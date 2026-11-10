@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+npm-debug.log
+
+# Tests and diagnostics (periodically cleaned)
+diag-*
+test-*
+probe-*.js
+tmp-*
+test-
+
+# Data (user-specific, not code)
+data/
+!data/.gitkeep
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
