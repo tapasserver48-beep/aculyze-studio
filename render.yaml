@@ -14,7 +14,7 @@ services:
       - key: LMS_API_KEY
         value: ak_live_...
       - key: LMS_API_URL
-        value: https://api.aculyze.com
+        value: https://lm.aculyze.in/api/v1
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: GOOGLE_CLIENT_SECRET
