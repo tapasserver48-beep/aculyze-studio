@@ -13,6 +13,8 @@ services:
         value: hybrid
       - key: LMS_API_KEY
         value: ak_live_...
+      - key: LMS_API_URL
+        value: https://api.aculyze.com
       - key: GOOGLE_CLIENT_ID
         value: ""
       - key: GOOGLE_CLIENT_SECRET
