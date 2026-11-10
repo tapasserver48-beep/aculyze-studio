@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Aculyze AI Studio</title>
+  <meta name="description" content="Aculyze AI Studio — two agents. Zara for research and general AI, Sales Agent for Aculyze business intelligence." />
+  <link rel="stylesheet" href="css/aculyze-studio.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <div class="home-bg">
+      <video class="home-bg-video dark-bg-video" src="/galaxy.mp4" autoplay loop muted playsinline></video>
+      <video class="home-bg-video light-bg-video" src="/brightmode.mp4" autoplay loop muted playsinline></video>
+    </div>
+
+    <div id="sidebarOverlay" class="sidebar-overlay" hidden aria-hidden="true"></div>
+
+    <!-- ===================== SIDEBAR (simple ChatGPT-style) ===================== -->
+    <aside id="sidebar" class="sidebar" aria-label="Navigation">
+      <div class="sidebar-head">
+        <span class="side-title">ACULYZE<small>AI STUDIO</small></span>
+        <button class="side-collapse icon-btn ghost" id="sidebarCollapse" type="button" aria-label="Collapse sidebar" title="Collapse sidebar">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>      </div>
+
+      <div class="sidebar-scroll">
+        <div class="nav-section">Workspace</div>
+        <button class="sidebar-item active" id="navHome" type="button" aria-current="page">
+          <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+          <span class="label">Home</span>
+        </button>
+
+        <button class="sidebar-item" id="navInbox" type="button" aria-current="page">
+          <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2"/></svg>
+          <span class="label">Inbox</span>
+        </button>
+
+        <button class="agent-item" id="agentSales" type="button" data-agent="sales" aria-pressed="false">
+          <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span class="agent-name">Sales Agent</span>
+        </button>
+
+        <div class="sidebar-divider"></div>
+        <div class="nav-section">Manage</div>
+        <button class="sidebar-item" id="navApps" type="button">
+          <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="label">Apps</span>
+        </button>
+        <button class="sidebar-item" id="navSettings" type="button">
+          <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+          <span class="label">Settings</span>
+        </button>
+      </div>
+
+      <div class="sidebar-foot">
+        <span>Powered by <strong>Aculyze</strong></span>
+        <small>Local models · Private by default</small>
+      </div>
+    </aside>
+
+    <div class="app-shell">
+
+      <!-- ===================== TOP BAR (quiet, AI-application style) ===================== -->
+      <header class="topbar" role="banner">
+        <nav class="breadcrumb" aria-label="Location">
+          <span class="brand-mini">Aculyze AI Studio</span>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <span id="workspaceTitle" class="crumb-current">Home <span>AI workspace</span></span>
+        </nav>
+        <button class="icon-btn ghost" id="sidebarOpen" type="button" aria-label="Open sidebar" title="Open sidebar">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <div class="topbar-center">
+          <div class="global-command">
+            <svg class="cmd-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+            <input id="cmdInput" class="global-command-input" type="search" placeholder="Ask anything or run a command" aria-label="Ask anything or run a command" autocomplete="off" />
+            <kbd class="cmd-kbd" aria-hidden="true">Ctrl K</kbd>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="status-inline" id="aiStatusPill" role="status" aria-label="Local AI connection" title="Checking local AI status…">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="aiStatusText">Local AI</span>
+          </div>
+          <button class="icon-btn ghost" id="themeToggle" type="button" aria-label="Switch to dark theme" title="Toggle theme">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 0 1 11.2 3a7 7 0 1 0 9.8 9.8z"/></svg>
+          </button>
+          <button class="icon-btn ghost" id="btnNotify" type="button" aria-label="Notifications" title="Notifications">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+          </button>
+          <button class="user-avatar" id="btnUserMenu" type="button" aria-label="Account menu" title="Account">A</button>
+        </div>
+      </header>
+
+      <div class="studio-main">
+
+        <!-- ===================== MAIN CENTER ===================== -->
+        <main class="workspace" aria-label="Main workspace">
+
+          <!-- ---------- ZARA WORKSPACE ---------- -->
+          <section id="view-zara" class="agent-view" data-agent="zara">
+            <div class="zara-workspace">
+              <header class="zara-workspace-header">
+                <h1>Zara Gen AI</h1>
+                <p>Your AI assistant for research, web browsing, analysis, writing and automation.</p>
+              </header>
+              <div class="zara-workspace-content">
+                <div class="zara-empty-state" id="zaraEmptyState">
+                  <p>Select a conversation or start a new chat.</p>
+                </div>
+                <div class="zara-conversation-list" id="zaraConversationList" role="list">
+                  <!-- Conversation list items rendered by JS -->
+                </div>
+              </div>
+              <div class="zara-workspace-footer">
+                <span class="zara-workspace-title">Zara Gen AI</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- HOME ---------- -->
+          <section id="view-home" class="agent-view active" data-agent="home">
+            <div class="home-wrap">
+              <div class="home-hero">
+                <h1 id="homeGreeting">Good <span class="greet-accent">morning</span></h1>
+                <p>Your AI workspace for research and business intelligence.</p>
+              </div>
+              <div class="home-cards">
+                <button class="home-card" type="button" data-open="zara">
+                  <span class="hc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg></span>
+                  <strong>Zara Gen AI</strong>
+                  <small>Research, browse, analyze and create with live web evidence.</small>
+                  <span class="hc-tags" aria-hidden="true"><span>Web evidence</span><span>Research</span><span>Create</span></span>
+                  <span class="hc-open">Open Zara <span aria-hidden="true">→</span></span>
+                </button>
+                <button class="home-card" type="button" data-open="sales">
+                  <span class="hc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+                  <strong>Sales Agent</strong>
+                  <small>Sales intelligence grounded in Aculyze business data.</small>
+                  <span class="hc-tags" aria-hidden="true"><span>LMS grounded</span><span>KPIs</span><span>Leads</span></span>
+                  <span class="hc-open">Open Sales <span aria-hidden="true">→</span></span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- INBOX ---------- -->
+          <section id="view-inbox" class="agent-view" data-agent="inbox">
+            <div class="inbox-wrap">
+              <div class="inbox-header">
+                <div class="inbox-header-left">
+                  <h1 id="inboxTitle">Inbox</h1>
+                  <p id="inboxSubtitle">Human conversations</p>
+                </div>
+                <div class="inbox-header-right">
+                  <div class="inbox-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+                    <input id="inboxSearch" type="search" placeholder="Search conversations" autocomplete="off" />
+                  </div>
+                </div>
+              </div>
+              <div class="inbox-body">
+                <div class="inbox-list-wrap">
+                  <div class="inbox-list" id="inboxList">
+                    <!-- Employee/conversation items rendered by JS -->
+                  </div>
+                  <div class="inbox-empty" id="inboxEmpty" style="display:none;">
+                    <svg class="inbox-empty-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <p>No users available to chat</p>
+                    <p class="inbox-empty-sub">Registered accounts and Aculyze LMS employees will show up here.</p>
+                  </div>
+                </div>
+                <div class="inbox-detail-wrap">
+                  <div class="inbox-detail" id="inboxDetail" hidden>
+                    <div class="inbox-detail-header">
+                      <div class="inbox-detail-info">
+                        <div class="inbox-detail-avatar" id="inboxDetailAvatar">U</div>
+                        <div class="inbox-detail-text">
+                          <h2 id="inboxDetailName">Name</h2>
+                          <p id="inboxDetailRole" class="inbox-detail-role">Role</p>
+                          <div class="inbox-detail-status">
+                            <span class="status-dot" id="inboxDetailStatusDot"></span>
+                            <span id="inboxDetailStatusText">Offline</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button class="icon-btn ghost" id="inboxBack" type="button" aria-label="Back to inbox">←</button>
+                    </div>
+                    <div class="inbox-messages" id="inboxMessages">
+                      <!-- Messages rendered by JS -->
+                    </div>
+                    <div class="inbox-composer">
+                      <div class="ai-draft" id="aiDraft" hidden aria-live="polite">
+                        <div class="ai-draft-head">
+                          <span class="ai-draft-tag">AI draft</span>
+                          <span class="ai-draft-state" id="aiDraftState">Writing…</span>
+                          <button class="ai-draft-close" id="aiDraftClose" type="button" aria-label="Discard draft" title="Discard">✕</button>
+                        </div>
+                        <div class="ai-draft-body" id="aiDraftBody"></div>
+                        <textarea class="ai-draft-edit" id="aiDraftEditBox" hidden aria-label="Edit AI draft"></textarea>
+                        <div class="ai-draft-actions">
+                          <button class="ai-draft-btn" id="aiDraftEdit" type="button">Edit</button>
+                          <button class="ai-draft-btn" id="aiDraftRegen" type="button">Regenerate</button>
+                          <span class="ai-draft-spacer" aria-hidden="true"></span>
+                          <button class="ai-draft-btn ghost" id="aiDraftCancel" type="button">Cancel</button>
+                          <button class="ai-draft-btn primary" id="aiDraftSend" type="button">Send</button>
+                        </div>
+                      </div>
+                      <div class="inbox-composer-inner">
+                        <div class="inbox-input-wrap">
+                          <button class="composer-tool" id="inboxAttach" type="button" aria-label="Attach" title="Attach">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l8.49-8.48a3.5 3.5 0 1 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.78-7.78"/></svg>
+                          </button>
+                          <textarea id="inboxInput" class="chat-input" rows="1" placeholder="Message…" autocomplete="off" aria-label="Message"></textarea>
+                          <button class="composer-tool ai-tool" id="inboxAi" type="button" aria-label="Draft this message with AI" title="Draft with AI — type what you want to say, then tap here to review before sending">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
+                          </button>
+                        </div>
+                        <button class="btn-send" id="inboxSend" type="button" aria-label="Send message" title="Send">
+                          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="inbox-empty-detail" id="inboxEmptyDetail">
+                    <svg class="inbox-empty-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <p>Select a user to start chatting</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- SALES (dashboard center) ---------- -->
+          <section id="view-sales" class="agent-view" data-agent="sales">
+
+            <!-- Header: identity + live status + filters -->
+            <div class="sd-header">
+              <div class="sd-identity">
+                <div class="agent-kicker">Sales Agent · Aculyze LMS</div>
+                <h1>Sales overview</h1>
+                <p>Enterprise sales intelligence, read live from Aculyze LMS.</p>
+              </div>
+              <div class="sd-controls">
+                <div class="sd-live is-idle" id="salesLive">
+                  <span class="sd-live-dot" aria-hidden="true"></span>
+                  <span class="sd-live-text" id="salesLiveText">Connecting…</span>
+                  <span class="sd-live-sep" aria-hidden="true"></span>
+                  <span class="sd-live-time" id="salesLastUpdated">Last updated —</span>
+                </div>
+                <div class="sales-filters">
+                  <label class="sd-field"><span>From</span><input type="date" id="salesDateFrom" aria-label="Date from"></label>
+                  <label class="sd-field"><span>To</span><input type="date" id="salesDateTo" aria-label="Date to"></label>
+                  <button class="period-select sd-refresh" id="salesRefresh" type="button"><span>Refresh data</span></button>
+                </div>
+              </div>
+            </div>
+
+            <div id="salesState" class="sales-state" hidden></div>
+            <div class="data-note" id="salesDataNote" role="status">Loading Aculyze LMS data…</div>
+
+            <!-- KPI row -->
+            <div class="kpi-grid" id="salesKpis">
+              <button class="kpi-card kpi-primary" type="button" data-context="total_sales">
+                <span>Total Sales</span><strong>—</strong><small>Aculyze LMS · summary.total_sales</small>
+              </button>
+              <button class="kpi-card" type="button" data-context="orders">
+                <span>Orders</span><strong>—</strong><small>Aculyze LMS · summary.orders</small>
+              </button>
+              <button class="kpi-card" type="button" data-context="customers">
+                <span>Customers</span><strong>—</strong><small>Aculyze LMS · summary.customers</small>
+              </button>
+              <button class="kpi-card" type="button" data-context="average_order_value">
+                <span>Average Order Value</span><strong>—</strong><small>Aculyze LMS · summary.average_order_value</small>
+              </button>
+            </div>
+
+            <!-- Row 1: Revenue (primary, wide) + Sales by Employee (secondary) -->
+            <div class="sd-row sd-row-primary">
+              <section class="data-panel sd-panel-revenue">
+                <div class="panel-title">
+                  <div><h2>Revenue performance</h2><p>Monthly revenue trend · <span class="mono">by_month.total_sales</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <svg id="revenueChart" class="sales-chart sd-chart-lg" role="img" aria-label="Monthly revenue chart"></svg>
+                <div id="revenueChartEmpty" class="chart-empty" hidden>No chart data for this period.</div>
+              </section>
+
+              <section class="data-panel sd-panel-employee">
+                <div class="panel-title">
+                  <div><h2>Sales by employee</h2><p>Ranked by revenue · <span class="mono">by_employee</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <div id="employeeData" class="data-empty">No data</div>
+              </section>
+            </div>
+
+            <!-- Row 2: Orders Trend + Sales Status -->
+            <div class="sd-row sd-row-secondary">
+              <section class="data-panel sd-panel-orders">
+                <div class="panel-title">
+                  <div><h2>Orders trend</h2><p>Monthly order volume · <span class="mono">by_month.orders</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <svg id="ordersChart" class="sales-chart sd-chart-sm" role="img" aria-label="Monthly orders chart"></svg>
+                <div id="ordersChartEmpty" class="chart-empty" hidden>No chart data for this period.</div>
+              </section>
+
+              <section class="data-panel sd-panel-status">
+                <div class="panel-title">
+                  <div><h2>Sales status</h2><p>Proposal outcomes · <span class="mono">by_status</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <div id="statusData" class="data-empty">No data</div>
+              </section>
+            </div>
+
+            <!-- Row 3: Lead Pipeline + Recent Sales -->
+            <div class="sd-row sd-row-tables">
+              <section class="data-panel leads-table-panel">
+                <div class="panel-title">
+                  <div><h2>Lead pipeline</h2><p>Open opportunities · <span class="mono">/leads</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <div class="sd-metrics" id="leadsMetrics"></div>
+                <div class="table-wrap" id="leadsTableWrap">
+                  <table class="data-table" id="leadsTable">
+                    <thead>
+                      <tr><th>Company</th><th>Status</th><th>Stage</th><th>Temperature</th><th>Assignee</th><th>Date</th></tr>
+                    </thead>
+                    <tbody id="leadsTableBody"></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="data-panel sales-table-panel">
+                <div class="panel-title">
+                  <div><h2>Recent sales</h2><p>Proposals · <span class="mono">/sales</span></p></div>
+                  <span class="live-label">ACULYZE LMS</span>
+                </div>
+                <div class="sd-metrics" id="salesMetrics"></div>
+                <div class="table-wrap" id="salesTableWrap">
+                  <table class="data-table" id="salesTable">
+                    <thead>
+                      <tr><th>Proposal</th><th>Customer</th><th>Employee</th><th>Amount</th><th>Status</th><th>Date</th></tr>
+                    </thead>
+                    <tbody id="salesTableBody"></tbody>
+                  </table>
+                  <div class="table-pagination" id="salesTablePagination"></div>
+                </div>
+              </section>
+            </div>
+
+            <!-- Row 4: Customers (full width) -->
+            <section class="data-panel customers-table-panel">
+              <div class="panel-title">
+                <div><h2>Customers</h2><p>Account list · <span class="mono">/customers</span></p></div>
+                <span class="live-label">ACULYZE LMS</span>
+              </div>
+              <div class="sd-metrics" id="customersMetrics"></div>
+              <div class="table-wrap" id="customersTableWrap">
+                <table class="data-table" id="customersTable">
+                  <thead>
+                    <tr><th>Customer</th><th>City</th><th>Industry</th><th>Assigned employee</th><th>Created</th></tr>
+                  </thead>
+                  <tbody id="customersTableBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <!-- ---------- APPS ---------- -->
+          <section id="view-apps" class="agent-view" data-agent="apps">
+            <div class="dashboard-heading">
+              <div>
+                <div class="agent-kicker">Apps · Integrations</div>
+                <h1>Apps</h1>
+                <p>Connect your favorite tools to Aculyze AI Studio.</p>
+              </div>
+            </div>
+            <div id="appsContent"></div>
+          </section>
+
+          <!-- ---------- SETTINGS (normal Studio page — no modal/overlay) ---------- -->
+          <section id="view-settings" class="agent-view" data-agent="settings">
+            <div class="settings-page" id="settingsPage" data-view="list">
+              <header class="settings-header">
+                <div><small>ACULYZE AI STYLE</small><h2>Settings</h2></div>
+                <button class="settings-back" id="settingsBack" type="button" aria-label="Back">‹</button>
+                <button class="icon-btn ghost" id="settingsClose" type="button" aria-label="Close settings">×</button>
+              </header>
+              <nav class="settings-nav">
+                <div class="settings-nav-head">
+                  <h2>Settings</h2>
+                </div>
+                <div class="settings-nav-list">
+                  <button class="snav-item active" data-page="account" type="button">Account</button>
+                  <button class="snav-item" data-page="security" type="button">Security</button>
+                  <button class="snav-item" data-page="models" type="button">AI Configuration</button>
+                  <button class="snav-item" data-page="privacy" type="button">Privacy</button>
+                  <button class="snav-item" data-page="apps" type="button">Integrations</button>
+                </div>
+              </nav>
+              <div class="settings-content" id="settingsContent">
+                <!-- Account panel -->
+                <div class="spanel active" data-page="account">
+                  <h3>Account</h3>
+                  <div class="settings-row utility-static">
+                    <div><strong>Workspace</strong><small>Local Aculyze AI Studio workspace</small></div>
+                    <div class="setting-control"><span class="app-status connected">Local</span></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>Model provider</strong><small id="accountProvider">Checking…</small></div>
+                    <div class="setting-control"><span class="app-status" id="accountProviderStatus">…</span></div>
+                  </div>
+                  <h4 class="settings-subhead">Appearance</h4>
+                  <div class="settings-row">
+                    <div><strong>Theme</strong><small>Light or dark appearance</small></div>
+                    <div class="setting-control"><div class="seg-group" id="themeGroup">
+                      <button type="button" value="light">Light</button>
+                      <button type="button" value="dark">Dark</button>
+                    </div></div>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Compact mode</strong><small>Tighter spacing throughout</small></div>
+                    <div class="setting-control"><label class="switch" aria-checked="false" id="setCompact"><input type="checkbox"></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Animations</strong><small>Micro-interactions and motion</small></div>
+                    <div class="setting-control"><label class="switch" aria-checked="true" id="setAnimations"><input type="checkbox" checked></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Voice replies</strong><small>Speak assistant replies aloud</small></div>
+                    <div class="setting-control"><label class="switch" aria-checked="false" id="setVoiceReplies"><input type="checkbox"></label></div>
+                  </div>
+                </div>
+
+                <!-- Security panel -->
+                <div class="spanel" data-page="security">
+                  <h3>Security</h3>
+                  <div class="settings-row utility-static">
+                    <div><strong>API keys</strong><small>Stored server-side only; never sent to the browser</small></div>
+                    <div class="setting-control"><span class="app-status connected">Server-side</span></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>Connection</strong><small>Local model server over the backend proxy</small></div>
+                    <div class="setting-control"><span class="app-status connected">Proxied</span></div>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Clear local data</strong><small>Remove locally stored conversations and preferences</small></div>
+                    <button class="utility-secondary" id="clearLocalData" type="button">Clear data</button>
+                  </div>
+                </div>
+
+                <!-- AI Configuration panel -->
+                <div class="spanel" data-page="models">
+                  <h3>AI Configuration</h3>
+                  <div class="settings-row">
+                    <div><strong>Provider</strong><small>LM Studio backend</small></div>
+                    <select id="setProvider"></select>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Model</strong><small>Selected model for responses</small></div>
+                    <select id="setModel"></select>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Response precision</strong><small>Temperature (0 = focused, 2 = creative)</small></div>
+                    <input type="range" id="setTemp" min="0" max="2" step="0.1" value="0.7">
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Max tokens</strong><small>Maximum response length</small></div>
+                    <input type="number" id="setMaxTokens" min="64" max="8192" value="2048">
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Web research</strong><small>Allow Zara to search the web when answers need sources</small></div>
+                    <div class="setting-control"><label class="switch" aria-checked="false" id="setWebResearch"><input type="checkbox"></label></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>Browser access</strong><small>Playwright page tooling for research (existing system)</small></div>
+                    <div class="setting-control"><span class="app-status builtin">Existing</span></div>
+                  </div>
+                </div>
+
+                <!-- Privacy panel -->
+                <div class="spanel" data-page="privacy">
+                  <h3>Privacy</h3>
+                  <div class="settings-row utility-static">
+                    <div><strong>Conversation storage</strong><small>Inbox messages are stored on this machine (data/inbox); Zara and Sales chats stay in this browser's local storage</small></div>
+                    <div class="setting-control"><span class="app-status connected">Local</span></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>AI processing</strong><small>Prompts are sent only to your configured model server</small></div>
+                    <div class="setting-control"><span class="app-status connected">Local model</span></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>Sales data</strong><small>Business data comes only from the Aculyze LMS API</small></div>
+                    <div class="setting-control"><span class="app-status connected">LMS only</span></div>
+                  </div>
+                  <div class="settings-row utility-static">
+                    <div><strong>Integrations</strong><small>Connected apps are authorised server-side</small></div>
+                    <div class="setting-control"><span class="app-status connected">Server-side</span></div>
+                  </div>
+                </div>
+
+                <!-- Integrations panel -->
+                <div class="spanel" data-page="apps">
+                  <h3>Integrations</h3>
+                  <div class="settings-row">
+                    <div><strong>Aculyze LMS</strong><small>API connection used by Sales Agent and the dashboard</small></div>
+                    <button class="icon-btn ghost" id="settingsLmsBtn" type="button">Configure</button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Sales Agent Plugin</strong><small>Connect Aculyze LM/LMS for sales data</small></div>
+                    <button class="icon-btn ghost" id="manageSalesBtn" type="button">Configure Sales Agent</button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Connected apps</strong><small>Manage Gmail, Google Workspace, Microsoft 365 and more</small></div>
+                    <button class="icon-btn ghost" id="appsBtn" type="button">Manage Apps</button>
+                  </div>
+                </div>
+
+                <!-- Sales plugin detail panel -->
+                <div class="spanel" data-page="sales-detail">
+                  <h3>Sales Agent Plugin</h3>
+                  <div class="settings-row">
+                    <div><strong>Provider</strong><small>ERP/LMS system name</small></div>
+                    <input type="text" id="setSalesProvider" placeholder="e.g. Aculyze LM/LMS">
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>API base URL</strong><small>Your Aculyze LM/LMS endpoint</small></div>
+                    <input type="url" id="setSalesUrl" placeholder="http://localhost:8000/api/sales">
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>API key</strong><small>Authentication key for the endpoint</small></div>
+                    <input type="password" id="setSalesKey" placeholder="Paste your API key">
+                    <button class="icon-btn ghost sm" id="salesKeyEye" type="button" aria-label="Toggle key visibility">👁</button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Enable plugin</strong><small>Allow Sales Agent to use this data</small></div>
+                    <div class="setting-control"><label class="switch" aria-checked="false" id="setSalesUse"><input type="checkbox"></label></div>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Status</strong><small>Connection test result</small></div>
+                    <div id="salesStatusLine">Not configured</div>
+                    <div id="salesCardStatus" style="font-size:11px;color:var(--text-muted)"></div>
+                  </div>
+                  <button class="utility-primary" id="salesConnectBtn" type="button">Save changes</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <!-- ===================== RIGHT COPILOT = ZARA CONVERSATIONS PANEL ===================== -->
+        <aside class="copilot" id="copilot" aria-label="AI Copilot">
+          <div class="copilot-resizer" id="copilotResizer" role="separator" aria-orientation="vertical" aria-label="Resize assistant panel" tabindex="-1"></div>
+
+          <div class="copilot-head">
+            <div class="copilot-identity">
+              <div class="copilot-id-text">
+                <button id="copilotAgent" class="copilot-agent" type="button" aria-haspopup="menu" aria-expanded="false">Zara <span class="copilot-caret" aria-hidden="true">▾</span></button>
+                <div id="copilotSubtitle">Research · General AI</div>
+              </div>
+            </div>
+            <div class="copilot-head-actions">
+              <button class="icon-btn ghost sm" id="copilotNewChat" type="button" aria-label="Start a new chat" title="New chat">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <button class="icon-btn ghost sm" id="copilotCollapse" type="button" aria-label="Collapse Copilot" title="Collapse">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 8.5 13 12l-3.5 3.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="copilot-menu" id="copilotMenu" hidden role="menu">
+            <button type="button" data-agent="zara" role="menuitem">Zara <small>Research · General AI</small></button>
+            <button type="button" data-agent="sales" role="menuitem">Sales Agent <small>Business Intelligence</small></button>
+          </div>
+
+          <div class="copilot-status"><span class="dot"></span><span id="copilotStatusText" role="status">Ready</span></div>
+
+          <!-- ZARA CONVERSATIONS PANEL -->
+          <section class="zara-conversations" id="zaraConversations" aria-label="Zara conversations">
+            <div class="conversation-header">
+              <h2>Zara</h2>
+              <span class="conversion-count" id="conversationCount">0</span>
+              <div class="conversation-actions">
+                <button class="icon-btn ghost sm" id="zaraConversationNewChat" type="button" aria-label="New chat" title="New chat">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                  New
+                </button>
+              </div>
+            </div>
+            <div class="conversation-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+              <input id="zaraConversationSearch" type="search" placeholder="Search conversations" aria-label="Search conversations" autocomplete="off" />
+            </div>
+            <div class="conversation-list" id="conversationList" role="list">
+              <!-- Conversation list items rendered by JS -->
+              <div class="conversation-empty" id="conversationEmpty">
+                No conversations yet. Start a new chat.
+              </div>
+            </div>
+          </section>
+
+          <!-- CONVERSATION DETAIL PANEL (visible when conversation selected) -->
+          <section class="conversation-detail" id="conversationDetail" hidden aria-label="Zara conversation detail">
+            <div class="conversation-header">
+              <button class="back-to-listings icon-btn ghost tiny" aria-label="Back to conversations">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18l-6-6 6-6"/></svg>
+              </button>
+              <h2 class="conversation-title" id="conversationTitle">New conversation</h2>
+              <div class="conversation-meta">
+                <span class="conversation-last-updated" id="conversationLastUpdated">Just now</span>
+              </div>
+            </div>
+            <div class="conversation-messages" id="conversationMessages" role="main">
+              <!-- Conversation messages rendered by JS -->
+              <div class="conversation-empty" id="conversationEmptyDetail">
+                No messages yet. Send a message to get started.
+              </div>
+            </div>
+            <div class="conversation-composer">
+              <div class="composer zara-composer" data-agent-input="zara">
+                <div class="composer-attachments" id="zaraAttachments" hidden></div>
+                <textarea id="zaraInput" class="chat-input agent-input" data-agent-input="zara" rows="1" placeholder="Message Zara…" autocomplete="off" aria-label="Message Zara"></textarea>
+                <div class="composer-toolbar">
+                  <input type="file" id="zaraFileInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-hidden="true" tabindex="-1" />
+                  <button class="composer-tool" id="zaraAttach" type="button" aria-label="Attach image" title="Attach image — the local vision model can analyze it">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l8.49-8.48a3.5 3.5 0 1 1 4.95 4.95l-8.49 8.49a1.5 1.5 0 0 1-2.12-2.12l7.78-7.78"/></svg>
+                  </button>
+                  <button class="composer-tool toggle" id="zaraWebToggle" type="button" aria-pressed="false" aria-label="Web research on or off" title="Web research — when on, Zara can search and cite live pages">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14.5 14.5 0 0 1 0 18M12 3a14.5 14.5 0 0 0 0 18"/></svg>
+                    <span>Web</span>
+                  </button>
+                  <button class="composer-tool" id="zaraMic" type="button" aria-label="Voice input" aria-pressed="false" title="Speak to Zara">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                  </button>
+                  <span class="tool-spacer" aria-hidden="true"></span>
+                  <button class="btn-send" id="zaraSend" data-agent-send="zara" type="button" aria-label="Send message" title="Send">
+                    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+                  </button>
+                  <button class="btn-stop" id="zaraStop" type="button" aria-label="Stop Zara" hidden>Stop</button>
+                </div>
+              </div>
+              <p class="composer-hint">Enter to send · Shift + Enter for a new line</p>
+            </div>
+          </section>
+        </aside>
+
+        <button class="copilot-rail" id="copilotExpand" type="button" aria-label="Open AI Copilot" title="Open AI Copilot">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== FOPPY — living presence + voice popover ===================== -->
+  <div id="foppyWrap" class="foppy-wrap"></div>
+  <div class="foppy-panel" id="foppyPanel" role="dialog" aria-label="Foppy voice interaction" hidden>
+    <div class="foppy-panel-row">
+      <div class="foppy-status" id="foppyStatus">Idle</div>
+      <button class="icon-btn ghost sm" id="foppyClose" type="button" aria-label="Close voice interaction" title="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="foppy-status sub" id="foppySub">Tap the mic to speak</div>
+    <div class="foppy-waveform-wrap" id="foppyWaveform" hidden aria-hidden="true">
+      <div class="foppy-bar"></div><div class="foppy-bar"></div><div class="foppy-bar"></div><div class="foppy-bar"></div><div class="foppy-bar"></div>
+    </div>
+    <div class="foppy-controls">
+      <button class="btn-voice" id="foppyVoiceBtn" type="button" aria-label="Start listening">Speak</button>
+      <button class="btn-mute icon-btn ghost" id="foppyMuteBtn" type="button" aria-label="Mute Foppy voice" aria-pressed="false">Mute</button>
+    </div>
+  </div>
+
+  <!-- ===================== UTILITY DIALOG (Apps / Settings) ===================== -->
+  <div class="utility-overlay" id="utilityOverlay" hidden>
+    <section class="utility-dialog" role="dialog" aria-modal="true" aria-labelledby="utilityTitle">
+      <header><div><small>ACULYZE AI STUDIO</small><h2 id="utilityTitle">Apps</h2></div><button class="icon-btn ghost" id="utilityClose" type="button" aria-label="Close">×</button></header>
+      <div class="utility-content" id="utilityContent"></div>
+    </section>
+  </div>
+
+  <!-- ===================== APP CONNECTION DRAWER ===================== -->
+  <aside class="app-drawer" id="appDrawer" hidden aria-label="Integration details">
+    <header class="app-drawer-head">
+      <h3 id="appDrawerTitle">Integration</h3>
+      <button class="icon-btn ghost" id="appDrawerClose" type="button" aria-label="Close drawer">×</button>
+    </header>
+    <div class="app-drawer-body" id="appDrawerBody"></div>
+  </aside>
+
+  <!-- ===================== LOGIN / SIGN UP (local accounts) ===================== -->
+  <div class="auth-screen" id="authScreen" hidden>
+    <section class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="auth-brand">
+        <span class="auth-mark" aria-hidden="true">A</span>
+        <div class="auth-brand-text">
+          <h1 id="authTitle">Aculyze AI Studio</h1>
+          <p>Sign in to open your workspace and inbox</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs" role="tablist" aria-label="Sign in or create account">
+        <button class="auth-tab active" id="authTabLogin" type="button" role="tab" aria-selected="true">Sign in</button>
+        <button class="auth-tab" id="authTabRegister" type="button" role="tab" aria-selected="false">Create account</button>
+      </div>
+
+      <form class="auth-form" id="authForm" novalidate>
+        <label class="auth-field" id="authNameField" hidden>
+          <span>Name</span>
+          <input type="text" id="authName" name="name" placeholder="Your name" autocomplete="name" maxlength="80" />
+        </label>
+        <label class="auth-field">
+          <span>Email</span>
+          <input type="email" id="authEmail" name="email" placeholder="you@company.com" autocomplete="email" required />
+        </label>
+        <label class="auth-field">
+          <span>Password</span>
+          <input type="password" id="authPassword" name="password" placeholder="••••••••" autocomplete="current-password" required />
+        </label>
+
+        <p class="auth-error" id="authError" role="alert" hidden></p>
+
+        <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
+      </form>
+
+      <p class="auth-note">Accounts and messages are stored on this machine only — nothing leaves your computer.</p>
+    </section>
+  </div>
+
+  <!-- ===================== ACCOUNT MENU ===================== -->
+  <div class="user-menu" id="userMenu" hidden role="menu" aria-label="Account">
+    <div class="user-menu-head">
+      <span class="user-menu-avatar" id="userMenuAvatar" aria-hidden="true">A</span>
+      <span class="user-menu-id">
+        <strong id="userName">Account</strong>
+        <small id="userEmail"></small>
+      </span>
+    </div>
+    <button class="user-menu-item" id="btnLogout" type="button" role="menuitem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+      Log out
+    </button>
+  </div>
+
+  <div id="toastRoot" class="toast-root" aria-live="polite"></div>
+
+  <script type="module" src="js/voice.js"></script>
+  <script type="module" src="js/api.js"></script>
+  <script type="module" src="js/mascot.js"></script>
+  <script type="module" src="js/aculyze-studio.js"></script>
+  <script type="module" src="js/voice-assistant.js"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 npm-debug.log
+package-lock.json
 
 # Tests and diagnostics (periodically cleaned)
 diag-*
@@ -8,10 +9,22 @@ test-*
 probe-*.js
 tmp-*
 test-
+check-status.js
+debug.log
+
+# Logs
+logs/
+*.log
+*.log.old
 
 # Data (user-specific, not code)
 data/
 !data/.gitkeep
+
+# Environment keys - NEVER commit real secrets
+.env
+.env.*
+!env.example
 
 # IDE
 .vscode/
@@ -21,3 +34,42 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+
+# Browser automation caches and logs
+browser_automation/logs/
+browser_automation/__pycache__/
+voice-service/.venv/
+voice-service/__pycache__/
+
+# Build artifacts
+.runelite/
+*.class
+*.jar
+*.war
+*.ear
+
+# Backup scripts/output
+*.bak
+*.tmp
+
+# Render build cache
+.render/
+.cache/
+
+# Large media files (render can download these if needed)
+*.mp4
+*.webm
+
+# Python bytecode cache
+__pycache__/

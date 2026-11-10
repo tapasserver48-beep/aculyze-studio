@@ -1,0 +1,23 @@
+{
+  "name": "zara-ai",
+  "version": "1.0.0",
+  "description": "Zara AI by Aculyze — ChatGPT-style interface with LM Studio provider abstraction",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "duck-duck-scrape": "^2.2.7",
+    "express": "^4.19.2",
+    "langfuse": "^3.39.2",
+    "playwright": "^1.64.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
