@@ -67,9 +67,5 @@ voice-service/__pycache__/
 .render/
 .cache/
 
-# Large media files (render can download these if needed)
-*.mp4
-*.webm
-
 # Python bytecode cache
 __pycache__/
