@@ -835,10 +835,43 @@ function addToolStep(text) {
   els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
 }
 
+/**
+ * Build user message content with optional image attachments.
+ * Attachments limited to 4 images max.
+ */
+function buildUserContent(text, attachments = []) {
+  if (!attachments || attachments.length === 0) {
+    return { role: 'user', content: text || '' };
+  }
+
+  const parts = [];
+
+  // Add text first if present
+  if (text && text.trim()) {
+    parts.push({ type: 'text', text: text.trim() });
+  }
+
+  // Add up to 4 image attachments
+  const imageAttachments = attachments.slice(0, 4).filter(a => a.dataUrl && a.dataUrl.startsWith('data:image/'));
+  for (const att of imageAttachments) {
+    parts.push({
+      type: 'image_url',
+      image_url: { url: att.dataUrl },
+    });
+  }
+
+  // If only images, provide a default text
+  if (parts.length === 0 || (parts.length === imageAttachments.length && !text.trim())) {
+    parts.push({ type: 'text', text: 'Image attachment' });
+  }
+
+  return { role: 'user', content: parts };
+}
+
 async function sendZaraMessage() {
   if (!els.zaraInput) return;
   const text = els.zaraInput.value.trim();
-  if (!text || state.activeRequest) return;
+  if ((!text || state.activeRequest) && (!state.attachments || state.attachments.length === 0)) return;
 
   els.zaraInput.value = '';
   els.zaraInput.style.height = 'auto';
@@ -856,7 +889,12 @@ async function sendZaraMessage() {
 
   // Add user message to cache
   if (conv) {
-    conv.messages.push({ role: 'user', content: text });
+    const userContent = buildUserContent(text, state.attachments);
+    conv.messages.push({
+      role: 'user',
+      content: userContent.content,
+      attachments: state.attachments.slice(0, 4),
+    });
     conv.updatedAt = Date.now();
     saveConversationCache();
     renderConversationList();
@@ -866,7 +904,11 @@ async function sendZaraMessage() {
   if (els.conversationDetail && !els.conversationDetail.hidden) {
     const msgEl = document.createElement('div');
     msgEl.className = 'msg user';
-    msgEl.innerHTML = `<div class="msg-body"><div class="msg-content">${renderMarkdown(text)}</div></div>`;
+    const hasImages = state.attachments && state.attachments.length > 0;
+    const displayContent = hasImages 
+      ? `<div class="msg-content">${renderMarkdown(text)}</div>`
+      : `<div class="msg-body"><div class="msg-content">${renderMarkdown(text)}</div></div>`;
+    msgEl.innerHTML = displayContent;
     if (els.conversationMessages) {
       const empty = els.conversationMessages.querySelector('.conversation-empty');
       if (empty) empty.remove();
@@ -927,17 +969,39 @@ async function sendZaraMessage() {
     }
   }
 
+  // Build user message content including image attachments
+  const userMessageContent = buildUserContent(text, state.attachments);
+
   // Stream response from API
   state.abortCtrl = new AbortController();
   let acc = '';
   try {
+    // Build messages with proper image serialization
+    const chatMessages = [
+      { role: 'system', content: SYSTEM_PROMPTS.zara },
+      ...(integrationSystem ? [{ role: 'system', content: integrationSystem }] : []),
+    ];
+
+    // Add history with proper content format
+    if (conv) {
+      for (const m of conv.messages.slice(-12)) {
+        if (m.attachments && m.attachments.length > 0) {
+          // Convert stored content back to proper format with image parts
+          const content = m.content;
+          chatMessages.push({
+            role: m.role,
+            content: Array.isArray(content) ? content : content,
+          });
+        } else {
+          chatMessages.push({ role: m.role, content: m.content });
+        }
+      }
+    }
+
+    chatMessages.push(userMessageContent);
+
     const res = await streamChat({
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS.zara },
-        ...(integrationSystem ? [{ role: 'system', content: integrationSystem }] : []),
-        ...(conv ? conv.messages.slice(-12).map((m) => ({ role: m.role, content: m.content })) : []),
-        { role: 'user', content: text },
-      ],
+      messages: chatMessages,
       signal: state.abortCtrl.signal,
       onToken: (tok, full) => {
         acc = full;
@@ -966,6 +1030,9 @@ async function sendZaraMessage() {
       saveConversationCache();
     }
 
+    // Clear attachments after successful send
+    clearAttachments();
+
     // Final render in detail panel
     if (els.conversationDetail && !els.conversationDetail.hidden) {
       let bubble = els.conversationMessages?.querySelector('.msg.agent.streaming');
@@ -982,6 +1049,8 @@ async function sendZaraMessage() {
     } else {
       toast('Error: ' + (err?.message || 'Something went wrong'), 'error');
       if (conv) conv.messages.pop(); // remove the unanswered user turn
+      // Clear attachments even on error
+      clearAttachments();
     }
   } finally {
     state.abortCtrl = null;
@@ -989,6 +1058,14 @@ async function sendZaraMessage() {
     if (els.zaraSend) els.zaraSend.disabled = !els.zaraInput.value.trim();
     if (els.zaraStop) els.zaraStop.hidden = true;
     autoGrowTextarea();
+  }
+}
+
+/** Clear pending attachments after sending */
+function clearAttachments() {
+  if (state.attachments && state.attachments.length > 0) {
+    state.attachments = [];
+    if (els.zaraAttachments) els.zaraAttachments.hidden = true;
   }
 }
 
