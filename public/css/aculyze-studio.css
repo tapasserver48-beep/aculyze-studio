@@ -1720,6 +1720,65 @@ body.copilot-collapsed .copilot-rail {
 .utility-perm-list li.granted::before { background: var(--success); }
 
 /* Drawer action buttons */
+/* ==========================================================================
+   UTILITY OVERLAY DIALOGS — confirm + draft (JS injects .utility-overlay)
+   ========================================================================== */
+.utility-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000; /* above .conversation-detail (9999) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 6, 44, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.utility-dialog {
+  width: min(100%, 440px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  padding: 18px 20px 20px;
+}
+.utility-dialog header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.utility-dialog header small {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.utility-dialog header h2 {
+  margin: 3px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+}
+.utility-dialog .utility-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.utility-dialog .utility-status-line {
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.55;
+  margin: 0;
+}
+.utility-dialog .utility-actions { margin-top: 12px; }
+
 .utility-actions {
   display: flex;
   flex-wrap: wrap;
