@@ -329,7 +329,7 @@ body.sidebar-collapsed .sidebar .agent-item .item-ico,
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: var(--mono);
+  font-family: var(--font);
   color: var(--text-muted);
 }
 .sidebar.collapsed .sidebar-nav-section,
@@ -381,7 +381,7 @@ body.sidebar-collapsed .sidebar .sidebar-foot,
 .sidebar-foot > small {
   display: block;
   font-size: 9.5px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-weight: 500;
   letter-spacing: 0.06em;
   color: var(--text-muted);
@@ -577,7 +577,7 @@ body.sidebar-collapsed .sidebar .agent-item.active,
   color: #ffffff;
 }
 
-.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 14px; font-family: var(--mono); color: var(--text-muted); }
+.breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 14px; font-family: var(--font); color: var(--text-muted); }
 .brand-mini { font-weight: 600; font-size: 15px; color: var(--text-2); }
 .crumb-sep { color: var(--text-muted); }
 .crumb-current { color: var(--text); font-weight: 600; }
@@ -623,7 +623,7 @@ body.sidebar-collapsed .sidebar .agent-item.active,
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
@@ -672,7 +672,7 @@ body.sidebar-collapsed .sidebar .agent-item.active,
 .copilot-head-actions { display: flex; gap: 6px; }
 .copilot-status {
   padding: 10px 16px; border-bottom: 1px solid var(--border);
-  font-size: 11px; color: var(--text-muted); font-family: var(--mono);
+  font-size: 11px; color: var(--text-muted); font-family: var(--font);
   display: flex; align-items: center; gap: 8px;
 }
 .copilot-status .dot {
@@ -1002,7 +1002,7 @@ body.copilot-collapsed .copilot-rail {
 .peer-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zara-status {
   margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 550; color: var(--text-muted); font-family: var(--mono);
+  font-size: 11px; font-weight: 550; color: var(--text-muted); font-family: var(--font);
   padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
   margin-top: 4px;
 }
@@ -1045,7 +1045,7 @@ body.copilot-collapsed .copilot-rail {
 .conversation-header h2 {
   font-size: 16px; font-weight: 650; margin: 0; color: var(--text);
 }
-.conversation-meta { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+.conversation-meta { font-size: 11px; color: var(--text-muted); font-family: var(--font); }
 .back-to-listings {
   border: 1px solid var(--border); background: var(--surface);
   border-radius: var(--radius-sm); color: var(--text-2);
@@ -1104,7 +1104,7 @@ body.copilot-collapsed .copilot-rail {
 .conversion-count {
   font-size: 12px;
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .conversation-actions {
   display: flex;
@@ -1191,7 +1191,7 @@ body.copilot-collapsed .copilot-rail {
 .conversation-row .conversation-time {
   font-size: 10.5px;
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .conversation-empty {
   padding: 14px 12px;
@@ -1521,7 +1521,7 @@ body.copilot-collapsed .copilot-rail {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1562,7 +1562,7 @@ body.copilot-collapsed .copilot-rail {
   margin-top: 2px;
   font-size: 11px;
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
   word-break: break-all;
 }
 .setting-control {
@@ -1781,7 +1781,7 @@ body.copilot-collapsed .copilot-rail {
 .inbox-meta {
   font-size: 10.5px;
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .inbox-unread {
   min-width: 18px;
@@ -1898,7 +1898,7 @@ body.copilot-collapsed .copilot-rail {
   margin-top: 3px;
   font-size: 11px;
   color: var(--text-muted);
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .status-dot {
   display: inline-block;
@@ -2010,7 +2010,7 @@ body.copilot-collapsed .copilot-rail {
 .msg-ai-tag {
   display: block;
   margin-bottom: 4px;
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--font);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2064,7 +2064,7 @@ body.copilot-collapsed .copilot-rail {
   background: var(--surface-2);
 }
 .ai-draft-tag {
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--font);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2205,7 +2205,7 @@ body.copilot-collapsed .copilot-rail {
   height: 30px; padding: 0 12px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface-2);
   color: var(--text-muted); font-size: 11.5px; font-weight: 600;
-  font-family: var(--mono); cursor: pointer; white-space: nowrap;
+  font-family: var(--font); cursor: pointer; white-space: nowrap;
   transition: all 0.14s ease;
 }
 .apps-category-pill:hover { border-color: var(--border-strong); color: var(--text); }
@@ -2219,7 +2219,7 @@ body.copilot-collapsed .copilot-rail {
   margin: 24px 0 12px;
 }
 .apps-section-title { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
-.apps-section-sub { font-size: 11.5px; color: var(--text-muted); font-family: var(--mono); }
+.apps-section-sub { font-size: 11.5px; color: var(--text-muted); font-family: var(--font); }
 .apps-grid {
   display: grid; gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2257,7 +2257,7 @@ body.copilot-collapsed .copilot-rail {
 }
 .ac-app-status {
   display: inline-flex; align-items: center; gap: 5px;
-  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  font-size: 10px; font-weight: 700; font-family: var(--font);
   letter-spacing: 0.08em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 999px;
   text-decoration: none;
@@ -2309,7 +2309,7 @@ body.copilot-collapsed .copilot-rail {
 .ac-app-card-link { text-decoration: none; color: inherit; }
 .apps-empty {
   text-align: center; padding: 40px 20px; color: var(--text-muted);
-  font-size: 13px; font-family: var(--mono);
+  font-size: 13px; font-family: var(--font);
 }
 
 @media (max-width: 1360px) { .apps-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -2347,10 +2347,10 @@ body.copilot-collapsed .copilot-rail {
   border: 1px solid var(--border); background: var(--surface-2);
   border-radius: var(--radius-sm); padding: 8px 10px;
   font-size: 12.5px; color: var(--text); outline: none;
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .utility-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.utility-status-line { font-size: 11.5px; color: var(--text-muted); font-family: var(--mono); }
+.utility-status-line { font-size: 11.5px; color: var(--text-muted); font-family: var(--font); }
 .utility-detail h3 { font-size: 15px; margin: 4px 0 0; font-weight: 650; }
 .utility-detail p { font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
 .utility-perm-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 4px; }
@@ -2359,7 +2359,7 @@ body.copilot-collapsed .copilot-rail {
   gap: 10px; margin-bottom: 8px;
 }
 .utility-detail-name { font-size: 15px; margin: 0; font-weight: 650; color: var(--text); }
-.utility-perm-list li { font-size: 11.5px; color: var(--text-2); font-family: var(--mono); }
+.utility-perm-list li { font-size: 11.5px; color: var(--text-2); font-family: var(--font); }
 
 /* ==========================================================================
    MARKDOWN RENDERING
@@ -2433,7 +2433,7 @@ body.copilot-collapsed .copilot-rail {
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 0.07em;
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .markdown-content a {
   color: var(--cyan);
@@ -2457,7 +2457,7 @@ body.copilot-collapsed .copilot-rail {
 .btn-send:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-stop { width: 36px; height: 36px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 8px; cursor: pointer; }
 .btn-stop:hover { background: var(--surface-2); color: var(--text); }
-.composer-hint { font-size: 11px; color: var(--text-muted); font-family: var(--mono); margin-top: 6px; }
+.composer-hint { font-size: 11px; color: var(--text-muted); font-family: var(--font); margin-top: 6px; }
 
 /* Segmented control */
 .seg-group {
@@ -2513,7 +2513,7 @@ body.copilot-collapsed .copilot-rail {
 }
 .settings-header small {
   display: block;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -2600,7 +2600,7 @@ body.copilot-collapsed .copilot-rail {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-family: var(--mono);
+  font-family: var(--font);
   color: var(--text-muted);
 }
 
@@ -2667,7 +2667,7 @@ body.copilot-collapsed .copilot-rail {
 
 .sd-live {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 12px; border-radius: 999px; font-size: 11.5px; font-family: var(--mono);
+  padding: 7px 12px; border-radius: 999px; font-size: 11.5px; font-family: var(--font);
   background: var(--surface-2); border: 1px solid var(--border);
   color: var(--text); white-space: nowrap;
 }
@@ -2691,11 +2691,11 @@ body.copilot-collapsed .copilot-rail {
 }
 .sd-field > span {
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-muted); font-family: var(--mono);
+  color: var(--text-muted); font-family: var(--font);
 }
 .sd-field input[type="date"] {
   background: transparent; border: 0; color: var(--text-body); font-size: 12.5px;
-  font-family: var(--mono); padding: 1px 0; min-width: 118px; outline: none;
+  font-family: var(--font); padding: 1px 0; min-width: 118px; outline: none;
 }
 .sd-field input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.75); opacity: 0.7; cursor: pointer; }
 .sd-refresh { border-color: rgba(34, 211, 238, 0.35); color: var(--cyan); }
@@ -2714,11 +2714,11 @@ body.copilot-collapsed .copilot-rail {
   font-size: 12px; color: var(--text-muted);
   background: var(--surface-2); border: 1px solid var(--border);
   padding: 8px 12px; border-radius: var(--radius); margin-bottom: 14px;
-  font-family: var(--mono);
+  font-family: var(--font);
 }
 .sales-state {
   margin-bottom: 14px; padding: 12px 14px; border-radius: var(--radius);
-  font-size: 12.5px; font-family: var(--mono);
+  font-size: 12.5px; font-family: var(--font);
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; flex-wrap: wrap; background: var(--surface-2);
 }
@@ -2763,10 +2763,10 @@ body.copilot-collapsed .copilot-rail {
 }
 .kpi-card strong {
   display: block; font-size: 22px; line-height: 1.2; font-weight: 700;
-  margin: 8px 0 5px; font-family: var(--mono); letter-spacing: -0.02em; color: var(--text-2);
+  margin: 8px 0 5px; font-family: var(--font); letter-spacing: -0.02em; color: var(--text-2);
 }
 .kpi-primary strong { color: var(--cyan); }
-.kpi-card small { display: block; font-size: 10.5px; color: var(--text-muted); font-family: var(--mono); }
+.kpi-card small { display: block; font-size: 10.5px; color: var(--text-muted); font-family: var(--font); }
 
 .sd-row { display: grid; gap: 14px; margin-bottom: 14px; }
 .sd-row-primary { grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); }
@@ -2786,11 +2786,11 @@ body.copilot-collapsed .copilot-rail {
 .panel-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .panel-title h2 { font-size: 14px; font-weight: 680; margin: 0; color: var(--text-2); letter-spacing: -0.005em; }
 .panel-title p { font-size: 11.5px; color: var(--text-body); margin: 3px 0 0; }
-.panel-title .mono { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
+.panel-title .mono { font-family: var(--font); font-size: 11px; color: var(--text-muted); }
 .live-label {
   font-size: 9px; font-weight: 700; letter-spacing: 0.14em; color: var(--cyan);
   background: rgba(34, 211, 238, 0.09); border: 1px solid rgba(34, 211, 238, 0.28);
-  padding: 3px 7px; border-radius: 5px; font-family: var(--mono); white-space: nowrap;
+  padding: 3px 7px; border-radius: 5px; font-family: var(--font); white-space: nowrap;
 }
 .chart-empty, .data-empty {
   color: var(--text-muted); font-size: 12.5px; background: var(--surface-2);
@@ -2802,8 +2802,8 @@ body.copilot-collapsed .copilot-rail {
 .sd-chart-lg { height: 288px; }
 .sd-chart-sm { height: 208px; }
 .chart-grid { stroke: rgba(140, 160, 255, 0.12); stroke-width: 1; }
-.chart-value { font-family: var(--mono); font-size: 11px; fill: var(--text-2); }
-.chart-axis { font-family: var(--mono); font-size: 10.5px; fill: var(--text-muted); }
+.chart-value { font-family: var(--font); font-size: 11px; fill: var(--text-2); }
+.chart-axis { font-family: var(--font); font-size: 10.5px; fill: var(--text-muted); }
 .chart-line { fill: none; stroke: var(--cyan); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .chart-line.orders-line { stroke: var(--violet); stroke-width: 2; }
 .chart-area { fill: var(--cyan); opacity: 0.5; }
@@ -2816,7 +2816,7 @@ body.copilot-collapsed .copilot-rail {
 .sd-bar-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--text-muted); font-family: var(--mono); margin-bottom: 10px;
+  color: var(--text-muted); font-family: var(--font); margin-bottom: 10px;
 }
 .sd-bar-row { display: grid; grid-template-columns: minmax(72px, 0.9fr) minmax(0, 2fr) auto; align-items: center; gap: 10px; }
 .sd-bar-name {
@@ -2829,17 +2829,17 @@ body.copilot-collapsed .copilot-rail {
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.35);
 }
 .sd-bar-fill.orders { background: linear-gradient(90deg, var(--violet), var(--pink)); box-shadow: 0 0 10px rgba(109, 40, 217, 0.35); }
-.sd-bar-value { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.sd-bar-value { font-family: var(--font); font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
 
 .sd-donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .sd-donut { width: 148px; height: 148px; flex: 0 0 auto; }
-.sd-donut-center-val { font-family: var(--mono); font-size: 22px; font-weight: 700; fill: var(--text-2); }
-.sd-donut-center-lbl { font-family: var(--mono); font-size: 9.5px; fill: var(--text-muted); letter-spacing: 0.1em; }
+.sd-donut-center-val { font-family: var(--font); font-size: 22px; font-weight: 700; fill: var(--text-2); }
+.sd-donut-center-lbl { font-family: var(--font); font-size: 9.5px; fill: var(--text-muted); letter-spacing: 0.1em; }
 .sd-legend { display: flex; flex-direction: column; gap: 9px; min-width: 140px; flex: 1 1 140px; }
 .sd-legend-row { display: flex; align-items: center; gap: 9px; font-size: 12px; }
 .sd-legend-dot { width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto; }
 .sd-legend-name { color: var(--text-2); text-transform: capitalize; }
-.sd-legend-val { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-muted); }
+.sd-legend-val { margin-left: auto; font-family: var(--font); font-size: 11.5px; color: var(--text-muted); }
 
 .sd-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .sd-metric {
@@ -2847,19 +2847,19 @@ body.copilot-collapsed .copilot-rail {
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 8px; padding: 5px 10px;
 }
-.sd-metric b { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text-2); }
+.sd-metric b { font-family: var(--font); font-size: 13px; font-weight: 700; color: var(--text-2); }
 .sd-metric span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 
 .table-wrap { overflow-x: auto; margin-top: 4px; }
-.table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--text-muted); font-family: var(--mono); }
+.table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--text-muted); font-family: var(--font); }
 
 .data-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 520px; }
 .data-table th {
   text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
   color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
-  font-family: var(--mono); background: var(--surface-2); white-space: nowrap;
+  font-family: var(--font); background: var(--surface-2); white-space: nowrap;
 }
-.data-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text-body); font-family: var(--mono); font-size: 11.5px; }
+.data-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text-body); font-family: var(--font); font-size: 11.5px; }
 .data-table tbody tr:last-child td { border-bottom: 0; }
 .data-table tbody tr:hover td { background: var(--surface-2); }
 .data-table td.data-empty { text-align: center; color: var(--text-muted); padding: 22px 10px; }
@@ -2952,7 +2952,7 @@ body.copilot-collapsed .copilot-rail {
 }
 .foppy-tag {
   position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
-  font-size: 10px; font-weight: 700; font-family: var(--mono);
+  font-size: 10px; font-weight: 700; font-family: var(--font);
   color: var(--text-muted); white-space: nowrap;
   pointer-events: none;
 }
@@ -2963,8 +2963,8 @@ body.copilot-collapsed .copilot-rail {
   box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 12px;
 }
 .foppy-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.foppy-status { font-size: 12px; font-family: var(--mono); color: var(--text-2); font-weight: 600; }
-.foppy-sub { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+.foppy-status { font-size: 12px; font-family: var(--font); color: var(--text-2); font-weight: 600; }
+.foppy-sub { font-size: 11px; color: var(--text-muted); font-family: var(--font); }
 .foppy-waveform-wrap { display: flex; align-items: center; gap: 4px; }
 .foppy-bar {
   width: 4px; height: 20px; background: var(--accent); border-radius: 2px;
@@ -3050,7 +3050,7 @@ body.copilot-collapsed .copilot-rail {
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-weight: 700;
   color: var(--text-muted);
   white-space: nowrap;
@@ -3097,7 +3097,7 @@ body.copilot-collapsed .copilot-rail {
   border-radius: 6px;
   font-size: 9px;
   font-weight: 500;
-  font-family: var(--mono);
+  font-family: var(--font);
   color: #ffffff;
   background: rgba(0, 0, 0, 0.65);
   white-space: nowrap;
@@ -3140,7 +3140,7 @@ body.copilot-collapsed .copilot-rail {
   transform: translate(-50%, -50%);
   font-size: 9px;
   font-weight: 600;
-  font-family: var(--mono);
+  font-family: var(--font);
   color: #ffffff;
   pointer-events: none;
   opacity: 0;
@@ -3292,7 +3292,7 @@ body.copilot-collapsed .copilot-rail {
 }
 .va-transcript-title {
   font-size: 10px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -3301,7 +3301,7 @@ body.copilot-collapsed .copilot-rail {
 /* Live state inside the popup header: Listening / Thinking / Speaking / Muted */
 .va-transcript-state {
   font-size: 9.5px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3358,7 +3358,7 @@ body.copilot-collapsed .copilot-rail {
 }
 .va-turn-who {
   font-size: 9.5px;
-  font-family: var(--mono);
+  font-family: var(--font);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
