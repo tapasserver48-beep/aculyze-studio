@@ -2301,6 +2301,41 @@ async function refreshApps() {
   renderApps();
 }
 
+/* Flat Google Material icons for the Apps page — app id → { icon, color }.
+   Falls back to the catalog emoji when an id is not mapped. */
+const APP_FLAT_ICONS = {
+  gmail:        { icon: 'mail',            color: '#EA4335' },
+  gcal:         { icon: 'calendar_month',  color: '#4285F4' },
+  gdrive:       { icon: 'folder',          color: '#F9AB00' },
+  gdocs:        { icon: 'description',     color: '#1A73E8' },
+  gsheets:      { icon: 'table_chart',     color: '#34A853' },
+  gmeet:        { icon: 'videocam',        color: '#00AC47' },
+  gchat:        { icon: 'chat',            color: '#0F9D58' },
+  outlook:      { icon: 'mark_email_read', color: '#0078D4' },
+  mscal:        { icon: 'calendar_month',  color: '#28A8EA' },
+  teams:        { icon: 'groups',          color: '#6264A7' },
+  onedrive:     { icon: 'cloud',           color: '#0364B8' },
+  sharepoint:   { icon: 'hub',             color: '#038387' },
+  excel:        { icon: 'table_view',      color: '#217346' },
+  word:         { icon: 'article',         color: '#2B579A' },
+  slack:        { icon: 'forum',           color: '#E01E5A' },
+  notion:       { icon: 'web',             color: '#9CA3AF' },
+  trello:       { icon: 'dashboard',       color: '#0079BF' },
+  asana:        { icon: 'task_alt',        color: '#F06A6A' },
+  clickup:      { icon: 'rocket_launch',   color: '#7B68EE' },
+  dropbox:      { icon: 'inventory_2',     color: '#0061FF' },
+  canva:        { icon: 'palette',         color: '#00C4CC' },
+  salesforce:   { icon: 'handshake',       color: '#00A1E0' },
+  hubspot:      { icon: 'hub',             color: '#FF7A59' },
+  zoho:         { icon: 'apps',            color: '#E42527' },
+  sap:          { icon: 'factory',         color: '#008FD3' },
+  oracle:       { icon: 'database',        color: '#C74634' },
+  dynamics:     { icon: 'analytics',       color: '#742774' },
+  'aculyze-lms':    { icon: 'school',      color: '#6d28d9' },
+  'aculyze-sales':  { icon: 'work',        color: '#db2777' },
+  'aculyze-api':    { icon: 'api',         color: '#0891b2' },
+};
+
 function renderApps() {
   const root = document.getElementById('appsContent');
   if (!root) return;
@@ -2395,8 +2430,13 @@ function renderApps() {
     const btnText = a.status === 'connected' ? 'Configure' : isComingSoon ? 'Coming soon' : 'Get';
     const btnDisabled = isComingSoon;
 
+    const flat = APP_FLAT_ICONS[a.id];
+    const iconHtml = flat
+      ? `<span class="ac-app-ico" aria-hidden="true" style="background:${flat.color}1A"><span class="material-symbols-outlined" style="color:${flat.color}">${flat.icon}</span></span>`
+      : `<span class="ac-app-ico" aria-hidden="true">${(a.icon || '•').slice(0, 2)}</span>`;
+
     card.innerHTML = `
-      <span class="ac-app-ico" aria-hidden="true">${(a.icon || '•').slice(0, 2)}</span>
+      ${iconHtml}
       <div class="ac-app-name">${a.name}</div>
       <p class="ac-app-desc">${a.desc || ''}</p>
       <div class="ac-app-status-row">
