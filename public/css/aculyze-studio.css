@@ -297,6 +297,17 @@ img, svg {
   height: 24px;
   flex-shrink: 0;
 }
+/* Flat Material icon used as a sidebar item icon (e.g. Inbox → mail) */
+.sidebar .item-ico.material-symbols-outlined {
+  width: 24px;
+  height: 24px;
+  font-size: 21px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
 .sidebar.collapsed .sidebar-item,
 .sidebar.collapsed .agent-item,
 body.sidebar-collapsed .sidebar .sidebar-item,
