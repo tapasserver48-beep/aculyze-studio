@@ -654,6 +654,12 @@ body.sidebar-collapsed .sidebar .agent-item.active,
 .icon-btn.ghost { background: transparent; border-color: transparent; }
 .icon-btn.ghost:hover { background: var(--surface-2); }
 .icon-btn.sm { width: 28px; height: 28px; }
+/* Flat Material icons inside buttons */
+.icon-btn .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
 
 /* ==========================================================================
    RIGHT COPILOT PANEL
@@ -730,12 +736,19 @@ body.sidebar-collapsed .sidebar .agent-item.active,
 }
 
 /* Copilot rail icon color per theme */
-.copilot-rail svg {
+.copilot-rail svg,
+.copilot-rail .material-symbols-outlined {
   color: var(--text-2);
+}
+.copilot-rail .material-symbols-outlined {
+  font-size: 19px;
+  line-height: 1;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
 /* White icon in dark theme for visibility */
-[data-theme="dark"] .copilot-rail svg {
+[data-theme="dark"] .copilot-rail svg,
+[data-theme="dark"] .copilot-rail .material-symbols-outlined {
   color: #ffffff;
 }
 
