@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Thinking — component demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/thinking.css" />
+  <style>
+    /* Demo-page theme variables (the component reads var(--accent) etc.) */
+    :root {
+      --bg: #f7f8fa; --surface: #ffffff; --text: #1a2030;
+      --text-muted: #6b7484; --border: #e3e7ee; --accent: #e8623c;
+      --user-bubble: #eef0f4;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg: #0e1219; --surface: #161c27; --text: #e7ecf5;
+      --text-muted: #9aa5bb; --border: #28324a; --accent: #5b8cff;
+      --user-bubble: #1d2532;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: "Public Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      font-size: 14.5px; line-height: 1.55;
+    }
+    .demo { max-width: 680px; margin: 0 auto; padding: 24px 16px 64px; }
+    .demo-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+    .demo-head h1 { font-size: 16px; margin: 0; font-weight: 650; }
+    .ghost-btn {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+      font: inherit; font-size: 12.5px; border-radius: 8px; padding: 5px 11px; cursor: pointer;
+    }
+    .ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ghost-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ---------- chat area (fake, just enough to show the component) ---------- */
+    .chat { display: flex; flex-direction: column; gap: 16px; min-height: 220px; }
+    .msg { display: flex; gap: 10px; animation: fadeUp 0.2s ease; }
+    .msg.user { justify-content: flex-end; }
+    .msg.user .bubble {
+      /* small user message box */
+      max-width: 72%; background: var(--user-bubble); border: 1px solid var(--border);
+      border-radius: 14px; padding: 7px 11px; font-size: 13.5px; white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.assistant .avatar {
+      flex: none; width: 26px; height: 26px; border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent), #b8437a);
+      color: #fff; font-weight: 700; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .msg.assistant .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .role { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+    .answer { font-size: 14px; min-height: 1em; }
+    .answer:empty { display: none; }
+    .cancelled { font-size: 12.5px; color: var(--text-muted); font-style: italic; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    /* ---------- small message box ---------- */
+    .msgbox {
+      display: flex; gap: 6px; margin-top: 20px; padding: 5px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .msgbox:focus-within { border-color: var(--accent); }
+    .msgbox input {
+      flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+      color: var(--text); font: inherit; font-size: 13.5px; padding: 5px 7px;
+    }
+    .msgbox button {
+      border: none; background: var(--accent); color: #fff; font: inherit; font-size: 12.5px;
+      font-weight: 600; border-radius: 10px; padding: 5px 13px; cursor: pointer;
+    }
+    .msgbox button:disabled { opacity: 0.45; cursor: default; }
+    .hint { margin: 8px 2px 0; font-size: 11.5px; color: var(--text-muted); }
+
+    /* ---------- usage notes ---------- */
+    .notes { margin-top: 44px; border-top: 1px dashed var(--border); padding-top: 20px; }
+    .notes h2 { font-size: 14px; margin: 0 0 8px; }
+    .notes ul { margin: 6px 0; padding-left: 18px; color: var(--text-muted); font-size: 13px; }
+    .notes pre {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+    }
+    .notes code { font-family: Consolas, "JetBrains Mono", monospace; }
+  </style>
+</head>
+<body>
+  <main class="demo">
+    <div class="demo-head">
+      <h1>AI Thinking — component demo</h1>
+      <div style="display:flex; gap:6px;">
+        <button id="replayBtn" class="ghost-btn" type="button">↻ Replay flow</button>
+        <button id="themeBtn" class="ghost-btn" type="button">◐ Dark</button>
+      </div>
+    </div>
+
+    <div class="chat" id="chat">
+      <div class="msg user"><div class="bubble">Show me the AI thinking flow</div></div>
+      <div class="msg assistant" id="turn">
+        <div class="avatar">Z</div>
+        <div class="body">
+          <div class="role">Zara</div>
+          <!-- thinking component mounts here -->
+          <div class="answer" id="answer"></div>
+        </div>
+      </div>
+    </div>
+
+    <form class="msgbox" id="form" autocomplete="off">
+      <input id="input" aria-label="Message" placeholder="Type a message…" />
+      <button id="sendBtn" type="submit">Send</button>
+    </form>
+    <p class="hint">
+      Send (or Replay) runs the fake flow: idle → thinking (rotating labels + live
+      timer + steps) → streaming (collapses to “Thought for Ns”) → done (expandable).
+      Stop during thinking cancels. Reduced-motion is respected automatically.
+    </p>
+
+    <section class="notes">
+      <h2>Usage notes</h2>
+      <ul>
+        <li><code>status</code> — <code>idle</code> hides everything; <code>thinking</code> shows the live indicator;
+          <code>streaming</code> collapses it to “Thought for Ns”; <code>done</code> keeps that row expandable.</li>
+        <li><code>statusLabels</code> — array of lines that rotate every 2.5&nbsp;s with a fade (aria-live="polite").</li>
+        <li><code>steps</code> — <code>{id, text}</code> items appended over time; each animates in once.</li>
+        <li><code>elapsedSeconds</code> — omit to let the component run its own clock (freezes when leaving
+          <code>thinking</code>); pass a number to display a host-controlled time instead.</li>
+        <li><code>onCancel</code> — fired by the Stop button (visible only while thinking).</li>
+        <li>A11y: <code>aria-busy</code> on the root, focusable native buttons for expand/collapse (Enter/Space),
+          <code>prefers-reduced-motion</code> swaps animations for a static indicator.</li>
+        <li>Theme: all colors come from CSS variables (host <code>--accent</code>, <code>--text-muted</code>,
+          <code>--border</code>, <code>--surface</code> are picked up automatically; sensible light/dark fallbacks otherwise).</li>
+      </ul>
+      <pre><code>import { createThinking } from './thinking.js';
+
+const t = createThinking({
+  status: 'thinking',
+  statusLabels: ['Reading your message', 'Gathering context', 'Drafting a reply'],
+  steps: [{ id: 's1', text: 'Reading your message' }],
+  onCancel: () =&gt; controller.abort(),
+});
+mount.appendChild(t.el);
+
+t.update({ steps: [...steps, { id: 's2', text: 'Searching the web' }] });
+t.update({ status: 'streaming' });  // collapses → "Thought for Ns"
+t.update({ status: 'done' });       // row stays, expandable
+
+const { seconds, steps } = t.snapshot();  // persist with the message
+t.destroy();</code></pre>
+    </section>
+  </main>
+
+  <script type="module">
+    import { createThinking } from './js/thinking.js';
+
+    const chat = document.getElementById('chat');
+    const turn = document.getElementById('turn');
+    const body = turn.querySelector('.body');
+    const answer = document.getElementById('answer');
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const replayBtn = document.getElementById('replayBtn');
+    const themeBtn = document.getElementById('themeBtn');
+
+    const LABELS = ['Reading your message', 'Gathering context', 'Drafting a reply'];
+    const STEPS = [
+      { at: 300,  step: { id: 'read',    text: 'Reading your message' } },
+      { at: 1300, step: { id: 'context', text: 'Gathering context' } },
+      { at: 2300, step: { id: 'draft',   text: 'Drafting a reply' } },
+    ];
+    const ANSWER =
+      'Here is the streamed answer arriving token by token. The thinking row above ' +
+      'has already collapsed into a “Thought for Ns” summary — expand it any time ' +
+      'to review the reasoning steps.';
+
+    let timers = [];
+    let thinking = null;
+    let streaming = null;
+    let running = false;
+
+    const after = (ms, fn) => timers.push(setTimeout(fn, ms));
+
+    function reset() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      if (streaming) { clearInterval(streaming); streaming = null; }
+      if (thinking) { thinking.destroy(); thinking = null; }
+      body.querySelectorAll('.cancelled').forEach((n) => n.remove());
+      answer.textContent = '';
+      running = false;
+      sendBtn.disabled = false;
+    }
+
+    function runFlow() {
+      reset();
+      running = true;
+      sendBtn.disabled = true;
+
+      thinking = createThinking({
+        status: 'thinking',
+        statusLabels: LABELS,
+        steps: [],
+        onCancel: () => {
+          reset();
+          const note = document.createElement('div');
+          note.className = 'cancelled';
+          note.textContent = 'Generation cancelled.';
+          body.appendChild(note);
+        },
+      });
+      body.insertBefore(thinking.el, answer);
+
+      for (const { at, step } of STEPS) {
+        after(at, () => {
+          seen = [...seen, step];
+          thinking.update({ steps: seen });
+        });
+      }
+
+      // first token → collapse to "Thought for Ns" and stream the answer
+      after(3600, () => {
+        thinking.update({ status: 'streaming' });
+        let i = 0;
+        streaming = setInterval(() => {
+          i = Math.min(ANSWER.length, i + 2 + Math.floor(Math.random() * 3));
+          answer.textContent = ANSWER.slice(0, i);
+          if (i >= ANSWER.length) {
+            clearInterval(streaming);
+            streaming = null;
+            thinking.update({ status: 'done' });
+            running = false;
+            sendBtn.disabled = false;
+          }
+        }, 28);
+      });
+    }
+
+    // steps accumulate in seen[] — each step appended once, then pushed to the component
+    let seen = [];
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (running) return;
+      // add the user's message as a small bubble
+      const text = input.value.trim() || 'Show me the AI thinking flow';
+      input.value = '';
+      let userMsg = chat.querySelector('.msg.user');
+      if (!userMsg) {
+        userMsg = document.createElement('div');
+        userMsg.className = 'msg user';
+        chat.insertBefore(userMsg, turn);
+      }
+      userMsg.innerHTML = '<div class="bubble"></div>';
+      userMsg.querySelector('.bubble').textContent = text;
+      seen = [];
+      runFlow();
+    });
+
+    replayBtn.addEventListener('click', () => { seen = []; runFlow(); });
+
+    themeBtn.addEventListener('click', () => {
+      const dark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+      themeBtn.textContent = dark ? '◐ Dark' : '◑ Light';
+    });
+
+    // boot the flow once so the page shows something immediately
+    runFlow();
+  </script>
+</body>
+</html>
