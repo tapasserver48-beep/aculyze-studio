@@ -1109,28 +1109,7 @@ body.copilot-collapsed .copilot-rail {
   display: flex;
   flex-direction: column;
 }
-.zara-conversations .conversation-header {
-  padding: 12px 14px;
-}
-.conversion-count {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font);
-}
-.conversation-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.conversation-actions .icon-btn {
-  width: auto;
-  min-width: 28px;
-  padding: 0 8px;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
+/* conversation list */
 .conversation-list {
   flex: 1 1 auto;
   min-height: 0;

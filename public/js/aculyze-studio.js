@@ -3058,13 +3058,6 @@ document.getElementById('copilotNewChat')?.addEventListener('click', () => {
     newConversation();
   }
 });
-document.getElementById('zaraConversationNewChat')?.addEventListener('click', () => {
-  if (state.activeAgent === 'sales') {
-    newSalesConversation();
-  } else {
-    newConversation();
-  }
-});
 
 /* ---------- Inbox composer event listeners ---------- */
 els.inboxSend?.addEventListener('click', sendInboxMessage);
