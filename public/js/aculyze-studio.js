@@ -535,12 +535,19 @@ function renderConversationList() {
   
   if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
   
+  // Pinned conversations first, then most recently updated
+  const sorted = [...cache].sort((a, b) => {
+    const pin = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+    if (pin) return pin;
+    return toMillis(b.updatedAt) - toMillis(a.updatedAt);
+  });
+  
   const ul = document.createElement('ul');
   ul.className = 'conversation-row-list';
   
-  for (const conv of cache) {
+  for (const conv of sorted) {
     const li = document.createElement('li');
-    li.className = 'conversation-row';
+    li.className = 'conversation-row has-actions';
     li.dataset.conversationId = conv.id;
     li.innerHTML = `
       <div class="conversation-avatar">Z</div>
@@ -549,14 +556,65 @@ function renderConversationList() {
         <span class="conversation-preview">${conv.lastMessage ? truncate(conv.lastMessage, 60) : ''}</span>
       </div>
       <div class="conversation-meta">
+        ${conv.pinned ? '<span class="material-symbols-outlined row-pin-ico" title="Pinned">push_pin</span>' : ''}
         <span class="conversation-time">${timeAgo(conv.updatedAt)}</span>
       </div>
+      <div class="conversation-row-actions">
+        <button class="row-act" data-act="pin" type="button" aria-label="${conv.pinned ? 'Unpin' : 'Pin'} conversation" title="${conv.pinned ? 'Unpin' : 'Pin'}">
+          <span class="material-symbols-outlined"${conv.pinned ? ' data-on="1"' : ''}>push_pin</span>
+        </button>
+        <button class="row-act danger" data-act="delete" type="button" aria-label="Delete conversation" title="Delete">
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </div>
     `;
+    li.querySelector('[data-act="pin"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePinConversation(conv.id);
+    });
+    li.querySelector('[data-act="delete"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteConversation(conv.id);
+    });
     li.addEventListener('click', () => selectConversation(conv.id));
     ul.appendChild(li);
   }
   
   els.conversationList.appendChild(ul);
+}
+
+/* ---------- Pin / delete conversation ---------- */
+function togglePinConversation(id) {
+  const conv = state.conversationCache.find((c) => c.id === id);
+  if (!conv) return;
+  conv.pinned = !conv.pinned;
+  saveConversationCache();
+  renderConversationList();
+  toast(conv.pinned ? 'Pinned to top' : 'Unpinned');
+}
+
+async function deleteConversation(id) {
+  const conv = state.conversationCache.find((c) => c.id === id);
+  if (!conv) return;
+  const ok = await showAppConfirm({
+    title: 'Delete conversation',
+    detail: `Delete "${conv.title || 'this conversation'}"? This cannot be undone.`,
+    okLabel: 'Delete',
+    cancelLabel: 'Cancel',
+  });
+  if (!ok) return;
+  state.conversationCache = state.conversationCache.filter((c) => c.id !== id);
+  // If the deleted conversation is open, close the detail panel
+  if (state.selectedConversationId === id) {
+    state.selectedConversationId = null;
+    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    if (els.zaraConversations) els.zaraConversations.hidden = false;
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
+    if (els.workspaceTitle) els.workspaceTitle.textContent = 'Zara Gen AI';
+  }
+  saveConversationCache();
+  renderConversationList();
+  toast('Conversation deleted');
 }
 
 /* ---------- Show conversation detail ---------- */
@@ -696,9 +754,15 @@ function truncate(str, maxLen) {
   if (!str) return '';
   return str.length > maxLen ? str.slice(0, maxLen - 1) + '…' : str;
 }
+/* updatedAt may be an epoch number or an ISO string — normalise to millis */
+function toMillis(ts) {
+  if (typeof ts === 'number') return ts;
+  const t = Date.parse(ts);
+  return Number.isNaN(t) ? 0 : t;
+}
 function timeAgo(timestamp) {
   if (!timestamp) return 'Just now';
-  const diff = Date.now() - Number(timestamp);
+  const diff = Date.now() - toMillis(timestamp);
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;

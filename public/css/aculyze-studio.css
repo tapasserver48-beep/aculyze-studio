@@ -1011,6 +1011,70 @@ body.copilot-collapsed .copilot-rail {
 }
 
 /* ==========================================================================
+   ZARA WORKSPACE — hero header + empty state shown over the video bg
+   ========================================================================== */
+.zara-workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100dvh - 130px); /* matches .home-wrap: 100dvh − topbar − padding */
+  padding: 6px 0 30px;
+  text-align: center;
+}
+.zara-workspace-header h1 {
+  margin: 0;
+  font-size: clamp(30px, 4.2vw, 46px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  color: var(--text);
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .zara-workspace-header h1 { text-shadow: none; }
+.zara-workspace-header p {
+  margin: 12px auto 0;
+  max-width: 520px;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.zara-workspace-content {
+  margin-top: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.zara-empty-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13.5px;
+  box-shadow: 0 10px 30px rgba(2, 6, 44, 0.14);
+}
+.zara-empty-state p { margin: 0; }
+.zara-workspace-footer { margin-top: 32px; }
+.zara-workspace-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+@media (max-width: 560px) {
+  .zara-workspace { min-height: auto; padding: 24px 0 34px; }
+  .zara-workspace-header h1 { font-size: clamp(26px, 7vw, 34px); }
+  .zara-workspace-header p { font-size: 14px; }
+}
+
+/* ==========================================================================
    ZARA INBOX CHAT — the primary experience
    ========================================================================== */
 .chat-stage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -1190,7 +1254,6 @@ body.copilot-collapsed .copilot-rail {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.conversation-row .conversation-meta { flex-shrink: 0; }
 .conversation-row .conversation-time {
   font-size: 10.5px;
   color: var(--text-muted);
@@ -1200,6 +1263,70 @@ body.copilot-collapsed .copilot-rail {
   padding: 14px 12px;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* Row hover actions — pin + delete (flat Material icons) */
+.conversation-row { position: relative; }
+.conversation-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.conversation-row.has-actions:hover .conversation-row-actions,
+.conversation-row.has-actions:focus-within .conversation-row-actions {
+  visibility: visible;
+  pointer-events: auto;
+}
+/* Hide the timestamp while actions are shown so they fit on one line */
+.conversation-row.has-actions:hover .conversation-time,
+.conversation-row.has-actions:focus-within .conversation-time {
+  visibility: hidden;
+}
+/* Touch devices have no hover — keep the actions always visible */
+@media (hover: none) {
+  .conversation-row.has-actions .conversation-row-actions { visibility: visible; pointer-events: auto; }
+  .conversation-row.has-actions .conversation-time { visibility: hidden; }
+}
+.row-act {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.row-act:hover { background: var(--surface-2); color: var(--text); }
+.row-act.danger:hover { background: var(--danger-soft); color: var(--danger); }
+.row-act .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.row-act .material-symbols-outlined[data-on="1"] {
+  color: var(--accent-ink);
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.row-pin-ico {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--accent-ink);
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+.conversation-row .conversation-meta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* ==========================================================================
