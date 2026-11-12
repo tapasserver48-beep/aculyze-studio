@@ -618,6 +618,32 @@ async function deleteConversation(id) {
 }
 
 /* ---------- Show conversation detail ---------- */
+/** Render one stored message body.
+ *  content may be a plain string OR an array of content parts (text + image_url)
+ *  when the message carried image attachments — renderMarkdown() only takes strings. */
+function renderMessageBody(msg) {
+  const content = msg && msg.content;
+  if (Array.isArray(content)) {
+    let html = '';
+    for (const part of content) {
+      if (!part) continue;
+      if (part.type === 'image_url' && part.image_url && part.image_url.url) {
+        html += `<img class="msg-att" src="${part.image_url.url}" alt="Attached image">`;
+      } else if (part.type === 'text' && part.text) {
+        html += `<div class="msg-content">${renderMarkdown(String(part.text))}</div>`;
+      }
+    }
+    return html || '<div class="msg-content"></div>';
+  }
+  const text = content ? String(content) : '';
+  const textHtml = text ? `<div class="msg-content">${renderMarkdown(text)}</div>` : '';
+  const atts = Array.isArray(msg && msg.attachments) ? msg.attachments : [];
+  const attHtml = atts
+    .map((a) => (a && a.dataUrl ? `<img class="msg-att" src="${a.dataUrl}" alt="Attached image">` : ''))
+    .join('');
+  return (textHtml + attHtml) || '<div class="msg-content"></div>';
+}
+
 function showConversationDetail(conversationId) {
   if (!els.conversationDetail) return;
   
@@ -649,7 +675,7 @@ function showConversationDetail(conversationId) {
         msgEl.className = `msg ${msg.role === 'assistant' ? 'agent' : msg.role}`;
         msgEl.innerHTML = `
           <div class="msg-body">
-            <div class="msg-content">${msg.content ? renderMarkdown(msg.content) : ''}</div>
+            ${renderMessageBody(msg)}
           </div>
         `;
         messagesEl.appendChild(msgEl);
@@ -810,6 +836,15 @@ function autoGrowTextarea() {
   els.zaraInput.style.height = Math.min(els.zaraInput.scrollHeight, 220) + 'px';
 }
 
+/** Send is enabled when there is text OR a pending image, and nothing is in flight. */
+function syncSendButton() {
+  if (!els.zaraSend) return;
+  if (state.abortCtrl || state.activeRequest) { els.zaraSend.disabled = true; return; }
+  const hasText = !!els.zaraInput?.value.trim();
+  const hasAtt = !!(state.attachments && state.attachments.length);
+  els.zaraSend.disabled = !(hasText || hasAtt);
+}
+
 /* ---------- Send Zara message ---------- */
 /* ---------- Connected apps: confirm modal + chat tool steps ---------- */
 let appConfirmDone = null;
@@ -899,6 +934,65 @@ function addToolStep(text) {
   els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
 }
 
+/* ---------- Live "thinking / fetching" indicator shown while awaiting a reply ----------
+   One request at a time, so a single module-level bubble is enough. */
+let thinkingEl = null;
+let thinkingTimer = null;
+let thinkingReasonAcc = '';
+
+function showThinking(label = 'Thinking') {
+  removeThinking();
+  if (!els.conversationDetail || els.conversationDetail.hidden || !els.conversationMessages) return;
+  const empty = els.conversationMessages.querySelector('.conversation-empty');
+  if (empty) empty.remove();
+  thinkingEl = document.createElement('div');
+  thinkingEl.className = 'msg agent thinking';
+  thinkingEl.innerHTML = `
+    <div class="msg-body">
+      <div class="thinking-row">
+        <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="thinking-text">${label}</span>
+        <span class="thinking-elapsed">0s</span>
+      </div>
+      <div class="thinking-reason" hidden></div>
+    </div>`;
+  els.conversationMessages.appendChild(thinkingEl);
+  const startedAt = Date.now();
+  thinkingTimer = setInterval(() => {
+    if (!thinkingEl) return;
+    const el = thinkingEl.querySelector('.thinking-elapsed');
+    if (el) el.textContent = `${Math.round((Date.now() - startedAt) / 1000)}s`;
+  }, 1000);
+  els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
+}
+
+/** Update the label, and/or append a chunk of live reasoning text. */
+function setThinking(label, reason) {
+  if (!thinkingEl) return;
+  if (label != null) {
+    const t = thinkingEl.querySelector('.thinking-text');
+    if (t) t.textContent = label;
+  }
+  if (reason != null) {
+    thinkingReasonAcc += reason;
+    const r = thinkingEl.querySelector('.thinking-reason');
+    if (r) {
+      r.hidden = false;
+      // keep only the tail so a long CoT never balloons the bubble
+      r.textContent = thinkingReasonAcc.length > 700
+        ? '…' + thinkingReasonAcc.slice(-700)
+        : thinkingReasonAcc;
+    }
+    if (els.conversationMessages) els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
+  }
+}
+
+function removeThinking() {
+  if (thinkingTimer) { clearInterval(thinkingTimer); thinkingTimer = null; }
+  if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+  thinkingReasonAcc = '';
+}
+
 /**
  * Build user message content with optional image attachments.
  * Attachments limited to 4 images max.
@@ -935,8 +1029,15 @@ function buildUserContent(text, attachments = []) {
 async function sendZaraMessage() {
   if (!els.zaraInput) return;
   const text = els.zaraInput.value.trim();
-  if ((!text || state.activeRequest) && (!state.attachments || state.attachments.length === 0)) return;
+  const hasAtt = state.attachments && state.attachments.length > 0;
+  if (state.activeRequest || state.abortCtrl) return; // a reply is already in flight
+  if (!text && !hasAtt) return;
+  state.activeRequest = true;
 
+  // One outer try/catch/finally for the WHOLE send so the composer always
+  // recovers (button, stop control, thinking bubble) even if setup throws.
+  let conv = null; // hoisted: the catch below needs it
+  try {
   els.zaraInput.value = '';
   els.zaraInput.style.height = 'auto';
   if (els.zaraSend) els.zaraSend.disabled = true;
@@ -949,7 +1050,7 @@ async function sendZaraMessage() {
   }
 
   const finalConvId = state.selectedConversationId;
-  const conv = state.conversationCache.find((c) => c.id === finalConvId);
+  conv = state.conversationCache.find((c) => c.id === finalConvId);
 
   // Add user message to cache
   if (conv) {
@@ -968,11 +1069,7 @@ async function sendZaraMessage() {
   if (els.conversationDetail && !els.conversationDetail.hidden) {
     const msgEl = document.createElement('div');
     msgEl.className = 'msg user';
-    const hasImages = state.attachments && state.attachments.length > 0;
-    const displayContent = hasImages 
-      ? `<div class="msg-content">${renderMarkdown(text)}</div>`
-      : `<div class="msg-body"><div class="msg-content">${renderMarkdown(text)}</div></div>`;
-    msgEl.innerHTML = displayContent;
+    msgEl.innerHTML = `<div class="msg-body">${renderMessageBody({ content: text, attachments: state.attachments })}</div>`;
     if (els.conversationMessages) {
       const empty = els.conversationMessages.querySelector('.conversation-empty');
       if (empty) empty.remove();
@@ -981,14 +1078,20 @@ async function sendZaraMessage() {
     }
   }
 
+  // Live status: show a "thinking" bubble right away so the wait is visible
+  showThinking('Thinking…');
+
   // ---- Connected apps (Gmail, Calendar, LMS…): plan tools, run reads,
   //      confirm writes (§10–§12). Never silent — write actions need approval.
   let integrationSystem = null;   // prepended as ephemeral system message
   let integrationSources = [];
   // appsState loads lazily (only when the Apps page opens) — fetch once here
   // if we've never seen it, so a fresh session still gets app-aware answers.
-  if (!appsState.apps.length) await refreshApps();
+  if (!appsState.apps.length) {
+    try { await refreshApps(); } catch { /* non-fatal: answer without app context */ }
+  }
   if (appsState.apps.some((a) => a.status === 'connected')) {
+    setThinking('Checking connected apps…');
     try {
       const r = await resolveIntegrations(text);
       if (r.confirm) {
@@ -1037,9 +1140,9 @@ async function sendZaraMessage() {
   const userMessageContent = buildUserContent(text, state.attachments);
 
   // Stream response from API
+  setThinking('Thinking…');
   state.abortCtrl = new AbortController();
   let acc = '';
-  try {
     // Build messages with proper image serialization
     const chatMessages = [
       { role: 'system', content: SYSTEM_PROMPTS.zara },
@@ -1067,8 +1170,13 @@ async function sendZaraMessage() {
     const res = await streamChat({
       messages: chatMessages,
       signal: state.abortCtrl.signal,
+      onReasoning: (chunk) => {
+        // Surface the model's real reasoning stream while it thinks
+        setThinking('Thinking…', chunk);
+      },
       onToken: (tok, full) => {
         acc = full;
+        removeThinking(); // first token: the answer has started
         if (els.conversationDetail && !els.conversationDetail.hidden) {
           // Update or create assistant bubble
           let bubble = els.conversationMessages?.querySelector('.msg.agent.streaming');
@@ -1117,9 +1225,10 @@ async function sendZaraMessage() {
       clearAttachments();
     }
   } finally {
+    removeThinking();
     state.abortCtrl = null;
     state.activeRequest = null;
-    if (els.zaraSend) els.zaraSend.disabled = !els.zaraInput.value.trim();
+    syncSendButton();
     if (els.zaraStop) els.zaraStop.hidden = true;
     autoGrowTextarea();
   }
@@ -1139,7 +1248,7 @@ function stopZara() {
     state.abortCtrl.abort();
   }
   if (els.zaraStop) els.zaraStop.hidden = true;
-  if (els.zaraSend) els.zaraSend.disabled = !els.zaraInput.value.trim();
+  syncSendButton();
 }
 
 /* ---------- Composer event listeners (dispatch by active agent) ---------- */
@@ -1170,42 +1279,123 @@ els.zaraInput?.addEventListener('keydown', (e) => {
   autoGrowTextarea();
 });
 
-els.zaraInput?.addEventListener('input', autoGrowTextarea);
+els.zaraInput?.addEventListener('input', () => {
+  autoGrowTextarea();
+  syncSendButton();
+});
 
-/* ---------- File attachment ---------- */
+/* ---------- File attachment (shared by picker, paste and drag-drop) ---------- */
+const MAX_ATTACHMENTS = 4;
+
+/** Add a chip to the composer for one already-decoded image. */
+function appendAttachmentChip(att) {
+  state.attachments.push(att);
+  if (!els.zaraAttachments) return;
+  els.zaraAttachments.hidden = false;
+  const chip = document.createElement('div');
+  chip.className = 'chip-image';
+  chip.innerHTML = `<img src="${att.dataUrl}" alt=""><small></small><button class="chip-del" type="button" aria-label="Remove attachment">&times;</button>`;
+  chip.querySelector('small').textContent = att.name;
+  chip.querySelector('.chip-del')?.addEventListener('click', () => {
+    state.attachments = state.attachments.filter((a) => a !== att);
+    chip.remove();
+    if (state.attachments.length === 0) els.zaraAttachments.hidden = true;
+    syncSendButton();
+  });
+  els.zaraAttachments.appendChild(chip);
+}
+
+/** Read a list of File objects, keeping images only (max 4 per message). */
+function addImageFiles(files) {
+  const images = Array.from(files || []).filter((f) => f && f.type.startsWith('image/'));
+  if (!images.length) return 0;
+  let added = 0;
+  for (const file of images) {
+    if (state.attachments.length >= MAX_ATTACHMENTS) {
+      toast(`Up to ${MAX_ATTACHMENTS} images per message`, 'error');
+      break;
+    }
+    added++;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      appendAttachmentChip({ name: file.name || 'image', type: file.type, dataUrl: ev.target.result });
+      syncSendButton(); // an image alone is enough to allow sending
+    };
+    reader.onerror = () => toast(`Could not read ${file.name}`, 'error');
+    reader.readAsDataURL(file);
+  }
+  return added;
+}
+
 els.zaraAttach?.addEventListener('click', () => {
   els.zaraFileInput?.click();
 });
 
 els.zaraFileInput?.addEventListener('change', (e) => {
-  const files = Array.from(e.target.files || []);
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      state.attachments.push({
-        name: file.name,
-        type: file.type,
-        dataUrl: ev.target.result,
-      });
-      // Show chip in attachments area
-      if (els.zaraAttachments) {
-        els.zaraAttachments.hidden = false;
-        const chip = document.createElement('div');
-        chip.className = 'chip-image';
-        chip.innerHTML = `<img src="${ev.target.result}" alt="${file.name}"><small>${file.name}</small><button class="chip-del">&times;</button>`;
-        chip.querySelector('.chip-del')?.addEventListener('click', () => {
-          state.attachments = state.attachments.filter((a) => a.name !== file.name);
-          chip.remove();
-          if (state.attachments.length === 0) els.zaraAttachments.hidden = true;
-        });
-        els.zaraAttachments.appendChild(chip);
-      }
-    };
-    reader.readAsDataURL(file);
-  }
+  addImageFiles(e.target.files);
   e.target.value = '';
 });
+
+/* Paste an image from the clipboard straight into the composer */
+els.zaraInput?.addEventListener('paste', (e) => {
+  const dt = e.clipboardData;
+  if (!dt) return;
+  // Screenshots usually land in .files; some browsers only expose .items
+  let files = Array.from(dt.files || []);
+  if (!files.length && dt.items) {
+    files = Array.from(dt.items)
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+  }
+  if (!files.length) return; // plain text — let the browser handle it
+  const added = addImageFiles(files);
+  if (added) {
+    e.preventDefault();
+    toast(added === 1 ? 'Image pasted' : `${added} images pasted`);
+  }
+});
+
+/* Drag & drop images onto the chat panel / composer.
+   The composer lives INSIDE the detail panel, so every handler stops
+   propagation — otherwise one drop would bubble and attach each image twice. */
+function wireImageDrop(el) {
+  if (!el) return;
+  let depth = 0;
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+  el.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    depth++;
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  // dragleave may report no `types` in some browsers — don't gate on it
+  el.addEventListener('dragleave', (e) => {
+    e.stopPropagation();
+    depth = Math.max(0, depth - 1);
+    if (!depth) el.classList.remove('drag-over');
+  });
+  el.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    depth = 0;
+    el.classList.remove('drag-over');
+    const added = addImageFiles(e.dataTransfer.files);
+    if (added) toast(added === 1 ? 'Image attached' : `${added} images attached`);
+    else toast('Drop image files (PNG, JPEG, WebP or GIF)', 'error');
+  });
+}
+wireImageDrop(document.querySelector('.composer.zara-composer'));
+wireImageDrop(els.conversationDetail);
 
 /* ---------- Web research toggle ---------- */
 els.zaraWebToggle?.addEventListener('click', (e) => {
@@ -1296,7 +1486,7 @@ function showSalesConversationDetail(conversationId) {
         msgEl.className = `msg ${msg.role === 'assistant' ? 'agent' : msg.role}`;
         msgEl.innerHTML = `
           <div class="msg-body">
-            <div class="msg-content">${msg.content ? renderMarkdown(msg.content) : ''}</div>
+            ${renderMessageBody(msg)}
           </div>
         `;
         messagesEl.appendChild(msgEl);
@@ -1422,6 +1612,8 @@ async function sendSalesMessage() {
   salesState.abortCtrl = new AbortController();
   let acc = '';
 
+  showThinking('Thinking…');
+
   try {
     // Use Sales Agent dedicated chat endpoint — backend fetches live LMS data,
     // extracts structured facts, and answers from real data only.
@@ -1433,6 +1625,7 @@ async function sendSalesMessage() {
       signal: salesState.abortCtrl.signal,
       onToken: (tok, full) => {
         acc = full;
+        removeThinking();
         if (els.conversationDetail && !els.conversationDetail.hidden) {
           let bubble = els.conversationMessages?.querySelector('.msg.agent.streaming');
           if (!bubble) {
@@ -1473,6 +1666,7 @@ async function sendSalesMessage() {
       if (conv) conv.messages.pop();
     }
   } finally {
+    removeThinking();
     salesState.abortCtrl = null;
     salesState.activeRequest = null;
     if (els.zaraSend) els.zaraSend.disabled = !els.zaraInput.value.trim();
