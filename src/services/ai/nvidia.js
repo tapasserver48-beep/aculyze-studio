@@ -217,6 +217,8 @@ class NVIDIAProvider extends AIProvider {
         const message = data?.choices?.[0]?.message || {};
         const content = message.content || '';
         this._remember(candidate);
+        // Command Centre token accounting (exact when the API reports usage).
+        require('./usage').recordResponse({ usage: data.usage, messages, content });
         return {
           content,
           model: candidate,
@@ -297,6 +299,16 @@ class NVIDIAProvider extends AIProvider {
           let buffer = '';
           let full = '';
           let emitted = false;
+          let usage = null;
+
+          // One place to record token usage (exact `usage` when the API
+          // sends it in the stream, otherwise estimated from the text).
+          const finish = () => {
+            try {
+              require('./usage').recordResponse({ usage, messages: payload.messages, content: full });
+            } catch { /* accounting must never break a reply */ }
+            resolve({ content: full, model: candidate, provider: 'nvidia' });
+          };
 
           const fail = (err) => {
             if (emitted) {
@@ -313,7 +325,7 @@ class NVIDIAProvider extends AIProvider {
               const { done, value } = await reader.read();
 
               if (done) {
-                resolve({ content: full, model: candidate, provider: 'nvidia' });
+                finish();
                 return;
               }
 
@@ -327,12 +339,13 @@ class NVIDIAProvider extends AIProvider {
 
                 const data = trimmed.slice(5).trim();
                 if (data === '[DONE]') {
-                  resolve({ content: full, model: candidate, provider: 'nvidia' });
+                  finish();
                   return;
                 }
 
                 try {
                   const json = JSON.parse(data);
+                  if (json && json.usage) usage = json.usage;
                   const delta = json?.choices?.[0]?.delta?.content;
                   if (delta) {
                     full += delta;

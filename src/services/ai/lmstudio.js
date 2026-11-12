@@ -118,6 +118,8 @@ class LMStudioProvider extends AIProvider {
     const data = await res.json();
     const msg = data?.choices?.[0]?.message || {};
     const content = msg.content ?? '';
+    // Command Centre token accounting (exact when the API reports usage).
+    require('./usage').recordResponse({ usage: data.usage, messages, content });
     return {
       content,
       model: resolved || data?.model || '',
@@ -154,6 +156,7 @@ class LMStudioProvider extends AIProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     let full = '';
+    let lastUsage = null;
     const abortStream = () => { reader.cancel().catch(() => {}); };
     signal?.addEventListener('abort', abortStream, { once: true });
 
@@ -171,6 +174,7 @@ class LMStudioProvider extends AIProvider {
           if (data === '[DONE]') return full;
           try {
             const json = JSON.parse(data);
+            if (json && json.usage) lastUsage = json.usage;
             const delta = json?.choices?.[0]?.delta;
             // Reasoning models (e.g. GLM/DeepSeek-style) stream thinking in
             // `delta.reasoning_content` before the final `content`. Forward the
@@ -196,6 +200,10 @@ class LMStudioProvider extends AIProvider {
 
     try {
       full = await pump();
+      // Command Centre token accounting (estimate when no usage chunk).
+      try {
+        require('./usage').recordResponse({ usage: lastUsage, messages, content: full });
+      } catch { /* accounting must never break a reply */ }
       return { content: full, model: resolved };
     } finally {
       signal?.removeEventListener('abort', abortStream);

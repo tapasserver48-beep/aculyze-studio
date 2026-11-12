@@ -77,6 +77,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Server state lives in flat JSON files under data/ (no database).
 const DATA_DIR = path.join(__dirname, 'data');
+// Command Centre token accounting reads/writes data/ai-usage.json.
+process.env.ACULYZE_DATA_DIR = DATA_DIR;
+const aiUsage = require('./src/services/ai/usage');
 
 // ============ AUTH (signed httpOnly session cookie) ============
 // Mounted as early as possible so req.user / req.authUid exist before any
@@ -300,12 +303,14 @@ app.post('/api/chat', async (req, res) => {
 
   if (!useStream) {
     try {
-      const result = await provider.sendMessage({
-        messages,
-        model,
-        temperature: temp,
-        max_tokens: tokens,
-      });
+      const result = await aiUsage.withSource(isSalesAgent ? 'sales' : 'zara', () =>
+        provider.sendMessage({
+          messages,
+          model,
+          temperature: temp,
+          max_tokens: tokens,
+        })
+      );
       observability.traceChat({
         ...traceBase,
         model: result.model || model,
@@ -363,15 +368,17 @@ app.post('/api/chat', async (req, res) => {
   };
 
   try {
-    const result = await provider.streamMessage({
-      messages,
-      model,
-      temperature: temp,
-      max_tokens: tokens,
-      signal: abort.signal,
-      onToken: sendToken,
-      onReasoningToken: sendReasoning,
-    });
+    const result = await aiUsage.withSource(isSalesAgent ? 'sales' : 'zara', () =>
+      provider.streamMessage({
+        messages,
+        model,
+        temperature: temp,
+        max_tokens: tokens,
+        signal: abort.signal,
+        onToken: sendToken,
+        onReasoningToken: sendReasoning,
+      })
+    );
     if (!clientClosed) {
       if (!result.content) {
         res.write(
@@ -821,9 +828,11 @@ app.post('/api/sales/chat', async (req, res) => {
         res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: token } }] })}\n\n`);
       };
       try {
-        const result = await provider.streamMessage({
-          messages: finalMessages, model, temperature: temp, max_tokens: tokens, signal: abort.signal, onToken: sendToken,
-        });
+        const result = await aiUsage.withSource('sales', () =>
+          provider.streamMessage({
+            messages: finalMessages, model, temperature: temp, max_tokens: tokens, signal: abort.signal, onToken: sendToken,
+          })
+        );
         if (!clientClosed) {
           if (!result.content) {
             res.write(`data: ${JSON.stringify({ error: 'Empty response from model.', hint: 'The model returned no text.' })}\n\n`);
@@ -842,7 +851,9 @@ app.post('/api/sales/chat', async (req, res) => {
       return;
     }
     try {
-      const result = await provider.sendMessage({ messages: finalMessages, model, temperature: temp, max_tokens: tokens });
+      const result = await aiUsage.withSource('sales', () =>
+        provider.sendMessage({ messages: finalMessages, model, temperature: temp, max_tokens: tokens })
+      );
       return res.json({ content: result.content || '', model: result.model || model });
     } catch (err) {
       return res.status(502).json({ error: err.message || 'Something went wrong.', hint: 'Sales Agent chat failed.' });
@@ -912,9 +923,11 @@ app.post('/api/sales/chat', async (req, res) => {
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: token } }] })}\n\n`);
     };
     try {
-      const result = await provider.streamMessage({
-        messages: finalMessages, model, temperature: temp, max_tokens: tokens, signal: abort.signal, onToken: sendToken,
-      });
+      const result = await aiUsage.withSource('sales', () =>
+        provider.streamMessage({
+          messages: finalMessages, model, temperature: temp, max_tokens: tokens, signal: abort.signal, onToken: sendToken,
+        })
+      );
       if (!clientClosed) {
         if (!result.content) {
           res.write(`data: ${JSON.stringify({ error: 'Empty response from model.', hint: 'The model returned no text.' })}\n\n`);
@@ -936,7 +949,9 @@ app.post('/api/sales/chat', async (req, res) => {
   }
 
   try {
-    const result = await provider.sendMessage({ messages: finalMessages, model, temperature: temp, max_tokens: tokens });
+    const result = await aiUsage.withSource('sales', () =>
+      provider.sendMessage({ messages: finalMessages, model, temperature: temp, max_tokens: tokens })
+    );
     console.log('[Sales Agent] Response from:', result.provider || 'unknown', '- model:', result.model || model);
     return res.json({ content: result.content || '', model: result.model || model });
   } catch (err) {
@@ -963,6 +978,13 @@ app.post('/api/sales/chat', async (req, res) => {
 });
 
 /** Get employees from Aculyze LMS for the inbox (envelope-normalized). */
+// ============ COMMAND CENTRE — today's AI token usage ============
+// Powers the Zara / Sales token cards on the Command Centre page.
+// → { day, zara: { prompt, completion, tokens, calls }, sales: {…}, total: {…} }
+app.get('/api/usage/today', (req, res) => {
+  res.json(aiUsage.today());
+});
+
 app.get('/api/employees', async (req, res) => {
   const { key, baseUrl } = lmsCredentials(req, res);
   if (!key) {

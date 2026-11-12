@@ -283,6 +283,14 @@ export async function loadEmployees() {
   return data;
 }
 
+/** Today's AI token usage — Command Centre. Returns { day, zara:{…}, sales:{…}, total:{…} }. */
+export async function loadTokenUsage() {
+  const res = await fetch('/api/usage/today');
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data) throw new Error('Could not load token usage.');
+  return data;
+}
+
 /** AI voice status. Returns { provider, enabled, online, model }. */
 export async function voiceStatus() {
   const res = await fetch('/api/voice/status');

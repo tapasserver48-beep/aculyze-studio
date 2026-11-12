@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -176,6 +176,7 @@ const els = {
   navHome: document.getElementById('navHome'),
   navApps: document.getElementById('navApps'),
   navStore: document.getElementById('navStore'),
+  navCommand: document.getElementById('navCommand'),
   navSettings: document.getElementById('navSettings'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
@@ -184,6 +185,7 @@ const els = {
   viewZara: document.getElementById('view-zara'),
   viewApps: document.getElementById('view-apps'),
   viewStore: document.getElementById('view-store'),
+  viewCommand: document.getElementById('view-command'),
   viewSettings: document.getElementById('view-settings'),
   viewInbox: document.getElementById('view-inbox'),
   copilot: document.getElementById('copilot'),
@@ -348,6 +350,7 @@ els.navApps?.addEventListener('click', () => {
   setView('apps');
 });
 els.navStore?.addEventListener('click', () => setView('store'));
+els.navCommand?.addEventListener('click', () => setView('command'));
 els.navSettings?.addEventListener('click', () => {
   openSettings('account');
 });
@@ -392,6 +395,309 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && storeContactOverlay && !storeContactOverlay.hidden) closeStoreContact();
 });
 
+/* ============================================================
+   COMMAND CENTRE — plan selection, daily tasks, report mail,
+   employee plans and real token usage.
+
+   Everything the page edits is persisted on this device under
+   the `cc.*` localStorage keys (report recipient, tasks, plan,
+   per-employee plans). Server-backed data — token usage and the
+   employee list — is fetched fresh each time the page opens.
+   ============================================================ */
+const ccStore = {
+  get(key, fallback) {
+    try {
+      const raw = localStorage.getItem(`cc.${key}`);
+      return raw == null ? fallback : JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(`cc.${key}`, JSON.stringify(value));
+    } catch { /* private mode / quota — page still works in-session */ }
+  },
+};
+
+const ccEls = {
+  refresh: document.getElementById('ccRefresh'),
+  reportTo: document.getElementById('ccReportTo'),
+  reportSave: document.getElementById('ccReportSave'),
+  reportHint: document.getElementById('ccReportHint'),
+  taskForm: document.getElementById('ccTaskForm'),
+  taskInput: document.getElementById('ccTaskInput'),
+  tasks: document.getElementById('ccTasks'),
+  tasksEmpty: document.getElementById('ccTasksEmpty'),
+  salesTokens: document.getElementById('ccSalesTokens'),
+  salesCalls: document.getElementById('ccSalesCalls'),
+  salesSplit: document.getElementById('ccSalesSplit'),
+  zaraTokens: document.getElementById('ccZaraTokens'),
+  zaraCalls: document.getElementById('ccZaraCalls'),
+  totalTokens: document.getElementById('ccTotalTokens'),
+  resetIn: document.getElementById('ccResetIn'),
+  zaraPlanName: document.getElementById('ccZaraPlanName'),
+  zaraPlanLimit: document.getElementById('ccZaraPlanLimit'),
+  empBody: document.getElementById('ccEmpBody'),
+  planFree: document.getElementById('ccPlanFree'),
+  planAgents: document.getElementById('ccPlanAgents'),
+};
+
+function ccDayKey(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 1234 → "1.2K", 4820000 → "4.8M" */
+function fmtTokens(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(v >= 1e5 ? 0 : 1)}K`;
+  return String(v);
+}
+
+/* ---- Plan selection (no billing yet — selection only) ---- */
+function ccApplyPlan(plan) {
+  const isFree = plan !== 'agents';
+  ccEls.planFree?.classList.toggle('selected', isFree);
+  ccEls.planAgents?.classList.toggle('selected', !isFree);
+  document.querySelectorAll('.cc-plan-btn').forEach((btn) => {
+    const active = (btn.getAttribute('data-plan-select') === (isFree ? 'free' : 'agents'));
+    btn.textContent = active ? 'Selected' : 'Select plan';
+    btn.classList.toggle('primary', active);
+  });
+  if (ccEls.zaraPlanName) ccEls.zaraPlanName.textContent = isFree ? 'Free' : 'Agents';
+  if (ccEls.zaraPlanLimit) {
+    ccEls.zaraPlanLimit.textContent = isFree
+      ? '200K tokens per user · per day'
+      : 'Unlimited tokens · Maintenance + Coding agents';
+  }
+}
+
+document.querySelectorAll('[data-plan-select]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const plan = btn.getAttribute('data-plan-select') === 'agents' ? 'agents' : 'free';
+    ccStore.set('plan', plan);
+    ccApplyPlan(plan);
+    toast(plan === 'agents'
+      ? 'Plan set to Agents — unlimited tokens (billing comes later)'
+      : 'Plan set to Free — 200K tokens per user per day', 'info');
+  });
+});
+
+/* ---- Daily sales report recipient ---- */
+function ccSaveReportEmail() {
+  const input = ccEls.reportTo;
+  const hint = ccEls.reportHint;
+  if (!input) return;
+  const value = input.value.trim();
+  if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    if (hint) hint.textContent = 'Enter a valid email address — e.g. reports@aculyze.in';
+    input.focus();
+    return;
+  }
+  ccStore.set('reportTo', value);
+  if (hint) hint.textContent = `Saved — daily sales reports go to ${value}`;
+  toast(`Daily sales report recipient: ${value}`, 'info');
+}
+ccEls.reportSave?.addEventListener('click', ccSaveReportEmail);
+ccEls.reportTo?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); ccSaveReportEmail(); }
+});
+
+/* ---- Daily tasks (a fresh list for every calendar day) ---- */
+function ccRenderTasks() {
+  const list = ccStore.get(`tasks.${ccDayKey()}`, []);
+  if (!ccEls.tasks) return;
+  ccEls.tasks.innerHTML = '';
+  list.forEach((task, index) => {
+    const li = document.createElement('li');
+    li.className = `cc-task${task.done ? ' done' : ''}`;
+
+    const check = document.createElement('button');
+    check.type = 'button';
+    check.className = `cc-task-check${task.done ? ' on' : ''}`;
+    check.setAttribute('aria-pressed', String(!!task.done));
+    check.setAttribute('aria-label', task.done ? 'Mark as not done' : 'Mark as done');
+    check.innerHTML = `<span class="material-symbols-outlined">${task.done ? 'check_circle' : 'check_circle_outline'}</span>`;
+    check.addEventListener('click', () => {
+      const tasks = ccStore.get(`tasks.${ccDayKey()}`, []);
+      if (tasks[index]) tasks[index].done = !tasks[index].done;
+      ccStore.set(`tasks.${ccDayKey()}`, tasks);
+      ccRenderTasks();
+    });
+
+    const text = document.createElement('span');
+    text.className = 'cc-task-text';
+    text.textContent = task.text || '';
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'cc-task-del';
+    del.setAttribute('aria-label', 'Delete task');
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      const tasks = ccStore.get(`tasks.${ccDayKey()}`, []);
+      tasks.splice(index, 1);
+      ccStore.set(`tasks.${ccDayKey()}`, tasks);
+      ccRenderTasks();
+    });
+
+    li.append(check, text, del);
+    ccEls.tasks.appendChild(li);
+  });
+  if (ccEls.tasksEmpty) ccEls.tasksEmpty.hidden = list.length > 0;
+}
+
+ccEls.taskForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = ccEls.taskInput;
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const key = `tasks.${ccDayKey()}`;
+  const tasks = ccStore.get(key, []);
+  tasks.push({ text, done: false, at: Date.now() });
+  ccStore.set(key, tasks);
+  input.value = '';
+  ccRenderTasks();
+  input.focus();
+});
+
+/* ---- Employees — plan details (roster from Aculyze LMS) ---- */
+async function ccRenderEmployees() {
+  const body = ccEls.empBody;
+  if (!body) return;
+  const noteRow = (msg) => {
+    body.innerHTML = '';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.className = 'cc-table-note';
+    td.textContent = msg;
+    tr.appendChild(td);
+    body.appendChild(tr);
+  };
+
+  try {
+    const data = await loadEmployees();
+    const list = (data && data.employees) || [];
+    if (!list.length) {
+      noteRow('No employees returned by Aculyze LMS yet.');
+      return;
+    }
+    const plans = ccStore.get('empPlans', {});
+    body.innerHTML = '';
+    for (const emp of list) {
+      const id = String(emp.id || emp.email || emp.name || `emp-${body.childElementCount}`);
+      const plan = plans[id] === 'agents' ? 'agents' : 'free';
+
+      const tr = document.createElement('tr');
+
+      const tdName = document.createElement('td');
+      const strong = document.createElement('strong');
+      strong.textContent = emp.name || emp.email || 'Employee';
+      tdName.appendChild(strong);
+      if (emp.email) {
+        const small = document.createElement('br');
+        tdName.appendChild(small);
+        const mail = document.createElement('span');
+        mail.className = 'cc-hint';
+        mail.textContent = emp.email;
+        tdName.appendChild(mail);
+      }
+
+      const tdRole = document.createElement('td');
+      tdRole.textContent = emp.role || '—';
+
+      const tdPlan = document.createElement('td');
+      const select = document.createElement('select');
+      select.className = 'cc-plan-select';
+      select.setAttribute('aria-label', `Plan for ${emp.name || 'employee'}`);
+      for (const [value, label] of [['free', 'Free'], ['agents', 'Agents']]) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (value === plan) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      const tdLimit = document.createElement('td');
+      tdLimit.textContent = plan === 'free' ? '200K / day' : 'Unlimited';
+
+      select.addEventListener('change', () => {
+        const all = ccStore.get('empPlans', {});
+        all[id] = select.value;
+        ccStore.set('empPlans', all);
+        tdLimit.textContent = select.value === 'free' ? '200K / day' : 'Unlimited';
+        toast(`${emp.name || 'Employee'} → ${select.value === 'free' ? 'Free' : 'Agents'} plan`, 'info');
+      });
+
+      tdPlan.appendChild(select);
+      tr.append(tdName, tdRole, tdPlan, tdLimit);
+      body.appendChild(tr);
+    }
+  } catch (err) {
+    noteRow(err && err.message ? err.message : 'Could not load employees.');
+  }
+}
+
+/* ---- Token usage (server-side accounting, data/ai-usage.json) ---- */
+async function ccRefreshUsage() {
+  try {
+    const u = await loadTokenUsage();
+    const share = u.total && u.total.tokens
+      ? `${Math.round((u.sales.tokens / u.total.tokens) * 100)}%`
+      : '0%';
+    if (ccEls.salesTokens) ccEls.salesTokens.textContent = fmtTokens(u.sales.tokens);
+    if (ccEls.salesCalls) ccEls.salesCalls.textContent = String(u.sales.calls);
+    if (ccEls.salesSplit) ccEls.salesSplit.textContent = share;
+    if (ccEls.zaraTokens) ccEls.zaraTokens.textContent = fmtTokens(u.zara.tokens);
+    if (ccEls.zaraCalls) ccEls.zaraCalls.textContent = String(u.zara.calls);
+    if (ccEls.totalTokens) ccEls.totalTokens.textContent = fmtTokens(u.total.tokens);
+  } catch {
+    for (const el of [ccEls.salesTokens, ccEls.salesCalls, ccEls.salesSplit,
+      ccEls.zaraTokens, ccEls.zaraCalls, ccEls.totalTokens]) {
+      if (el) el.textContent = '—';
+    }
+  }
+}
+
+/* ---- "Plan expires in" — counts down to the daily quota reset ---- */
+function ccTickReset() {
+  const el = ccEls.resetIn;
+  if (!el || state.activeView !== 'command') return;
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  let s = Math.max(0, Math.floor((midnight.getTime() - now.getTime()) / 1000));
+  const h = Math.floor(s / 3600);
+  s -= h * 3600;
+  const m = Math.floor(s / 60);
+  s -= m * 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  el.textContent = `${h}h ${pad(m)}m ${pad(s)}s`;
+}
+setInterval(ccTickReset, 1000);
+
+/* ---- Open/refresh the whole page ---- */
+function refreshCommandCentre() {
+  ccApplyPlan(ccStore.get('plan', 'free'));
+  const report = ccStore.get('reportTo', '');
+  if (ccEls.reportTo && report) {
+    ccEls.reportTo.value = report;
+    if (ccEls.reportHint) ccEls.reportHint.textContent = `Saved — daily sales reports go to ${report}`;
+  }
+  ccRenderTasks();
+  ccRenderEmployees();
+  ccRefreshUsage();
+  ccTickReset();
+}
+ccEls.refresh?.addEventListener('click', () => {
+  refreshCommandCentre();
+  toast('Command Centre refreshed', 'info');
+});
+
 // Home quick-open cards (Zara + Sales)
 document.querySelectorAll('.home-card[data-open]').forEach((card) => {
   card.addEventListener('click', () => {
@@ -401,7 +707,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, settings: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -418,7 +724,7 @@ function setView(view) {
       state.activeAgent = 'zara';
     } else if (next === 'sales') {
       state.activeAgent = 'sales';
-    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store') {
+    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store' || next === 'command') {
       state.activeAgent = null;
       state.selectedConversationId = null;
     }
@@ -427,7 +733,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, settings: els.navSettings };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -441,6 +747,7 @@ function setView(view) {
   els.viewSales.classList.toggle('active', next === 'sales');
   els.viewApps.classList.toggle('active', next === 'apps');
   els.viewStore.classList.toggle('active', next === 'store');
+  els.viewCommand.classList.toggle('active', next === 'command');
   els.viewSettings.classList.toggle('active', next === 'settings');
   els.viewInbox.classList.toggle('active', next === 'inbox');
 
@@ -561,6 +868,21 @@ function setView(view) {
     if (els.workspaceTitle) {
       els.workspaceTitle.textContent = 'Aculyze Store';
     }
+  }
+  // --- Command Centre view ---
+  else if (next === 'command') {
+    if (els.zaraConversations) els.zaraConversations.hidden = true;
+    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
+    const copilotAgent = document.getElementById('copilotAgent');
+    const copilotSubtitle = document.getElementById('copilotSubtitle');
+    if (copilotAgent) copilotAgent.textContent = 'Zara';
+    if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
+    if (els.workspaceTitle) {
+      els.workspaceTitle.textContent = 'Command Centre';
+    }
+    refreshCommandCentre();
   }
   // --- Home view ---
   else {
