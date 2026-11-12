@@ -3793,8 +3793,13 @@ body.copilot-collapsed .copilot-rail {
 .auth-shell {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
+  /* A DEFINITE height + a capped row is what makes the form card's
+     overflow-y actually engage. With only max-height the row grew past the
+     shell and the bottom of a tall form (Google button) was clipped away
+     with no scrollbar. */
+  grid-template-rows: minmax(0, 1fr);
   width: min(980px, 100%);
-  max-height: calc(100dvh - 48px);
+  height: min(716px, calc(100dvh - 40px));
   border-radius: 26px;
   overflow: hidden;
   background: var(--surface);
@@ -3912,7 +3917,8 @@ body.copilot-collapsed .copilot-rail {
 /* ---- Right: form card ---- */
 .auth-card {
   min-width: 0;
-  padding: 34px 34px 26px;
+  min-height: 0; /* lets the row shrink so overflow-y scrolls instead of clipping */
+  padding: 30px 32px 24px;
   background: var(--surface);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3941,7 +3947,7 @@ body.copilot-collapsed .copilot-rail {
 .auth-brand-text strong { font-size: 15px; font-weight: 750; letter-spacing: -0.01em; color: var(--text); }
 .auth-brand-text p { margin: 0; font-size: 12.5px; color: var(--text-muted); }
 
-.auth-head { margin-bottom: 18px; }
+.auth-head { margin-bottom: 16px; }
 .auth-head h1 {
   margin: 0;
   font-size: 27px;
@@ -3981,8 +3987,8 @@ body.copilot-collapsed .copilot-rail {
 }
 .auth-tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
 
-.auth-form { display: flex; flex-direction: column; gap: 13px; }
-.auth-field { display: flex; flex-direction: column; gap: 7px; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
 .auth-field[hidden] { display: none; }
 .auth-label {
   font-size: 12.5px;
@@ -4052,6 +4058,9 @@ body.copilot-collapsed .copilot-rail {
 .auth-eye.on .ico-show { display: none; }
 .auth-eye.on .ico-hide { display: block; }
 
+.auth-error-slot {
+  min-height: 41px; /* exactly one line of .auth-error → zero layout shift */
+}
 .auth-error {
   margin: 0;
   padding: 10px 12px;
@@ -4060,7 +4069,7 @@ body.copilot-collapsed .copilot-rail {
   border: 1px solid rgba(220, 38, 38, 0.32);
   color: var(--danger, #dc2626);
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 .auth-error[hidden] { display: none; }
 
@@ -4114,7 +4123,7 @@ body.copilot-collapsed .copilot-rail {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 18px 0 0;
+  margin: 16px 0 0;
 }
 .auth-divider::before,
 .auth-divider::after {
@@ -4134,7 +4143,7 @@ body.copilot-collapsed .copilot-rail {
 .auth-google {
   width: 100%;
   height: 46px;
-  margin-top: 14px;
+  margin-top: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4162,7 +4171,7 @@ body.copilot-collapsed .copilot-rail {
 .auth-google[hidden] { display: none; }
 
 .auth-note {
-  margin: 16px 0 0;
+  margin: 14px 0 0;
   font-size: 11.5px;
   line-height: 1.55;
   color: var(--text-muted);

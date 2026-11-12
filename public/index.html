@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
-  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112b" />
+  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112c" />
 </head>
 <body>
   <div id="app" class="app">
@@ -750,7 +750,11 @@
             </span>
           </div>
 
-          <p class="auth-error" id="authError" role="alert" hidden></p>
+          <!-- Reserved height: showing an error must never push the Google
+               button and switch link down out of the frame. -->
+          <div class="auth-error-slot">
+            <p class="auth-error" id="authError" role="alert" hidden></p>
+          </div>
 
           <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
         </form>
