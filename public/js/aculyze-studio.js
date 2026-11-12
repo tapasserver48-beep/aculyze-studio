@@ -2998,9 +2998,9 @@ initAuth();
 /** morning < 12:00 · afternoon < 17:00 · evening otherwise */
 function greetingWordForNow(d = new Date()) {
   const h = d.getHours();
-  if (h < 12) return 'morning';
-  if (h < 17) return 'afternoon';
-  return 'evening';
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  return 'Evening';
 }
 
 function renderHomeGreeting() {
