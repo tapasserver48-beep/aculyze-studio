@@ -5,6 +5,8 @@
  *   POST /api/auth/login     { email, password }       → 200 { user }
  *   POST /api/auth/logout                             → 200 { ok }
  *   GET  /api/auth/me                                 → 200 { user: {…}|null }
+ *   GET  /api/auth/google                             → 302 → Google consent
+ *   GET  /api/auth/google/callback                    → 302 → /?auth=google
  *
  * Success issues the signed httpOnly `zara_session` cookie (7 days).
  * `GET /me` always answers 200 — the login screen just reads `user: null`.
@@ -31,6 +33,7 @@ const {
   setSessionCookie,
   clearSessionCookie
 } = require('./session');
+const { createGoogleAuth } = require('./google');
 
 function createAuthRouter(options = {}) {
   const router = express.Router();
@@ -86,6 +89,21 @@ function createAuthRouter(options = {}) {
   router.get('/me', wrap((req, res) => {
     res.json({ user: req.user || null });
   }));
+
+  // -------- Google sign-in (browser redirect flow) --------
+  // Identity only — see src/auth/google.js. Both handlers answer with a
+  // redirect, never JSON, so they are deliberately outside `wrap()`.
+  const googleAuth = createGoogleAuth({ dataDir });
+  router.get('/google', (req, res) => googleAuth.login(req, res));
+  router.get('/google/callback', (req, res) => {
+    Promise.resolve()
+      .then(() => googleAuth.callback(req, res))
+      .catch((err) => {
+        console.warn(`[auth] google callback: ${String((err && err.message) || err).slice(0, 200)}`);
+        if (res.headersSent) return;
+        res.redirect('/?auth_error=failed');
+      });
+  });
 
   // Kept for symmetry with other routers; nothing else mounts under /api/auth.
   router.get('/session', requireUser, (req, res) => {

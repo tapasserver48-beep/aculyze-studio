@@ -2327,17 +2327,34 @@ aiEls.edit?.addEventListener('click', () => {
    ========================================================================== */
 const authState = { user: null, mode: 'login' };
 
+/** Server-side codes from src/auth/google.js, mirrored for the UI. */
+const GOOGLE_SIGNIN_ERRORS = {
+  not_configured: 'Google sign-in is not configured yet — add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to the server.',
+  bad_state: 'That sign-in attempt expired. Please try again.',
+  denied: 'Google sign-in was cancelled.',
+  no_code: 'Google did not return a sign-in code. Please try again.',
+  no_email: 'That Google account has no email address we can use.',
+  exchange_failed: 'Google rejected the sign-in. Please try again.',
+  failed: 'Could not sign you in with Google. Please try again.',
+};
+
 const authEls = {
   screen: document.getElementById('authScreen'),
   form: document.getElementById('authForm'),
   tabLogin: document.getElementById('authTabLogin'),
   tabRegister: document.getElementById('authTabRegister'),
+  heading: document.getElementById('authTitle'),
+  subtitle: document.getElementById('authSubtitle'),
   nameField: document.getElementById('authNameField'),
   name: document.getElementById('authName'),
   email: document.getElementById('authEmail'),
   password: document.getElementById('authPassword'),
+  pwToggle: document.getElementById('authPwToggle'),
   error: document.getElementById('authError'),
   submit: document.getElementById('authSubmit'),
+  switchText: document.getElementById('authSwitchText'),
+  switchBtn: document.getElementById('authSwitch'),
+  google: document.getElementById('authGoogle'),
   avatar: document.getElementById('btnUserMenu'),
   menu: document.getElementById('userMenu'),
   menuAvatar: document.getElementById('userMenuAvatar'),
@@ -2354,6 +2371,11 @@ function showAuthError(msg) {
   if (!authEls.error) return;
   authEls.error.textContent = msg || '';
   authEls.error.hidden = !msg;
+  // Mark the fields invalid so assistive tech announces the problem too.
+  const invalid = !!msg;
+  for (const el of [authEls.email, authEls.password, authEls.name]) {
+    if (el) el.setAttribute('aria-invalid', String(invalid));
+  }
 }
 
 function setAuthMode(mode) {
@@ -2364,9 +2386,39 @@ function setAuthMode(mode) {
   authEls.tabLogin?.setAttribute('aria-selected', String(!isReg));
   authEls.tabRegister?.setAttribute('aria-selected', String(isReg));
   if (authEls.nameField) authEls.nameField.hidden = !isReg;
-  if (authEls.password) authEls.password.autocomplete = isReg ? 'new-password' : 'current-password';
+  if (authEls.password) {
+    authEls.password.autocomplete = isReg ? 'new-password' : 'current-password';
+    authEls.password.placeholder = isReg ? 'At least 6 characters' : '••••••••';
+  }
   if (authEls.submit) authEls.submit.textContent = authSubmitLabel();
+
+  // Headline + the "already have an account?" link follow the active tab.
+  if (authEls.heading) authEls.heading.textContent = isReg ? 'Create your account' : 'Welcome back';
+  if (authEls.subtitle) {
+    authEls.subtitle.textContent = isReg
+      ? 'It takes a minute — then your workspace is ready.'
+      : 'Sign in to open your workspace and inbox.';
+  }
+  if (authEls.switchText) {
+    authEls.switchText.textContent = isReg ? 'Already have an account?' : 'Don’t have an account?';
+  }
+  if (authEls.switchBtn) authEls.switchBtn.textContent = isReg ? 'Sign in' : 'Create one';
+
+  resetPasswordVisibility();
   showAuthError('');
+}
+
+/** Put the password back to hidden when the form changes shape. */
+function resetPasswordVisibility() {
+  const input = authEls.password;
+  const btn = authEls.pwToggle;
+  if (input) input.type = 'password';
+  if (btn) {
+    btn.classList.remove('on');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.setAttribute('aria-label', 'Show password');
+    btn.title = 'Show password';
+  }
 }
 
 function showAuthScreen(show) {
@@ -2410,6 +2462,27 @@ function toggleUserMenu() {
   authEls.menu.style.left = `${Math.max(8, Math.round(rect.right - width))}px`;
 }
 
+/** Consume ?auth=google / ?auth_error=… left behind by the OAuth redirect,
+ *  then strip them so a refresh never replays the message. */
+function consumeAuthRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const ok = params.get('auth');
+  const err = params.get('auth_error');
+  if (!ok && !err) return;
+
+  params.delete('auth');
+  params.delete('auth_error');
+  const qs = params.toString();
+  window.history.replaceState(
+    {},
+    '',
+    window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash
+  );
+
+  if (err) showAuthError(GOOGLE_SIGNIN_ERRORS[err] || GOOGLE_SIGNIN_ERRORS.failed);
+  else if (ok === 'google') toast('Signed in with Google', 'info');
+}
+
 async function initAuth() {
   setAuthMode('login');
   try {
@@ -2421,10 +2494,42 @@ async function initAuth() {
     applyAuthUser(null);
     showAuthScreen(true);
   }
+  // After showAuthScreen() so a fresh Sign-in form is on screen first.
+  consumeAuthRedirect();
 }
 
 authEls.tabLogin?.addEventListener('click', () => setAuthMode('login'));
 authEls.tabRegister?.addEventListener('click', () => setAuthMode('register'));
+
+/* The link under the form is the same switch as the tabs, worded for the
+   mode you are NOT in — so "already have an account?" is one click away. */
+authEls.switchBtn?.addEventListener('click', () => {
+  const next = authState.mode === 'register' ? 'login' : 'register';
+  setAuthMode(next);
+  (next === 'register' ? authEls.name : authEls.email)?.focus();
+});
+
+/* Password view / hide — the button keeps focus so it can be toggled back. */
+authEls.pwToggle?.addEventListener('click', () => {
+  const input = authEls.password;
+  const btn = authEls.pwToggle;
+  if (!input || !btn) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  const label = showing ? 'Show password' : 'Hide password';
+  btn.classList.toggle('on', !showing);
+  btn.setAttribute('aria-pressed', String(!showing));
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+});
+
+/* Google sign-in — a full-page redirect handled by /api/auth/google. */
+authEls.google?.addEventListener('click', () => {
+  if (!authEls.google || authEls.google.disabled) return;
+  authEls.google.disabled = true;
+  authEls.google.setAttribute('aria-busy', 'true');
+  window.location.assign('/api/auth/google');
+});
 
 authEls.form?.addEventListener('submit', async (e) => {
   e.preventDefault();

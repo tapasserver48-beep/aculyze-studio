@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
-  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112a" />
+  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112b" />
 </head>
 <body>
   <div id="app" class="app">
@@ -675,43 +675,102 @@
     <div class="app-drawer-body" id="appDrawerBody"></div>
   </aside>
 
-  <!-- ===================== LOGIN / SIGN UP (local accounts) ===================== -->
-  <div class="auth-screen" id="authScreen" hidden>
-    <section class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
-      <div class="auth-brand">
-        <span class="auth-mark" aria-hidden="true">A</span>
-        <div class="auth-brand-text">
-          <h1 id="authTitle">Aculyze AI Studio</h1>
-          <p>Sign in to open your workspace and inbox</p>
+  <!-- ===================== LOGIN / SIGN UP (local accounts + Google) ===================== -->
+  <div class="auth-screen" id="authScreen" hidden role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-shell">
+
+      <!-- Value panel — decorative (the card below carries the real content) -->
+      <aside class="auth-aside" aria-hidden="true">
+        <div class="auth-aside-top">
+          <span class="auth-mark">A</span>
+          <span class="auth-wordmark">Aculyze <b>AI Studio</b></span>
         </div>
-      </div>
 
-      <div class="auth-tabs" role="tablist" aria-label="Sign in or create account">
-        <button class="auth-tab active" id="authTabLogin" type="button" role="tab" aria-selected="true">Sign in</button>
-        <button class="auth-tab" id="authTabRegister" type="button" role="tab" aria-selected="false">Create account</button>
-      </div>
+        <div class="auth-aside-body">
+          <h2>One workspace for research, writing and automation.</h2>
+          <p>Sign in and your inbox, connected apps and business data come with you.</p>
+          <ul class="auth-points">
+            <li><span class="material-symbols-outlined">check_circle</span>Zara — web research, analysis and drafting</li>
+            <li><span class="material-symbols-outlined">check_circle</span>Sales Agent on live Aculyze LMS data</li>
+            <li><span class="material-symbols-outlined">check_circle</span>Gmail, Calendar and LMS in one inbox</li>
+          </ul>
+        </div>
 
-      <form class="auth-form" id="authForm" novalidate>
-        <label class="auth-field" id="authNameField" hidden>
-          <span>Name</span>
-          <input type="text" id="authName" name="name" placeholder="Your name" autocomplete="name" maxlength="80" />
-        </label>
-        <label class="auth-field">
-          <span>Email</span>
-          <input type="email" id="authEmail" name="email" placeholder="you@company.com" autocomplete="email" required />
-        </label>
-        <label class="auth-field">
-          <span>Password</span>
-          <input type="password" id="authPassword" name="password" placeholder="••••••••" autocomplete="current-password" required />
-        </label>
+        <p class="auth-aside-foot">
+          <span class="material-symbols-outlined">lock</span>
+          Accounts and messages are stored on this machine only.
+        </p>
+      </aside>
 
-        <p class="auth-error" id="authError" role="alert" hidden></p>
+      <!-- Form card -->
+      <section class="auth-card">
+        <div class="auth-brand">
+          <span class="auth-mark" aria-hidden="true">A</span>
+          <div class="auth-brand-text">
+            <strong>Aculyze AI Studio</strong>
+            <p>Your AI workspace</p>
+          </div>
+        </div>
 
-        <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
-      </form>
+        <header class="auth-head">
+          <h1 id="authTitle">Welcome back</h1>
+          <p id="authSubtitle">Sign in to open your workspace and inbox</p>
+        </header>
 
-      <p class="auth-note">Accounts and messages are stored on this machine only — nothing leaves your computer.</p>
-    </section>
+        <div class="auth-tabs" role="tablist" aria-label="Sign in or create account">
+          <button class="auth-tab active" id="authTabLogin" type="button" role="tab" aria-selected="true">Sign in</button>
+          <button class="auth-tab" id="authTabRegister" type="button" role="tab" aria-selected="false">Create account</button>
+        </div>
+
+        <form class="auth-form" id="authForm" novalidate>
+          <div class="auth-field" id="authNameField" hidden>
+            <label class="auth-label" for="authName">Name</label>
+            <span class="auth-input">
+              <input type="text" id="authName" name="name" placeholder="Your name" autocomplete="name" maxlength="80" />
+            </span>
+          </div>
+
+          <div class="auth-field">
+            <label class="auth-label" for="authEmail">Email</label>
+            <span class="auth-input">
+              <span class="material-symbols-outlined auth-input-ico" aria-hidden="true">mail</span>
+              <input type="email" id="authEmail" name="email" placeholder="you@company.com" autocomplete="email" required />
+            </span>
+          </div>
+
+          <div class="auth-field">
+            <label class="auth-label" for="authPassword">Password</label>
+            <span class="auth-input">
+              <span class="material-symbols-outlined auth-input-ico" aria-hidden="true">lock</span>
+              <input type="password" id="authPassword" name="password" placeholder="••••••••" autocomplete="current-password" required />
+              <button class="auth-eye" id="authPwToggle" type="button" aria-label="Show password" aria-pressed="false" title="Show password">
+                <svg class="ico-show" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+                <svg class="ico-hide" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 6.2A9.9 9.9 0 0 1 12 6.1c7 0 10.5 5.9 10.5 5.9a18.4 18.4 0 0 1-3.3 3.9"/><path d="M6.2 7.3A18.2 18.2 0 0 0 1.5 12S5 17.9 12 17.9a9.7 9.7 0 0 0 4.3-1"/><path d="M9.9 9.9a3.2 3.2 0 0 0 4.4 4.4"/><path d="M3 3l18 18"/></svg>
+              </button>
+            </span>
+          </div>
+
+          <p class="auth-error" id="authError" role="alert" hidden></p>
+
+          <button class="auth-submit" id="authSubmit" type="submit">Sign in</button>
+        </form>
+
+        <p class="auth-switch">
+          <span id="authSwitchText">Don’t have an account?</span>
+          <button class="auth-link" id="authSwitch" type="button">Create one</button>
+        </p>
+
+        <div class="auth-divider" role="separator"><span>or continue with</span></div>
+
+        <button class="auth-google" id="authGoogle" type="button">
+          <svg viewBox="0 0 48 48" width="17" height="17" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          <span>Google</span>
+        </button>
+
+        <p class="auth-note">Accounts and messages are stored on this machine only — nothing leaves your computer.</p>
+      </section>
+
+    </div>
   </div>
 
   <!-- ===================== ACCOUNT MENU ===================== -->
@@ -734,7 +793,7 @@
   <script type="module" src="js/voice.js"></script>
   <script type="module" src="js/api.js"></script>
   <script type="module" src="js/mascot.js"></script>
-  <script type="module" src="js/aculyze-studio.js?v=20261112a"></script>
+  <script type="module" src="js/aculyze-studio.js?v=20261112b"></script>
   <script type="module" src="js/voice-assistant.js"></script>
 </body>
 </html>
