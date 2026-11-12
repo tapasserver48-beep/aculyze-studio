@@ -4184,7 +4184,27 @@ function salesErrorType(info) {
   return byCategory[info.category] || byStatus[info.status] || 'unavailable';
 }
 
-async function loadSalesDashboard() {
+/** Transient LMS failures worth one silent automatic retry before erroring. */
+const SALES_TRANSIENT_ERRORS = new Set(['unavailable', 'network', 'rate_limited']);
+
+/**
+ * Auto-retry once for transient errors (LMS timeout, 5xx, rate limit).
+ * Returns true when a retry was launched (its result already rendered the
+ * dashboard or the error), false when the error should be shown as-is.
+ */
+async function salesAutoRetry(type, attempt) {
+  if (attempt >= 1 || !SALES_TRANSIENT_ERRORS.has(type)) return false;
+  const note = document.getElementById('salesDataNote');
+  if (note) {
+    note.hidden = false;
+    note.textContent = 'Aculyze LMS responded slowly — retrying…';
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await loadSalesDashboard(attempt + 1);
+  return true;
+}
+
+async function loadSalesDashboard(attempt = 0) {
   const note = document.getElementById('salesDataNote');
   showSalesState('loading');
   setRefreshBusy(true);
@@ -4214,7 +4234,14 @@ async function loadSalesDashboard() {
     ]);
 
     // Summary drives KPIs + charts — a failure here is a dashboard failure.
-    if (!sRes.ok) { showSalesState(salesErrorType(await readSalesError(sRes))); return; }
+    if (!sRes.ok) {
+      const info = await readSalesError(sRes);
+      const type = salesErrorType(info);
+      if (await salesAutoRetry(type, attempt)) return;
+      // Surface the upstream reason (timeout / HTTP 5xx) for diagnostics.
+      showSalesState(type, info.label && type === 'unavailable' ? `(${info.label})` : '');
+      return;
+    }
     summary = await sRes.json();
 
     // Tables: abort on credential/permission errors, otherwise keep whatever loaded.
@@ -4226,6 +4253,7 @@ async function loadSalesDashboard() {
     }
   } catch (err) {
     console.warn('[sales-dashboard] request failed:', err && err.message);
+    if (await salesAutoRetry('network', attempt)) return;
     showSalesState('network');
     return;
   }

@@ -39,7 +39,8 @@ const VA_MUTE_KEY = 'voiceAssistantMuted';
 const CLICK_THRESHOLD_PX = 10; // movement below this = click, above = drag
 
 const IMAGE_URL = '/voice-assistant.svg';
-const GREETING = 'Hi, how can I help you today?';
+const GREETING = 'Hi, I am your assistant. How can I help you?';
+const GREET_SEEN_KEY = 'voiceAssistantGreeted'; // sessionStorage — once per tab session
 
 let va = null; // singleton instance
 
@@ -80,6 +81,21 @@ export function mountVoiceAssistant(root) {
   tooltip.textContent = 'Talk to Sales Agent';
   tooltip.setAttribute('aria-hidden', 'true');
 
+  // Greeting popup — speech bubble beside the orb, shown once per session
+  const greeting = document.createElement('div');
+  greeting.className = 'voice-assistant-greeting';
+  greeting.setAttribute('role', 'status');
+  greeting.innerHTML =
+    '<button class="va-greet-close" type="button" aria-label="Dismiss greeting" title="Dismiss">\u2715</button>' +
+    '<div class="va-greet-row">' +
+      '<span class="va-greet-avatar" aria-hidden="true"></span>' +
+      '<div class="va-greet-body">' +
+        '<strong>Sales Agent</strong>' +
+        `<p>${GREETING}</p>` +
+        '<span class="va-greet-hint">Tap the orb to talk to me</span>' +
+      '</div>' +
+    '</div>';
+
   // Conversation popup — user input + AI answer shown as readable text
   const transcript = document.createElement('div');
   transcript.className = 'voice-assistant-transcript';
@@ -119,6 +135,7 @@ export function mountVoiceAssistant(root) {
     '</button>';
 
   wrap.appendChild(tooltip);
+  wrap.appendChild(greeting);
   wrap.appendChild(transcript);
   wrap.appendChild(btn);
   wrap.appendChild(controls);
@@ -200,6 +217,46 @@ export function mountVoiceAssistant(root) {
     setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 2000);
   }
 
+  // ---- Greeting popup — "Hi, I am your assistant…" (once per session) ----
+  let greetHideTimer = null;
+
+  function showGreeting() {
+    if (greeting.classList.contains('is-open')) return;
+    // Flip the bubble if the orb was dragged near the right edge.
+    const rect = wrap.getBoundingClientRect();
+    greeting.classList.toggle('edge-left', rect.left + 270 > window.innerWidth);
+    greeting.classList.add('is-open');
+    clearTimeout(greetHideTimer);
+    greetHideTimer = setTimeout(hideGreeting, 9000);
+  }
+
+  function hideGreeting() {
+    clearTimeout(greetHideTimer);
+    greeting.classList.remove('is-open');
+  }
+
+  // Clicking the bubble (or its ✕) dismisses it — never activates the orb.
+  greeting.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideGreeting();
+  });
+
+  function scheduleGreeting() {
+    try { if (sessionStorage.getItem(GREET_SEEN_KEY) === '1') return; } catch { /* private mode */ }
+    let tries = 0;
+    const tryShow = () => {
+      // Signed-out users can't see the widget — wait for the auth screen to clear.
+      if (document.body.classList.contains('is-unauthenticated')) {
+        if (tries++ < 30) setTimeout(tryShow, 2000);
+        return;
+      }
+      try { sessionStorage.setItem(GREET_SEEN_KEY, '1'); } catch { /* noop */ }
+      showGreeting();
+    };
+    setTimeout(tryShow, 1500);
+  }
+  scheduleGreeting();
+
   // ---- Conversation popup ----
   function syncTranscriptSide() {
     const rect = wrap.getBoundingClientRect();
@@ -212,6 +269,7 @@ export function mountVoiceAssistant(root) {
 
   function openTranscript() {
     if (transcript.classList.contains('is-open')) return;
+    hideGreeting(); // the conversation takes over from the greeting
     syncTranscriptSide();
     transcript.classList.add('is-open');
     wrap.classList.add('has-transcript');
@@ -286,6 +344,7 @@ export function mountVoiceAssistant(root) {
   // ---- Voice flow ----
   async function activate() {
     if (state === 'listening' || state === 'speaking' || state === 'thinking') return;
+    hideGreeting();
     if (!sttSupported()) { showError('Speech recognition not supported in this browser.'); return; }
 
     setState('listening');
@@ -416,9 +475,9 @@ export function mountVoiceAssistant(root) {
   function onPointerUp(e) {
     try { wrap.releasePointerCapture(e.pointerId); } catch { /* noop */ }
 
-    // Clicks on Stop / Mute / the popup must never activate the orb.
+    // Clicks on Stop / Mute / the popup / the greeting must never activate the orb.
     const target = e.target instanceof Element ? e.target : null;
-    if (target && target.closest('.voice-assistant-controls, .voice-assistant-transcript')) return;
+    if (target && target.closest('.voice-assistant-controls, .voice-assistant-transcript, .voice-assistant-greeting')) return;
 
     if (isDragging) {
       isDragging = false;
