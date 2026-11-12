@@ -1019,6 +1019,7 @@ app.get('/api/employees', async (req, res) => {
  * Sales Agent dashboard — KPIs + chart data from GET /sales/summary.
  * Query: date_from=YYYY-MM-DD, date_to=YYYY-MM-DD (both optional).
  * Response: { period, summary, byMonth, byEmployee, byStatus, currency }.
+ * Includes a cached fallback when LMS is unreachable (e.g. Render egress blocked).
  */
 app.get('/api/sales/summary', async (req, res) => {
   const { key, baseUrl } = lmsCredentials(req, res);
@@ -1033,6 +1034,29 @@ app.get('/api/sales/summary', async (req, res) => {
     });
     res.json({ provider: 'Aculyze LMS', ...summary });
   } catch (err) {
+    // LMS unreachable? Try cached data so the dashboard doesn't go blank.
+    try {
+      const f = path.join(DATA_DIR, 'lms-cache.json');
+      if (fs.existsSync(f)) {
+        const cached = JSON.parse(fs.readFileSync(f, 'utf8'));
+        const pathKey = '/sales/summary';
+        if (cached[pathKey] && cached[pathKey].ok) {
+          const env = lms.normalizeEnvelope(cached[pathKey].json);
+          const data = env.data || {};
+          const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+          return res.json({
+            provider: 'Aculyze LMS (cached)',
+            cached: true,
+            period: data.period || null,
+            summary: data.summary || { total_sales: 0, orders: 0, customers: 0, currency: null },
+            byMonth: list(data.by_month),
+            byEmployee: list(data.by_employee),
+            byStatus: list(data.by_status),
+            currency: null,
+          });
+        }
+      }
+    } catch { /* no usable cache */ }
     sendLmsError(res, err);
   }
 });

@@ -22,10 +22,35 @@
  *   422 → Validation error  429 → Rate limit exceeded 5xx/network → Server unavailable
  */
 const { IntegrationError } = require('../integrations/providers/base');
+const fs = require('fs');
+const path = require('path');
 
-const LMS_DEFAULT_BASE_URL = 'https://lm.aculyze.in/api/v1';
+const DATA_DIR = process.env.ACULYZE_DATA_DIR || path.join(process.cwd(), 'data');
 const MAX_PER_PAGE = 100;
 const DEFAULT_TIMEOUT_MS = 15000;
+const LMS_DEFAULT_BASE_URL = 'https://lm.aculyze.in/api/v1';
+
+/** Cached LMS data when the live endpoint is unreachable.
+ *  Stored in data/lms-cache.json as a disaster-reduction fallback.
+ *  The cache expires after 60 minutes and is only used by the dashboard.
+ */
+function loadCache() {
+  try {
+    const f = path.join(DATA_DIR, 'lms-cache.json');
+    if (!fs.existsSync(f)) return null;
+    const raw = fs.readFileSync(f, 'utf8');
+    const obj = JSON.parse(raw);
+    // Expire after 60 minutes for demo safety.
+    if (obj.timestamp && Date.now() - obj.timestamp < 60 * 60 * 1000) return obj;
+  } catch { /* empty cache on error */ }
+  return null;
+}
+function saveCache(obj) {
+  try {
+    fs.mkdirSync(path.dirname(DATA_DIR), { recursive: true });
+    fs.writeFileSync(path.join(DATA_DIR, 'lms-cache.json'), JSON.stringify(obj, null, 2));
+  } catch { /* quota / permission */ }
+}
 
 /** Resource name → LMS path. Nothing outside this map is ever requested. */
 const ENDPOINTS = {
@@ -42,7 +67,8 @@ const QUERY_WHITELIST = {
   '/sales': ['date_from', 'date_to', 'customer', 'employee', 'status', 'stage', 'page', 'per_page'],
   '/sales/summary': ['date_from', 'date_to', 'customer', 'employee', 'status'],
   '/customers': ['q', 'city', 'industry', 'employee', 'page', 'per_page'],
-  '/leads': ['q', 'status', 'stage', 'temperature', 'assignee', 'date_from', 'date_to', 'page', 'per_page'],
+  '/leads': ['q', 'status', 'stage', 'temperature', 'assignee', 'date_from', 'date_to', 'page',
+             'per_page'],
   '/employees': ['role', 'manager_id', 'page', 'per_page'],
   '/lms/summary': ['date_from', 'date_to'],
 };
@@ -118,7 +144,7 @@ function assertDate(value, name) {
 
 /**
  * Whitelist + sanitize query params for an endpoint.
- * page ≥ 1, per_page clamped to 1..100 (the LMS rejects anything above 100).
+ * page → 1, per_page clamped to 1..100 (the LMS rejects anything above 100).
  */
 function buildQuery(path, params = {}) {
   const allowed = QUERY_WHITELIST[path];
@@ -166,7 +192,8 @@ function normalizePagination(p) {
  */
 function normalizeEnvelope(json) {
   if (json === null || json === undefined) return { rows: [], data: null, pagination: null, error: null };
-  const body = (json && typeof json === 'object' && !Array.isArray(json) && 'data' in json) ? json.data : json;
+  const body = (json && typeof json === 'object' && !Array.isArray(json) && 'data' in json) ? json.data :
+               json;
   let rows = null;
   if (Array.isArray(body)) rows = body;
   else if (body && typeof body === 'object') {
@@ -237,14 +264,14 @@ function transportWhy(err) {
  * A5: one automatic retry with backoff on network failures / 5xx / 429 —
  * transient blips never surface to the user as an error.
  */
-async function lmsRequest(path, { baseUrl, apiKey, query = null, timeoutMs = DEFAULT_TIMEOUT_MS, noCache = false } = {}) {
+async function lmsRequest(pathToLMS, { baseUrl, apiKey, query = null, timeoutMs = DEFAULT_TIMEOUT_MS, noCache = false } = {}) {
   const key = String(apiKey || '').trim();
   if (!key) {
     throw lmsError('not_connected', 'Aculyze LMS is not connected — add your API key in Apps → Aculyze LMS.');
   }
   const base = normalizeBase(baseUrl);
-  const qs = new URLSearchParams(buildQuery(path, query || {})).toString();
-  const url = `${base}${path}${qs ? `?${qs}` : ''}`;
+  const qs = new URLSearchParams(buildQuery(pathToLMS, query || {})).toString();
+  const url = `${base}${pathToLMS}${qs ? `?${qs}` : ''}`;
 
   const ck = cacheKey(url, key);
   if (!noCache) {
@@ -271,7 +298,7 @@ async function lmsRequest(path, { baseUrl, apiKey, query = null, timeoutMs = DEF
       const why = transportWhy(err);
       lastErr = lmsError('server_unavailable', `Could not reach Aculyze LMS. ${why}`, { detail: why });
       // Render/local logs get the flattened cause chain (never the API key).
-      console.warn(`[lms] ${path} → transport failure: ${why}`);
+      console.warn(`[lms] ${pathToLMS} → transport failure: ${why}`);
       if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, 400)); continue; }
       throw lastErr;
     }
@@ -298,11 +325,15 @@ async function lmsRequest(path, { baseUrl, apiKey, query = null, timeoutMs = DEF
 
     if (json && typeof json === 'object' && json.success === false) {
       const apiMessage = json.error && json.error.message ? String(json.error.message).slice(0, 200) : '';
-      throw lmsError('validation', `Validation error${apiMessage ? ` — ${apiMessage}` : '.'}`, { status: res.status, detail: apiMessage });
+      throw lmsError('validation', `Validation error${apiMessage ? ` — ${apiMessage}` : '.'}`, {
+        status: res.status, detail: apiMessage
+      });
     }
 
     const payload = { status: res.status, ok: true, json, text, pagination: normalizeEnvelope(json).pagination };
     cacheSet(ck, payload);
+    // Persist to disk as a fallback for the dashboard (used when LMS is unreachable).
+    try { saveCache({ timestamp: Date.now(), [pathToLMS]: payload }); } catch { /* quota */ }
     return payload;
   }
 
@@ -358,15 +389,15 @@ async function getSalesSummary({ baseUrl, apiKey, query = {}, timeoutMs = DEFAUL
 
 /** GET one list resource (sales | leads | customers | employees). */
 async function getRecords(resource, { baseUrl, apiKey, query = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const path = ENDPOINTS[resource];
-  if (!path) {
+  const pathToLMS = ENDPOINTS[resource];
+  if (!pathToLMS) {
     throw lmsError('not_found', `Unknown LMS resource "${String(resource).slice(0, 30)}".`);
   }
-  const r = await lmsRequest(path, { baseUrl, apiKey, query, timeoutMs });
+  const r = await lmsRequest(pathToLMS, { baseUrl, apiKey, query, timeoutMs });
   const env = normalizeEnvelope(r.json);
   return {
     resource,
-    path,
+    path: pathToLMS,
     rows: env.rows,
     pagination: env.pagination || normalizePagination(null),
     period: env.data && env.data.period ? env.data.period : null,
