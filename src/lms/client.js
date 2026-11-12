@@ -210,6 +210,27 @@ function cacheSet(k, payload) {
 }
 
 /**
+ * Node's fetch (undici) wraps every transport failure in a generic
+ * "fetch failed" — the actual reason (ENOTFOUND, ETIMEDOUT, ECONNREFUSED,
+ * UND_ERR_CONNECT_TIMEOUT, TLS errors…) sits in `err.cause`. Flatten the
+ * whole cause chain so logs and the dashboard show WHY a request died.
+ */
+function transportWhy(err) {
+  const parts = [];
+  const seen = new Set();
+  let e = err;
+  while (e && typeof e === 'object' && !seen.has(e)) {
+    seen.add(e);
+    const code = e.code || e.errno || '';
+    const msg = String(e.message || e).trim().slice(0, 120);
+    const label = code && msg && !msg.includes(code) ? `${msg} (${code})` : (msg || String(code));
+    if (label && !parts.includes(label)) parts.push(label);
+    e = e.cause;
+  }
+  return parts.join(' ← ').slice(0, 240) || 'unknown network error';
+}
+
+/**
  * One read-only GET against the LMS. Throws a mapped LmsError on any
  * non-2xx response or network failure — never returns a raw error body.
  *
@@ -247,8 +268,10 @@ async function lmsRequest(path, { baseUrl, apiKey, query = null, timeoutMs = DEF
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
-      const why = String(err && err.message || err).slice(0, 140);
+      const why = transportWhy(err);
       lastErr = lmsError('server_unavailable', `Could not reach Aculyze LMS. ${why}`, { detail: why });
+      // Render/local logs get the flattened cause chain (never the API key).
+      console.warn(`[lms] ${path} → transport failure: ${why}`);
       if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, 400)); continue; }
       throw lastErr;
     }

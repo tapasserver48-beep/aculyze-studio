@@ -26,6 +26,12 @@ const { createAuthRouter } = require('./src/auth/routes');
 const { attachAuth } = require('./src/auth/session');
 const { createInboxRouter } = require('./src/inbox/routes');
 
+// Dual-stack hosts (e.g. Render) can hand an outbound fetch a broken IPv6
+// route first, which surfaces as a bare "fetch failed". Prefer IPv4; Node's
+// Happy Eyeballs still falls back to IPv6 when IPv4 is unavailable.
+const dns = require('dns');
+if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
+
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const DEFAULT_TEMPERATURE = Number(process.env.DEFAULT_TEMPERATURE ?? 0.7);
@@ -738,6 +744,8 @@ app.get('/api/lms/status', async (req, res) => {
     category: v.category,
     label: v.label,
     ms: v.ms,
+    // Transport cause (e.g. "fetch failed (ETIMEDOUT)") — never the API key.
+    detail: v.ok ? '' : String(v.detail || '').slice(0, 300),
   });
 });
 

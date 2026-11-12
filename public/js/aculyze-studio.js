@@ -4238,8 +4238,12 @@ async function loadSalesDashboard(attempt = 0) {
       const info = await readSalesError(sRes);
       const type = salesErrorType(info);
       if (await salesAutoRetry(type, attempt)) return;
-      // Surface the upstream reason (timeout / HTTP 5xx) for diagnostics.
-      showSalesState(type, info.label && type === 'unavailable' ? `(${info.label})` : '');
+      // Show the upstream reason (timeout / DNS / HTTP 5xx) for diagnostics.
+      const reason = String(info.error || info.label || '')
+        .replace(/^Could not reach Aculyze LMS\.\s*/, '')
+        .replace(/^Server unavailable[—-]?\s*/, '')
+        .trim();
+      showSalesState(type, reason && type !== 'auth' && type !== 'permission' ? `(${reason})` : '');
       return;
     }
     summary = await sRes.json();
