@@ -175,6 +175,7 @@ const els = {
   sidebarOpen: document.getElementById('sidebarOpen'),
   navHome: document.getElementById('navHome'),
   navApps: document.getElementById('navApps'),
+  navStore: document.getElementById('navStore'),
   navSettings: document.getElementById('navSettings'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
@@ -182,6 +183,7 @@ const els = {
   viewSales: document.getElementById('view-sales'),
   viewZara: document.getElementById('view-zara'),
   viewApps: document.getElementById('view-apps'),
+  viewStore: document.getElementById('view-store'),
   viewSettings: document.getElementById('view-settings'),
   viewInbox: document.getElementById('view-inbox'),
   copilot: document.getElementById('copilot'),
@@ -345,8 +347,49 @@ els.agentSales?.addEventListener('click', () => setView('sales'));
 els.navApps?.addEventListener('click', () => {
   setView('apps');
 });
+els.navStore?.addEventListener('click', () => setView('store'));
 els.navSettings?.addEventListener('click', () => {
   openSettings('account');
+});
+
+/* ---------- Aculyze Store — contact / free-trial dialog ---------- */
+const storeContactOverlay = document.getElementById('storeContactOverlay');
+const storeContactContext = document.getElementById('storeContactContext');
+const storeContactMail = document.getElementById('storeContactMail');
+
+function openStoreContact(app, reason) {
+  if (!storeContactOverlay) return;
+  if (storeContactContext) {
+    storeContactContext.textContent = reason
+      ? `${reason} — ${app}. Our team replies within one business day.`
+      : `Questions about ${app}? Our team replies within one business day.`;
+  }
+  if (storeContactMail) {
+    const subject = reason ? `${app} — ${reason}` : `Aculyze Store — ${app}`;
+    storeContactMail.href = `mailto:admin@aculyze.in?subject=${encodeURIComponent(subject)}`;
+  }
+  storeContactOverlay.hidden = false;
+}
+
+function closeStoreContact() {
+  if (storeContactOverlay) storeContactOverlay.hidden = true;
+}
+
+document.querySelectorAll('[data-contact-app]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    openStoreContact(
+      btn.getAttribute('data-contact-app') || 'Aculyze Store',
+      btn.getAttribute('data-contact-reason') || ''
+    );
+  });
+});
+document.getElementById('storeContactClose')?.addEventListener('click', closeStoreContact);
+document.getElementById('storeContactDone')?.addEventListener('click', closeStoreContact);
+storeContactOverlay?.addEventListener('click', (e) => {
+  if (e.target === storeContactOverlay) closeStoreContact();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && storeContactOverlay && !storeContactOverlay.hidden) closeStoreContact();
 });
 
 // Home quick-open cards (Zara + Sales)
@@ -358,7 +401,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, settings: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, settings: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -375,7 +418,7 @@ function setView(view) {
       state.activeAgent = 'zara';
     } else if (next === 'sales') {
       state.activeAgent = 'sales';
-    } else if (next === 'apps' || next === 'settings' || next === 'inbox') {
+    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store') {
       state.activeAgent = null;
       state.selectedConversationId = null;
     }
@@ -384,7 +427,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, settings: els.navSettings };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, settings: els.navSettings };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -397,6 +440,7 @@ function setView(view) {
   els.viewZara.classList.toggle('active', next === 'zara');
   els.viewSales.classList.toggle('active', next === 'sales');
   els.viewApps.classList.toggle('active', next === 'apps');
+  els.viewStore.classList.toggle('active', next === 'store');
   els.viewSettings.classList.toggle('active', next === 'settings');
   els.viewInbox.classList.toggle('active', next === 'inbox');
 
@@ -503,6 +547,20 @@ function setView(view) {
       els.workspaceTitle.textContent = 'Inbox';
     }
     refreshInbox();
+  }
+  // --- Store view ---
+  else if (next === 'store') {
+    if (els.zaraConversations) els.zaraConversations.hidden = true;
+    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
+    const copilotAgent = document.getElementById('copilotAgent');
+    const copilotSubtitle = document.getElementById('copilotSubtitle');
+    if (copilotAgent) copilotAgent.textContent = 'Zara';
+    if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
+    if (els.workspaceTitle) {
+      els.workspaceTitle.textContent = 'Aculyze Store';
+    }
   }
   // --- Home view ---
   else {

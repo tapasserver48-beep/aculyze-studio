@@ -1316,6 +1316,13 @@ body.copilot-collapsed .copilot-rail {
   min-height: 0;
   overflow-y: auto;
   padding: 16px 14px;
+  /* Flex column + gap: messages appended WHILE STREAMING go straight into
+     this container (not into .conversation-message-list), so the list's own
+     gap never applied to them and bubbles ended up touching. The container
+     gap now gives every message the same rhythm. */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .conversation-message-list {
   display: flex;
@@ -1330,24 +1337,28 @@ body.copilot-collapsed .copilot-rail {
 .msg.agent { justify-content: flex-start; }
 .msg-body {
   max-width: 88%;
-  padding: 10px 13px;
-  border-radius: 14px;
+  padding: 11px 14px;
+  border-radius: 16px;
   font-size: 14px;
   line-height: 1.6;
+  word-break: break-word;
 }
 .msg.user .msg-body {
-  background: #dbeafe;
-  color: #1e40af;
-  font-weight: bold;
-  border: 1px solid #93c5fd;
-  border-bottom-right-radius: 4px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  /* Bubble sits right → the "tail" corner is the bottom-RIGHT one. */
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
 }
 .msg.agent .msg-body {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-2);
-  border-bottom-left-radius: 4px;
+  /* Bubble sits left → tail on the bottom-LEFT corner. */
+  border-bottom-left-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 .msg-content > *:first-child { margin-top: 0; }
 .msg-content > *:last-child { margin-bottom: 0; }
@@ -1459,18 +1470,19 @@ body.copilot-collapsed .copilot-rail {
    INBOX MESSAGING — WhatsApp-style bubbles with timestamps and grouping
    ========================================================================== */
 
-/* Message container */
-.msg {
+/* Message container — SCOPED to the Inbox. These rules used to be global,
+   which flipped the Zara/Sales bubble tails onto the wrong corners. */
+.inbox-messages .msg {
   display: flex;
   width: 100%;
   flex-direction: column;
   gap: 2px;
 }
-.msg.user { align-items: flex-end; }
-.msg.agent { align-items: flex-start; }
+.inbox-messages .msg.user { align-items: flex-end; }
+.inbox-messages .msg.agent { align-items: flex-start; }
 
 /* Date separator */
-.msg-date {
+.inbox-messages .msg-date {
   font-size: 11px;
   color: var(--text-2);
   background: var(--surface-2);
@@ -1481,41 +1493,40 @@ body.copilot-collapsed .copilot-rail {
 }
 
 /* Timestamp */
-.msg-time {
+.inbox-messages .msg-time {
   font-size: 10px;
   color: var(--text-2);
   opacity: 0.7;
 }
 
 /* Bubble body — WhatsApp style with full rounded corners */
-.msg-body {
+.inbox-messages .msg-body {
   padding: 10px 14px;
-  border-radius: 18px 18px 4px 18px;
+  border-radius: 18px;
   font-size: 14px;
   line-height: 1.6;
   max-width: 82%;
   word-break: break-word;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
-.msg.user .msg-body {
+/* Sent (right) → tail bottom-right · Received (left) → tail bottom-left */
+.inbox-messages .msg.user .msg-body {
   background: var(--accent);
   color: var(--text);
-  border-bottom-right-radius: 18px;
-  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
-.msg.agent .msg-body {
+.inbox-messages .msg.agent .msg-body {
   background: var(--surface);
   color: var(--text-2);
   border: 1px solid var(--border);
-  border-bottom-left-radius: 18px;
-  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 4px;
 }
 
 /* AI-generated message indicator */
-.msg.generated .msg-body {
+.inbox-messages .msg.generated .msg-body {
   background: #f0f9ff;
 }
-.msg.generated .msg-ai-tag {
+.inbox-messages .msg.generated .msg-ai-tag {
   display: inline-block;
   font-size: 10px;
   color: #0c4a6e;
@@ -1525,7 +1536,7 @@ body.copilot-collapsed .copilot-rail {
   border-radius: 4px;
   margin-bottom: 4px;
 }
-.msg.user .msg-generated .msg-ai-tag {
+.inbox-messages .msg.user.msg.generated .msg-ai-tag {
   background: rgba(255, 255, 255, 0.2);
   color: var(--text);
 }
@@ -3759,6 +3770,199 @@ body.copilot-collapsed .copilot-rail {
 @media (max-width: 640px) {
   .voice-assistant-wrap { width: 72px; height: 72px; left: 16px; right: auto; bottom: 16px; }
   .voice-assistant-img { width: 58px; height: 58px; }
+}
+
+/* ==========================================================================
+   ACULYZE STORE — Play-Store-style product listings
+   ========================================================================== */
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(370px, 1fr));
+  gap: 18px;
+}
+.store-card {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.12);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.store-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+@media (prefers-reduced-motion: reduce) {
+  .store-card { transition: none; }
+  .store-card:hover { transform: none; }
+}
+
+.store-card-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.store-app-ico {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+.store-app-ico .material-symbols-outlined {
+  font-size: 30px;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.store-ico-pulse  { background: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%); }
+.store-ico-assets { background: linear-gradient(135deg, #0284c7 0%, #22c55e 100%); }
+.store-ico-crew   { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); }
+
+.store-app-meta { flex: 1 1 210px; min-width: 0; }
+.store-app-meta h3 {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.store-cat { margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); }
+.store-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.store-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 650;
+}
+.store-chip .material-symbols-outlined {
+  font-size: 13px;
+  color: #22c55e;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 16;
+}
+
+.store-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.store-btn {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease,
+    transform 0.12s ease, box-shadow 0.14s ease;
+}
+.store-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.store-btn:active { transform: translateY(0); }
+.store-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.store-btn.primary {
+  background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(109, 40, 217, 0.3);
+}
+.store-btn.primary:hover { filter: brightness(1.08); box-shadow: 0 12px 24px rgba(109, 40, 217, 0.4); }
+
+.store-desc { margin: 0; font-size: 13.5px; line-height: 1.62; color: var(--text-2); }
+.store-subhead {
+  margin: 1px 0 -3px;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.store-features { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.store-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.store-features .material-symbols-outlined {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  font-size: 17px;
+  color: #22c55e;
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+/* ---- Contact dialog (reuses .utility-overlay / .utility-dialog) ---- */
+.store-contact-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.store-contact-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+.store-contact-list .material-symbols-outlined {
+  margin-top: 1px;
+  font-size: 19px;
+  color: var(--accent-ink);
+}
+.store-contact-list small {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.store-contact-list a,
+.store-contact-list strong {
+  display: inline-block;
+  margin-top: 1px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  text-decoration: none;
+}
+.store-contact-list a:hover { color: var(--accent-ink); text-decoration: underline; }
+.store-contact-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .store-grid { grid-template-columns: 1fr; }
+  .store-card { padding: 17px; }
+  .store-actions { width: 100%; }
+  .store-actions .store-btn { flex: 1 1 140px; }
 }
 
 /* ==========================================================================

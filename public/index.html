@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
-  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112c" />
+  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261112d" />
 </head>
 <body>
   <div id="app" class="app">
@@ -50,6 +50,10 @@
         <button class="sidebar-item" id="navApps" type="button">
           <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
           <span class="label">Apps</span>
+        </button>
+        <button class="sidebar-item" id="navStore" type="button">
+          <span class="material-symbols-outlined item-ico" aria-hidden="true">storefront</span>
+          <span class="label">Store</span>
         </button>
         <button class="sidebar-item" id="navSettings" type="button">
           <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
@@ -375,6 +379,110 @@
             <div id="appsContent"></div>
           </section>
 
+          <!-- ---------- ACULYZE STORE (Play-Store-style product listings) ---------- -->
+          <section id="view-store" class="agent-view" data-agent="store">
+            <div class="dashboard-heading">
+              <div>
+                <div class="agent-kicker">Store · Aculyze products</div>
+                <h1>Aculyze Store</h1>
+                <p>Apps built by Aculyze — start a free trial or talk to our team.</p>
+              </div>
+            </div>
+
+            <div class="store-grid">
+
+              <!-- 1 · SalesPulse -->
+              <article class="store-card">
+                <div class="store-card-head">
+                  <span class="store-app-ico store-ico-pulse" aria-hidden="true">
+                    <span class="material-symbols-outlined">trending_up</span>
+                  </span>
+                  <div class="store-app-meta">
+                    <h3>Aculyze SalesPulse</h3>
+                    <p class="store-cat">Lead management &amp; sales teams</p>
+                    <div class="store-chips">
+                      <span class="store-chip"><span class="material-symbols-outlined">verified</span>Free trial</span>
+                      <span class="store-chip">CRM</span>
+                      <span class="store-chip">Leads</span>
+                      <span class="store-chip">Reports</span>
+                    </div>
+                  </div>
+                  <div class="store-actions">
+                    <button class="store-btn primary" type="button" data-contact-app="Aculyze SalesPulse" data-contact-reason="Free trial request">Get free trial</button>
+                    <button class="store-btn" type="button" data-contact-app="Aculyze SalesPulse" data-contact-reason="Product enquiry">Contact us</button>
+                  </div>
+                </div>
+                <p class="store-desc">Lead management for growing sales teams — capture every lead, assign ownership, track follow-ups and see exactly where each deal stands, all on live Aculyze business data.</p>
+                <h4 class="store-subhead">Features</h4>
+                <ul class="store-features">
+                  <li><span class="material-symbols-outlined">check_circle</span>Lead capture with pipeline stages</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Assign leads, owners and reminders to your team</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Complete follow-up history for every contact</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Win / loss analysis and team performance reports</li>
+                </ul>
+              </article>
+
+              <!-- 2 · Asset Management -->
+              <article class="store-card">
+                <div class="store-card-head">
+                  <span class="store-app-ico store-ico-assets" aria-hidden="true">
+                    <span class="material-symbols-outlined">inventory_2</span>
+                  </span>
+                  <div class="store-app-meta">
+                    <h3>Aculyze Asset Management</h3>
+                    <p class="store-cat">Assets · Inventory · Audits</p>
+                    <div class="store-chips">
+                      <span class="store-chip">Assets</span>
+                      <span class="store-chip">Check-in / out</span>
+                      <span class="store-chip">Maintenance</span>
+                    </div>
+                  </div>
+                  <div class="store-actions">
+                    <button class="store-btn" type="button" data-contact-app="Aculyze Asset Management" data-contact-reason="Product enquiry">Contact us</button>
+                  </div>
+                </div>
+                <p class="store-desc">Track every company asset from purchase to retirement in one register — who has it, where it is, when it was serviced and what is due next.</p>
+                <h4 class="store-subhead">Details &amp; features</h4>
+                <ul class="store-features">
+                  <li><span class="material-symbols-outlined">check_circle</span>Central asset register with categories and documents</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Check-in / check-out with employee assignment history</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Warranty, AMC and preventive maintenance schedules</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Audit-ready stock reports and depreciation views</li>
+                </ul>
+              </article>
+
+              <!-- 3 · Crew HRMS -->
+              <article class="store-card">
+                <div class="store-card-head">
+                  <span class="store-app-ico store-ico-crew" aria-hidden="true">
+                    <span class="material-symbols-outlined">groups</span>
+                  </span>
+                  <div class="store-app-meta">
+                    <h3>Aculyze Crew HRMS</h3>
+                    <p class="store-cat">HRMS for crews &amp; field teams</p>
+                    <div class="store-chips">
+                      <span class="store-chip">HRMS</span>
+                      <span class="store-chip">Attendance</span>
+                      <span class="store-chip">Leave</span>
+                    </div>
+                  </div>
+                  <div class="store-actions">
+                    <button class="store-btn" type="button" data-contact-app="Aculyze Crew HRMS" data-contact-reason="Product enquiry">Contact us</button>
+                  </div>
+                </div>
+                <p class="store-desc">A complete HRMS for crews — employee records, shifts and attendance, leave approvals and payroll-ready exports in one place, built for teams that work on site.</p>
+                <h4 class="store-subhead">Description &amp; details</h4>
+                <ul class="store-features">
+                  <li><span class="material-symbols-outlined">check_circle</span>Employee profiles with documents and ID cards</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Shift, roster and daily attendance tracking</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Leave requests with one-tap manager approval</li>
+                  <li><span class="material-symbols-outlined">check_circle</span>Payroll-ready salary and overtime summaries</li>
+                </ul>
+              </article>
+
+            </div>
+          </section>
+
           <!-- ---------- SETTINGS (normal Studio page — no modal/overlay) ---------- -->
           <section id="view-settings" class="agent-view" data-agent="settings">
             <div class="settings-page" id="settingsPage" data-view="list">
@@ -666,6 +774,41 @@
     </section>
   </div>
 
+  <!-- ===================== STORE CONTACT DIALOG ===================== -->
+  <div class="utility-overlay" id="storeContactOverlay" hidden>
+    <section class="utility-dialog" role="dialog" aria-modal="true" aria-labelledby="storeContactTitle">
+      <header>
+        <div><small>ACULYZE STORE</small><h2 id="storeContactTitle">Contact us</h2></div>
+        <button class="icon-btn ghost" id="storeContactClose" type="button" aria-label="Close">×</button>
+      </header>
+      <div class="utility-content">
+        <p class="utility-status-line" id="storeContactContext">Talk to the Aculyze team about apps, pricing and free trials.</p>
+        <ul class="store-contact-list">
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">mail</span>
+            <div><small>Email</small><a href="mailto:admin@aculyze.in">admin@aculyze.in</a></div>
+          </li>
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">call</span>
+            <div><small>India</small><a href="tel:+918089571224">+91 80895 71224</a></div>
+          </li>
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">call</span>
+            <div><small>UAE</small><a href="tel:+971564879798">+971 56487 9798</a></div>
+          </li>
+          <li>
+            <span class="material-symbols-outlined" aria-hidden="true">location_on</span>
+            <div><small>Offices</small><strong>Coimbatore, India · Ajman, UAE</strong></div>
+          </li>
+        </ul>
+        <div class="utility-actions">
+          <a class="utility-primary store-contact-cta" id="storeContactMail" href="mailto:admin@aculyze.in">Send email</a>
+          <button class="utility-secondary" id="storeContactDone" type="button">Close</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <!-- ===================== APP CONNECTION DRAWER ===================== -->
   <aside class="app-drawer" id="appDrawer" hidden aria-label="Integration details">
     <header class="app-drawer-head">
@@ -797,7 +940,7 @@
   <script type="module" src="js/voice.js"></script>
   <script type="module" src="js/api.js"></script>
   <script type="module" src="js/mascot.js"></script>
-  <script type="module" src="js/aculyze-studio.js?v=20261112b"></script>
+  <script type="module" src="js/aculyze-studio.js?v=20261112d"></script>
   <script type="module" src="js/voice-assistant.js"></script>
 </body>
 </html>
