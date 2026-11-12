@@ -154,7 +154,7 @@
                   <h1 id="inboxTitle">Inbox</h1>
                 </div>
                 <div class="inbox-header-right">
-                  <p class="inbox-subtitle">Human conversations</p>
+                 
                   <div class="inbox-search-wrap">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
                     <input id="inboxSearch" type="search" placeholder="Search conversations" autocomplete="off" />
@@ -237,11 +237,13 @@
           <section id="view-sales" class="agent-view" data-agent="sales">
 
             <!-- Header: identity + live status + filters -->
-            <div class="sd-header">
-              <div class="sd-identity">
-                <div class="agent-kicker">Sales Agent · Aculyze LMS</div>
-                <h1>Sales overview</h1>
-                <p>Enterprise sales intelligence, read live from Aculyze LMS.</p>
+            <div class="page-header">
+              <div class="page-header-content">
+                <div class="sd-identity">
+                  <div class="page-header-kicker">Sales Agent · Aculyze LMS</div>
+                  <h1>Sales overview</h1>
+                  <p>Enterprise sales intelligence, read live from Aculyze LMS.</p>
+                </div>
               </div>
               <div class="sd-controls">
                 <div class="sd-live is-idle" id="salesLive">
@@ -252,7 +254,7 @@
                 </div>
                 <div class="sales-filters">
                   <label class="sd-field"><span>From</span><input type="date" id="salesDateFrom" aria-label="Date from"></label>
-                  <label class="sd-field"><span>To</span><input type="date" id="salesDateTo" aria-label="Date to"></label>
+                  <label class="sd-field"><span>To</label>
                   <button class="period-select sd-refresh" id="salesRefresh" type="button"><span>Refresh data</span></button>
                 </div>
               </div>
@@ -375,7 +377,7 @@
           <section id="view-apps" class="agent-view" data-agent="apps">
             <div class="page-header">
               <div class="page-header-content">
-                <span class="page-header-kicker">Apps</span>
+                <span class="page-header-kicker"></span>
                 <h1>Apps</h1>
               </div>
             </div>
@@ -386,7 +388,7 @@
           <section id="view-store" class="agent-view" data-agent="store">
             <div class="page-header">
               <div class="page-header-content">
-                <span class="page-header-kicker">Store</span>
+                <span class="page-header-kicker"></span>
                 <h1>Aculyze Store</h1>
               </div>
             </div>
@@ -489,7 +491,7 @@
           <section id="view-command" class="agent-view" data-agent="command">
             <div class="dashboard-heading">
               <div>
-                <div class="agent-kicker">Command Centre · Control room</div>
+                <div class="agent-kicker"></div>
                 <h1>Command Centre</h1>
                 <p>Category-wise operations — agents, employee plans, token usage and plan selection.</p>
               </div>
@@ -502,12 +504,10 @@
 
               <!-- ===== Category: Sales Agent ===== -->
               <section class="cc-card">
-                <header class="cc-head">
+                <header class="cc-card-header">
                   <span class="cc-ico cc-ico-sales" aria-hidden="true"><span class="material-symbols-outlined">trending_up</span></span>
-                  <div>
-                    <h3>Sales Agent</h3>
-                    <p>Daily report mail, tasks and token usage</p>
-                  </div>
+                  <h3>Sales Agent</h3>
+                  <p>Token usage, daily reports, tasks and plan selection</p>
                 </header>
 
                 <div class="cc-block">
@@ -543,12 +543,10 @@
 
               <!-- ===== Category: Zara AI ===== -->
               <section class="cc-card">
-                <header class="cc-head">
+                <header class="cc-card-header">
                   <span class="cc-ico cc-ico-zara" aria-hidden="true"><span class="material-symbols-outlined">support_agent</span></span>
-                  <div>
-                    <h3>Zara AI</h3>
-                    <p>Token usage, plan expiry and quota</p>
-                  </div>
+                  <h3>Zara AI</h3>
+                  <p>Token usage, plan expiry and quota</p>
                 </header>
 
                 <div class="cc-block">
@@ -580,12 +578,10 @@
 
               <!-- ===== Category: Employees ===== -->
               <section class="cc-card cc-wide">
-                <header class="cc-head">
+                <header class="cc-card-header">
                   <span class="cc-ico cc-ico-emp" aria-hidden="true"><span class="material-symbols-outlined">groups</span></span>
-                  <div>
-                    <h3>Employees — plan details</h3>
-                    <p>Every employee's plan and daily token limit</p>
-                  </div>
+                  <h3>Employees — plan details</h3>
+                  <p>Every employee's plan and daily token limit</p>
                 </header>
                 <div class="cc-table-wrap">
                   <table class="cc-table">
@@ -601,12 +597,10 @@
 
               <!-- ===== Category: Plans ===== -->
               <section class="cc-card cc-wide">
-                <header class="cc-head">
+                <header class="cc-card-header">
                   <span class="cc-ico cc-ico-plans" aria-hidden="true"><span class="material-symbols-outlined">workspace_premium</span></span>
-                  <div>
-                    <h3>Plans</h3>
-                    <p>Select a plan for this workspace</p>
-                  </div>
+                  <h3>Plans</h3>
+                  <p>Select a plan for this workspace</p>
                 </header>
 
                 <div class="cc-plans">

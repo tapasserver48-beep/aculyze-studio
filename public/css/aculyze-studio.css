@@ -4352,9 +4352,45 @@ body.copilot-collapsed .copilot-rail {
 @media (max-width: 720px) {
   .cc-grid { grid-template-columns: 1fr; }
   .cc-wide { grid-column: auto; }
-  .store-hero { padding: 20px 18px; }
   .cc-expiry { flex-wrap: wrap; }
   .cc-expiry small { margin-left: 0; width: 100%; text-align: left; }
+}
+
+/* ---- Command Centre gradient card header ---- */
+.cc-card-header {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 16px;
+  padding: 20px 24px 16px;
+  border-radius: 18px;
+  color: #ffffff;
+  background:
+    radial-gradient(380px 200px at 6% -30%, rgba(255, 255, 255, 0.22), transparent 60%),
+    linear-gradient(125deg, #2e1065 0%, #5b21b6 35%, #7c3aed 65%, #0891b2 140%);
+  box-shadow: 0 12px 32px rgba(76, 29, 149, 0.35);
+}
+.cc-card-header::after {
+  content: '';
+  position: absolute;
+  right: -60px;
+  top: -80px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.45), transparent 60%);
+  pointer-events: none;
+}
+.cc-card-header > * { position: relative; z-index: 1; }
+.cc-card-header h3 {
+  margin: 0 0 4px;
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.cc-card-header p {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* ---- Unified page header with gradient banner ---- */
