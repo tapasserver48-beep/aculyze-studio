@@ -4238,12 +4238,23 @@ async function loadSalesDashboard(attempt = 0) {
       const info = await readSalesError(sRes);
       const type = salesErrorType(info);
       if (await salesAutoRetry(type, attempt)) return;
-      // Show the upstream reason (timeout / DNS / HTTP 5xx) for diagnostics.
-      const reason = String(info.error || info.label || '')
+      // Show a human reason: map transport codes to plain words, keep the
+      // full raw text in the tooltip for support/debugging.
+      const raw = String(info.error || info.label || '')
         .replace(/^Could not reach Aculyze LMS\.\s*/, '')
         .replace(/^Server unavailable[—-]?\s*/, '')
         .trim();
-      showSalesState(type, reason && type !== 'auth' && type !== 'permission' ? `(${reason})` : '');
+      const low = raw.toLowerCase();
+      let reason = '';
+      if (type === 'auth' || type === 'permission') reason = '';
+      else if (low.includes('connect_timeout') || low.includes('etimedout') || low.includes('timed out')) {
+        reason = 'connection to the LMS server timed out — its firewall/network is not accepting requests from this server';
+      } else if (low.includes('enotfound') || low.includes('eai_again')) {
+        reason = 'the LMS server address could not be resolved (DNS)';
+      } else if (low.includes('refused')) {
+        reason = 'the LMS server refused the connection';
+      } else if (raw) reason = raw.slice(0, 120);
+      showSalesState(type, reason ? `(${reason})` : '', raw);
       return;
     }
     summary = await sRes.json();
@@ -4591,7 +4602,7 @@ function renderStatusDonut(byStatus) {
   panel.style.display = '';
 }
 
-function showSalesState(type, detail) {
+function showSalesState(type, detail, title) {
   const note = document.getElementById('salesDataNote');
   const stateBox = document.getElementById('salesState');
   if (!stateBox) return;
@@ -4614,6 +4625,8 @@ function showSalesState(type, detail) {
   stateBox.hidden = false;
   stateBox.textContent = SALES_STATE_MESSAGES[type] || SALES_STATE_MESSAGES.unavailable;
   if (detail) stateBox.textContent += ` ${detail}`;
+  // Full upstream text (transport codes) on hover — short banner stays readable.
+  stateBox.title = title || detail || '';
 
   const retry = document.createElement('button');
   retry.type = 'button';

@@ -13,7 +13,7 @@ services:
         value: hybrid
       - key: LMS_API_KEY
         value: ak_live_...
-      - key: LMS_API_URL
+      - key: ACULYZE_LMS_BASE_URL
         value: https://lm.aculyze.in/api/v1
       - key: GOOGLE_CLIENT_ID
         value: ""
