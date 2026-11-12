@@ -1011,6 +1011,23 @@ app.get('/api/employees', async (req, res) => {
       pagination: rec.pagination,
     });
   } catch (err) {
+    // LMS unreachable? Try cached data.
+    try {
+      const f = path.join(DATA_DIR, 'lms-cache.json');
+      if (fs.existsSync(f)) {
+        const cached = JSON.parse(fs.readFileSync(f, 'utf8'));
+        if (cached['/employees'] && cached['/employees'].ok) {
+          const env = lms.normalizeEnvelope(cached['/employees'].json);
+          return res.json({
+            employees: env.rows || [],
+            provider: 'Aculyze LMS (cached)',
+            cached: true,
+            count: env.rows?.length || 0,
+            pagination: env.pagination || { currentPage: 1, perPage: 100, total: 0, lastPage: 1 },
+          });
+        }
+      }
+    } catch { /* no usable cache */ }
     sendLmsError(res, err); // Inbox falls back to its existing empty state
   }
 });
@@ -1091,6 +1108,25 @@ app.get('/api/sales/records', async (req, res) => {
       period: rec.period,
     });
   } catch (err) {
+    // Try cached data for disaster recovery when LMS is unreachable from the host.
+    try {
+      const f = path.join(DATA_DIR, 'lms-cache.json');
+      if (fs.existsSync(f)) {
+        const cached = JSON.parse(fs.readFileSync(f, 'utf8'));
+        const pathKey = `/${resource}`;
+        if (cached[pathKey] && cached[pathKey].ok) {
+          const env = lms.normalizeEnvelope(cached[pathKey].json);
+          return res.json({
+            provider: 'Aculyze LMS (cached)',
+            cached: true,
+            resource,
+            rows: env.rows || [],
+            pagination: env.pagination || { currentPage: 1, perPage: 100, total: 0, lastPage: 1 },
+            period: null,
+          });
+        }
+      }
+    } catch { /* no usable cache */ }
     sendLmsError(res, err);
   }
 });
