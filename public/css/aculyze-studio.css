@@ -4357,6 +4357,57 @@ body.copilot-collapsed .copilot-rail {
   .cc-expiry small { margin-left: 0; width: 100%; text-align: left; }
 }
 
+/* ---- Unified page header with gradient banner ---- */
+.page-header {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 18px;
+  padding: 26px 28px;
+  border-radius: 20px;
+  color: #ffffff;
+  background:
+    radial-gradient(420px 220px at 6% -30%, rgba(255, 255, 255, 0.24), transparent 62%),
+    linear-gradient(115deg, #2e1065 0%, #5b21b6 34%, #7c3aed 62%, #0891b2 135%);
+  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.38);
+}
+.page-header::after {
+  content: '';
+  position: absolute;
+  right: -70px;
+  top: -90px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.5), transparent 66%);
+  pointer-events: none;
+}
+.page-header > * { position: relative; z-index: 1; }
+.page-header-kicker {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+.page-header h1 {
+  margin: 8px 0 5px;
+  font-size: clamp(24px, 3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+}
+.page-header p { margin: 0; font-size: 13.5px; color: rgba(255, 255, 255, 0.84); }
+@media (prefers-reduced-motion: reduce) { .page-header { box-shadow: none; } }
+.page-header > .page-header-content {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+@media (max-width: 720px) {
+  .page-header { padding: 20px 18px; }
+}
+
 /* ==========================================================================
    AUTH — sign in / create account (local accounts in data/users.json)
    ========================================================================== */
