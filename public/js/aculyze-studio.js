@@ -1248,7 +1248,17 @@ function syncSendButton() {
   if (state.abortCtrl || state.activeRequest) { els.zaraSend.disabled = true; return; }
   const hasText = !!els.zaraInput?.value.trim();
   const hasAtt = !!(state.attachments && state.attachments.length);
+  const hasImages = hasAtt && state.attachments.some(a => a.dataUrl && a.dataUrl.startsWith('data:image/'));
+
+  // Images require a vision model. Disable send if we have images but no vision.
+  if (hasImages && !state.vision?.available) {
+    els.zaraSend.disabled = true;
+    els.zaraSend.title = 'Images need a vision model (currently unavailable)';
+    return;
+  }
+
   els.zaraSend.disabled = !(hasText || hasAtt);
+  if (els.zaraSend.title) els.zaraSend.title = '';
 }
 
 /* ---------- Send Zara message ---------- */
@@ -2918,6 +2928,12 @@ async function sendChannelMessage() {
   if (!text || !id || chatState.busy) return;
   if (!authState.user) { toast('Sign in to send messages', 'error'); return; }
 
+  // Channel messages are text-only (attachments are Zara chat only).
+  // Clear any lingering attachments to avoid vision errors on Render.
+  if (state.attachments && state.attachments.length > 0) {
+    state.attachments = [];
+  }
+
   els.inboxInput.value = '';
   els.inboxInput.style.height = 'auto';
   if (els.inboxSend) els.inboxSend.disabled = true;
@@ -2933,6 +2949,8 @@ async function sendChannelMessage() {
     if (els.inboxInput) { els.inboxInput.value = text; els.inboxInput.style.height = 'auto'; }
     if (err && (err.status === 401 || err.code === 'unauthenticated')) {
       toast('Your session ended — sign in again', 'error');
+    } else if (err && /image/i.test(err.message || '')) {
+      toast('Images need a vision model — use Zara chat (which supports image analysis)', 'info');
     } else {
       toast(err?.message || 'Message failed to send', 'error');
     }
@@ -3595,6 +3613,13 @@ async function generateAiDraft() {
   const peer = aiDraft.peer;
   if (!peer || !aiDraft.instruction) return;
   const user = inboxState.users.find((u) => u.id === peer);
+
+  // Vision model required but not available.
+  const hasImages = state.attachments && state.attachments.some(a => a.dataUrl && a.dataUrl.startsWith('data:image/'));
+  if (hasImages && !state.vision?.available) {
+    toast('Images need a vision model for AI analysis — ask admin to load one in LM Studio', 'error');
+    return;
+  }
 
   aiDraft.busy = true;
   setAiDraftEditing(false);
