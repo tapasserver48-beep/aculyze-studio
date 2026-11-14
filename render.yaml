@@ -19,4 +19,9 @@ services:
         value: ""
       - key: GOOGLE_CLIENT_SECRET
         value: ""
+      # OmniVoice is LOCAL ONLY (requires localhost access). Disable on Render.
+      - key: VOICE_PROVIDER
+        value: disabled
+      - key: HOSTING_ENV
+        value: render
     plan: starter  # $7/month, 0.5 CPU, 512MB

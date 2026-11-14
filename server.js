@@ -1174,6 +1174,30 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+/**
+ * GET /api/debug/status — quick check of external service connectivity.
+ * Render deployments: if LMS returns "server_unavailable" or 502, the host
+ * firewall (or the LMS endpoint itself) may need the Render outbound IPs
+ * whitelisted. See: https://render.com/docs/network-connectivity
+ */
+app.get('/api/debug/status', async (req, res) => {
+  const result = {
+    lms: { reachable: false, status: null, label: null },
+    voice: { reachable: false, status: null },
+    ai: { provider: router.providerName, modelEndpoint: null },
+  };
+  try {
+    const v = await lms.verifyConnection({ baseUrl: process.env.ACULYZE_LMS_BASE_URL || 'https://lm.aculyze.in/api/v1', apiKey: process.env.LMS_API_KEY });
+    result.lms.reachable = true;
+    result.lms.status = v;
+  } catch (e) { result.lms.label = e.message?.slice(0, 100) || 'unknown'; }
+  if (voiceProvider) {
+    try { const v = await voiceProvider.checkConnection(); result.voice.reachable = v.online; } catch { /* */ }
+  }
+  result.ai.modelEndpoint = (await router.getStatus()).server || null;
+  res.json(result);
+});
+
 const server = app.listen(PORT, () => {
   // WebSocket layer for the group chat (authenticated by the session cookie).
   chatBroadcast = attachChatRealtime(server, { dataDir: DATA_DIR }).broadcast;

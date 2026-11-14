@@ -19,6 +19,7 @@
 
 4. **Aculyze LMS API Key** (optional)
    - Your key starts with `ak_live_...`
+   - Set `LMS_API_KEY` and `ACULYZE_LMS_BASE_URL=https://lm.aculyze.in/api/v1`
 
 ### Environment Variables to Set in Render
 
@@ -29,9 +30,12 @@ NVIDIA_API_KEY=nvapi-4pjOVOL7CR9r...
 # Search (use duckduckgo for Render - it's keyless)
 SEARCH_PROVIDER=duckduckgo
 
-# Optional: LMS
+# Optional: LMS (Sales Agent data)
 LMS_API_KEY=ak_live_...
-LMS_API_URL=https://api.aculyze.com
+ACULYZE_LMS_BASE_URL=https://lm.aculyze.in/api/v1
+
+# Voice — DISABLED on Render (OmniVoice is localhost-only)
+VOICE_PROVIDER=disabled
 
 # AI Provider (hybrid = NVIDIA primary, LM Studio fallback)
 AI_PROVIDER=hybrid
