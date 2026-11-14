@@ -87,10 +87,8 @@ function createChatRouter(options = {}) {
   }));
 
   router.post('/channels', wrap((req, res) => {
-    // manager + founder + admin (levels 0–2); employees cannot create.
-    if (roleLevel(myRole(req)) > 2) {
-      throw new store.ChatError(403, 'permission', 'Your role cannot create channels.');
-    }
+    // Any signed-in member may create a group channel (Slack-style);
+    // departments stay admin-only — they shape the org, not a chat room.
     const channel = store.createChannel(dataDir, req.authUid, (req.body || {}).name);
     res.status(201).json({ channel });
   }));

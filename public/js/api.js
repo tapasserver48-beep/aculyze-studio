@@ -713,3 +713,80 @@ export async function inboxSend({ to, body, generated = false, toName = '', toRo
 export async function inboxRead(peer) {
   return authRequest('/api/inbox/read', { method: 'POST', body: { peer } });
 }
+
+// ============ CHAT (departments + channels — Slack-style group messaging) ============
+// All bound to the signed-in account; ids are numeric SQLite rowids.
+
+/** My departments (with joined flag + member counts). ? { departments }. */
+export async function chatDepartments() {
+  return authRequest('/api/chat/departments');
+}
+
+/** Create a department (admin/founder). ? { department }. */
+export async function chatCreateDepartment(name) {
+  return authRequest('/api/chat/departments', { method: 'POST', body: { name } });
+}
+
+/** Join a department (also joins its channel). ? { department }. */
+export async function chatJoinDepartment(id) {
+  return authRequest(`/api/chat/departments/${id}/join`, { method: 'POST', body: {} });
+}
+
+/** Leave a department (also leaves its channel). ? { department }. */
+export async function chatLeaveDepartment(id) {
+  return authRequest(`/api/chat/departments/${id}/leave`, { method: 'POST', body: {} });
+}
+
+/** My channels with unread badges + last-message previews. ? { channels }. */
+export async function chatChannels() {
+  return authRequest('/api/chat/channels');
+}
+
+/** Create a group channel (manager+). ? { channel }. */
+export async function chatCreateChannel(name) {
+  return authRequest('/api/chat/channels', { method: 'POST', body: { name } });
+}
+
+/** Channel detail: members, roles, counts. ? { channel }. */
+export async function chatChannel(id) {
+  return authRequest(`/api/chat/channels/${id}`);
+}
+
+/** Join a channel. ? { channel }. */
+export async function chatJoinChannel(id) {
+  return authRequest(`/api/chat/channels/${id}/join`, { method: 'POST', body: {} });
+}
+
+/** Leave a channel. ? { channel }. */
+export async function chatLeaveChannel(id) {
+  return authRequest(`/api/chat/channels/${id}/leave`, { method: 'POST', body: {} });
+}
+
+/** Channel history. `since` is a ms cursor. ? { channelId, messages, count }. */
+export async function chatMessages(id, { since = 0, limit = 100 } = {}) {
+  const q = new URLSearchParams();
+  if (since) q.set('since', String(Number(since) || 0));
+  if (limit) q.set('limit', String(limit));
+  const qs = q.toString();
+  return authRequest(`/api/chat/channels/${id}/messages${qs ? `?${qs}` : ''}`);
+}
+
+/** Post to a channel. ? { message: { id, channel, from, fromName, body, ts } }. */
+export async function chatSend(id, body) {
+  return authRequest(`/api/chat/channels/${id}/messages`, { method: 'POST', body: { body } });
+}
+
+/** Mark a channel read up to `ts`. ? { readTs }. */
+export async function chatRead(id, ts = Date.now()) {
+  return authRequest(`/api/chat/channels/${id}/read`, { method: 'POST', body: { ts } });
+}
+
+/** Signed-in accounts (member picker / AI search). ? { people }. */
+export async function chatPeople() {
+  return authRequest('/api/chat/people');
+}
+
+/** Total unread across my channels. ? { unread }. */
+export async function chatUnread() {
+  return authRequest('/api/chat/unread');
+}

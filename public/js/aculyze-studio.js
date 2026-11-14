@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -100,6 +100,26 @@ const inboxState = {
   threadTimer: null, // ms-interval for previews + unread badges
   polling: false,
   threadsBusy: false,
+};
+
+// Channels — Slack-style group messaging (departments + channels, SQLite).
+// Separate from the 1:1 inbox above; switched with the Direct/Channels tabs.
+const chatState = {
+  mode: 'direct', // 'direct' | 'channels'
+  channels: [], // { id, name, type, unread, lastBody, lastTs, memberCount, ... }
+  departments: [], // { id, name, memberCount, joined }
+  selectedChannelId: null,
+  messages: {}, // { [channelId]: [{ id, from, fromName, body, ts }] }
+  channelDetail: null, // full channel (members) once opened
+  ws: null, // WebSocket to /ws/chat
+  wsReady: false,
+  reconnectTries: 0,
+  reconnectTimer: null,
+  subscribedId: null, // channel id this socket is watching
+  listTimer: null, // ms-interval for channel list refresh
+  msgTimer: null, // ms-interval fallback when WS is down
+  busy: false,
+  loading: false,
 };
 
 /* Start in the most recent thread (or lazily create one in the Zara view). */
@@ -2069,6 +2089,7 @@ function stopSales() {
    so each row shows avatar, name, online status, last message, time and unread count. */
 function renderInboxList() {
   if (!els.inboxList) return;
+  if (chatState.mode === 'channels') { renderChannelList(); return; }
   const users = inboxState.users;
   els.inboxList.innerHTML = '';
 
@@ -2462,10 +2483,610 @@ async function refreshInbox() {
   startInboxPolling();
   const peer = inboxState.selectedUserId;
   if (peer) await loadInboxHistory(peer);
+  // Channels tab keeps its own data fresh too (cheap: one request).
+  if (chatState.mode === 'channels') refreshChannels();
+}
+
+/* ==========================================================================
+   CHANNELS — Slack-style group messaging (Direct / Channels tab switch)
+   ========================================================================== */
+
+function setInboxMode(mode) {
+  const next = mode === 'channels' ? 'channels' : 'direct';
+  if (chatState.mode === next) return;
+  chatState.mode = next;
+
+  const tabDirect = document.getElementById('inboxTabDirect');
+  const tabChannels = document.getElementById('inboxTabChannels');
+  if (tabDirect) {
+    tabDirect.classList.toggle('active', next === 'direct');
+    tabDirect.setAttribute('aria-selected', String(next === 'direct'));
+  }
+  if (tabChannels) {
+    tabChannels.classList.toggle('active', next === 'channels');
+    tabChannels.setAttribute('aria-selected', String(next === 'channels'));
+  }
+
+  // Leaving channels mode tears down the socket subscription + timers.
+  if (next === 'direct') {
+    chatUnsubscribe();
+    stopChannelPolling();
+    closeChannelDetail();
+  } else {
+    refreshChannels();
+    startChannelPolling();
+    connectChatSocket();
+  }
+  applyInboxModeDom();
+  renderInboxList();
+}
+
+/** Show/hide the pieces that only belong to one mode. */
+function applyInboxModeDom() {
+  const isChannels = chatState.mode === 'channels';
+  const newBtn = document.getElementById('inboxNewChannel');
+  const depts = document.getElementById('inboxDepts');
+  const form = document.getElementById('inboxNewChannelForm');
+  if (newBtn) newBtn.hidden = !isChannels;
+  if (depts) depts.hidden = !isChannels;
+  if (form) form.hidden = true; // always start closed on a switch
+  const empty = document.getElementById('inboxEmpty');
+  if (empty && isChannels) empty.style.display = 'none';
+}
+
+/** Load my channels + departments, then re-render the list pane. */
+async function refreshChannels() {
+  if (!authState.user || chatState.loading) return;
+  chatState.loading = true;
+  try {
+    const [chRes, depRes] = await Promise.allSettled([chatChannels(), chatDepartments()]);
+    if (chRes.status === 'fulfilled' && Array.isArray(chRes.value.channels)) {
+      chatState.channels = chRes.value.channels;
+    }
+    if (depRes.status === 'fulfilled' && Array.isArray(depRes.value.departments)) {
+      chatState.departments = depRes.value.departments;
+    }
+    if (chatState.mode === 'channels') {
+      renderChannelList();
+      renderDepartments();
+    }
+    renderChannelBadge();
+  } finally {
+    chatState.loading = false;
+  }
+}
+
+/** Unread total across channels → tab badge. */
+function renderChannelBadge() {
+  const badge = document.getElementById('inboxChannelsBadge');
+  if (!badge) return;
+  const total = chatState.channels.reduce((n, c) => n + (Number(c.unread) || 0), 0);
+  badge.hidden = total <= 0;
+  badge.textContent = String(total > 99 ? '99+' : total);
+}
+
+/** Row builder shared by channel rows (mirrors .inbox-row from direct). */
+function buildRow({ id, avatarText, avatarClass, name, tag, preview, ts, unread, active }) {
+  const li = document.createElement('li');
+  li.className = 'inbox-row';
+  li.dataset.channelId = id;
+  li.tabIndex = 0;
+  if (active) li.classList.add('active');
+
+  const who = document.createElement('span');
+  who.className = `inbox-who ${avatarClass || ''}`;
+  who.textContent = avatarText;
+
+  const copy = document.createElement('span');
+  copy.className = 'inbox-copy';
+
+  const nameRow = document.createElement('span');
+  nameRow.className = 'inbox-name-row';
+  if (tag) {
+    const tagEl = document.createElement('span');
+    tagEl.className = 'inbox-chan-tag';
+    tagEl.textContent = tag;
+    nameRow.appendChild(tagEl);
+  }
+  const nameEl = document.createElement('strong');
+  nameEl.className = 'inbox-name';
+  nameEl.textContent = name;
+  nameRow.appendChild(nameEl);
+
+  const prev = document.createElement('small');
+  prev.className = 'inbox-preview';
+  prev.textContent = preview || 'No messages yet';
+
+  copy.append(nameRow, prev);
+
+  const side = document.createElement('span');
+  side.className = 'inbox-side';
+  const time = document.createElement('span');
+  time.className = 'inbox-meta';
+  time.textContent = ts ? timeAgo(ts) : '';
+  side.appendChild(time);
+  if (Number(unread) > 0) {
+    const badge = document.createElement('span');
+    badge.className = 'inbox-unread';
+    badge.textContent = String(unread);
+    badge.setAttribute('aria-label', `${unread} unread`);
+    side.appendChild(badge);
+  }
+
+  li.append(who, copy, side);
+  return li;
+}
+
+function renderChannelList() {
+  if (!els.inboxList) return;
+  if (chatState.mode !== 'channels') return;
+  els.inboxList.innerHTML = '';
+
+  const empty = document.getElementById('inboxEmpty');
+  if (!chatState.channels.length) {
+    if (empty) {
+      empty.style.display = '';
+      empty.querySelector('p').textContent = 'No channels yet';
+      const sub = empty.querySelector('.inbox-empty-sub');
+      if (sub) sub.textContent = 'Create a channel or join a department above.';
+    }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  for (const ch of chatState.channels) {
+    const li = buildRow({
+      id: ch.id,
+      avatarText: '#',
+      avatarClass: 'channel',
+      name: ch.name,
+      tag: ch.type === 'department' ? 'dept' : 'group',
+      preview: ch.lastBody || '',
+      ts: ch.lastTs || ch.createdAt,
+      unread: ch.unread,
+      active: chatState.selectedChannelId === ch.id,
+    });
+    li.addEventListener('click', () => selectChannel(ch.id));
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectChannel(ch.id); }
+    });
+    els.inboxList.appendChild(li);
+  }
+}
+
+function renderDepartments() {
+  const wrap = document.getElementById('inboxDepts');
+  const list = document.getElementById('inboxDeptsList');
+  if (!wrap || !list) return;
+  if (chatState.mode !== 'channels') { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  list.innerHTML = '';
+
+  if (!chatState.departments.length) {
+    const none = document.createElement('div');
+    none.className = 'inbox-depts-empty';
+    none.textContent = 'No departments yet.';
+    list.appendChild(none);
+    return;
+  }
+
+  for (const dep of chatState.departments) {
+    const row = document.createElement('div');
+    row.className = 'inbox-dept-row';
+
+    const ico = document.createElement('span');
+    ico.className = 'material-symbols-outlined';
+    ico.setAttribute('aria-hidden', 'true');
+    ico.textContent = 'corporate_fare';
+
+    const name = document.createElement('span');
+    name.className = 'inbox-dept-name';
+    name.textContent = dep.name;
+
+    const count = document.createElement('span');
+    count.className = 'inbox-dept-count';
+    count.textContent = `${dep.memberCount || 0} member${dep.memberCount === 1 ? '' : 's'}`;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `inbox-dept-join${dep.joined ? ' joined' : ''}`;
+    btn.textContent = dep.joined ? 'Joined' : 'Join';
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (dep.joined) return;
+      try {
+        await chatJoinDepartment(dep.id);
+        toast(`Joined ${dep.name}`, 'success');
+        await refreshChannels();
+        // Department join creates/enters its channel — open it right away.
+        const chan = chatState.channels.find((c) => c.type === 'department' && c.departmentId === dep.id);
+        if (chan) selectChannel(chan.id);
+      } catch (err) {
+        toast(err?.message || 'Could not join department', 'error');
+      }
+    });
+
+    row.append(ico, name, count, btn);
+    list.appendChild(row);
+  }
+}
+
+/* ---------- Open a channel: header + history + live subscription ---------- */
+
+async function selectChannel(id) {
+  if (chatState.selectedChannelId === id) return;
+  closeAiDraft();
+  chatState.selectedChannelId = id;
+  chatUnsubscribe(); // socket follows the open channel
+  renderChannelList();
+  showChannelDetail(id);
+  await loadChannelHistory(id);
+  chatSubscribe(id);
+}
+
+function closeChannelDetail() {
+  chatState.selectedChannelId = null;
+  chatState.channelDetail = null;
+  if (els.inboxDetail) els.inboxDetail.hidden = true;
+  if (els.inboxEmptyDetail) els.inboxEmptyDetail.style.display = '';
+}
+
+/** Header for a channel: # avatar, name, member roster instead of status. */
+async function showChannelDetail(id) {
+  if (!els.inboxDetail) return;
+  const ch = chatState.channels.find((c) => c.id === id);
+  if (!ch) return;
+
+  els.inboxDetail.hidden = false;
+  if (els.inboxEmptyDetail) els.inboxEmptyDetail.style.display = 'none';
+
+  if (els.inboxDetailAvatar) {
+    els.inboxDetailAvatar.textContent = '#';
+    els.inboxDetailAvatar.className = 'inbox-detail-avatar';
+  }
+  if (els.inboxDetailName) els.inboxDetailName.textContent = ch.name;
+  if (els.inboxDetailRole) {
+    els.inboxDetailRole.textContent = ch.type === 'department' ? 'Department channel' : 'Group channel';
+  }
+
+  const leaveBtn = document.getElementById('inboxLeaveChannel');
+  if (leaveBtn) leaveBtn.hidden = false;
+  const statusText = els.inboxDetailStatusText;
+  const statusDot = els.inboxDetailStatusDot;
+  if (statusText) statusText.textContent = 'Connecting…';
+  if (statusDot) statusDot.className = 'status-dot offline';
+
+  // Full detail (member roster) — failures leave the header as-is.
+  try {
+    const data = await chatChannel(id);
+    if (chatState.selectedChannelId !== id) return;
+    chatState.channelDetail = data.channel;
+    if (els.inboxDetailRole && data.channel) {
+      const n = (data.channel.members || []).length;
+      const names = (data.channel.members || []).slice(0, 3).map((m) => m.name).join(', ');
+      els.inboxDetailRole.textContent = `${n} member${n === 1 ? '' : 's'}${names ? ` · ${names}` : ''}`;
+    }
+    if (statusText) statusText.textContent = chatState.wsReady ? 'Live' : 'Polling';
+    if (statusDot) statusDot.className = `status-dot ${chatState.wsReady ? 'online' : 'offline'}`;
+  } catch { /* header stays on the cached row data */ }
+}
+
+/** Full history for one channel, then mark it read. */
+async function loadChannelHistory(id) {
+  if (!authState.user || !id) return;
+  try {
+    const data = await chatMessages(id, { limit: 100 });
+    if (chatState.selectedChannelId !== id) return;
+    mergeChannelMessages(id, data.messages);
+    renderChannelMessages(id);
+    markChannelRead(id);
+  } catch (err) {
+    if (err && (err.status === 401 || err.code === 'unauthenticated')) return;
+    toast('Could not load this channel', 'error');
+  }
+}
+
+/** Merge server messages into the local cache (dedupe by id), oldest first. */
+function mergeChannelMessages(channelId, incoming) {
+  const list = chatState.messages[channelId] || (chatState.messages[channelId] = []);
+  const seen = new Set(list.map((m) => m.id));
+  let added = 0;
+  for (const m of incoming || []) {
+    if (!m || m.id === undefined || seen.has(m.id)) continue;
+    seen.add(m.id);
+    list.push(m);
+    added += 1;
+  }
+  list.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  return added;
+}
+
+/** Bubbles for a channel — sender names shown above each author's run. */
+function renderChannelMessages(id) {
+  if (!els.inboxMessages) return;
+  if (chatState.selectedChannelId !== id) return;
+  const messages = chatState.messages[id] || [];
+  els.inboxMessages.innerHTML = '';
+
+  if (!messages.length) {
+    const empty = document.createElement('div');
+    empty.className = 'inbox-thread-empty';
+    empty.textContent = 'No messages yet. Say hello.';
+    els.inboxMessages.appendChild(empty);
+    return;
+  }
+
+  let lastFrom = null;
+  let lastDate = null;
+  const meUid = authState.user && authState.user.id;
+
+  for (const msg of messages) {
+    const d = new Date(msg.ts || 0);
+    const dateStr = d.toLocaleDateString();
+    if (dateStr !== lastDate) {
+      const div = document.createElement('div');
+      div.className = 'msg-date';
+      div.textContent = dateStr;
+      els.inboxMessages.appendChild(div);
+      lastDate = dateStr;
+      lastFrom = null; // new day → always re-announce the sender
+    }
+
+    const mine = msg.from === meUid;
+    const grouped = lastFrom === msg.from;
+    const el = document.createElement('div');
+    el.className = `msg ${mine ? 'user' : 'agent'}${grouped ? ' msg-grouped' : ''}`;
+
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    el.innerHTML = `
+      ${mine || grouped ? '' : `<div class="msg-sender">${esc(msg.fromName || 'Member')}</div>`}
+      <div class="msg-body"><div class="msg-content">${renderMarkdown(msg.body || '')}</div></div>
+      <span class="msg-time">${timeStr}</span>
+    `;
+    els.inboxMessages.appendChild(el);
+    lastFrom = msg.from;
+  }
+  els.inboxMessages.scrollTop = els.inboxMessages.scrollHeight;
+}
+
+/** Opening a channel (or seeing a message arrive while open) clears it. */
+function markChannelRead(id) {
+  const ch = chatState.channels.find((c) => c.id === id);
+  const hadUnread = ch && Number(ch.unread) > 0;
+  if (ch) {
+    ch.unread = 0;
+    ch.lastReadTs = Date.now();
+  }
+  if (hadUnread) renderChannelBadge();
+  if (authState.user) chatRead(id).catch(() => { /* best-effort */ });
+}
+
+/** Append one live message (WS push or REST echo) and refresh the row. */
+function receiveChannelMessage(message) {
+  if (!message || message.channel === undefined) return;
+  const id = Number(message.channel);
+  const added = mergeChannelMessages(id, [message]);
+  const ch = chatState.channels.find((c) => c.id === id);
+
+  if (chatState.selectedChannelId === id) {
+    if (added) renderChannelMessages(id);
+    markChannelRead(id);
+    if (ch) { ch.lastBody = message.body; ch.lastTs = message.ts; }
+  } else if (added && ch) {
+    // Not looking at it → bump the badge + preview.
+    ch.unread = (Number(ch.unread) || 0) + 1;
+    ch.lastBody = message.body;
+    ch.lastTs = message.ts;
+    if (chatState.mode === 'channels') renderChannelList();
+    renderChannelBadge();
+  }
+}
+
+/* ---------- Send ---------- */
+
+async function sendChannelMessage() {
+  if (!els.inboxInput) return;
+  const text = els.inboxInput.value.trim();
+  const id = chatState.selectedChannelId;
+  if (!text || !id || chatState.busy) return;
+  if (!authState.user) { toast('Sign in to send messages', 'error'); return; }
+
+  els.inboxInput.value = '';
+  els.inboxInput.style.height = 'auto';
+  if (els.inboxSend) els.inboxSend.disabled = true;
+  chatState.busy = true;
+  try {
+    const { message } = await chatSend(id, text);
+    receiveChannelMessage(message);
+    const ch = chatState.channels.find((c) => c.id === id);
+    if (ch) { ch.lastBody = message.body; ch.lastTs = message.ts; }
+    renderChannelList();
+  } catch (err) {
+    if (els.inboxInput) { els.inboxInput.value = text; els.inboxInput.style.height = 'auto'; }
+    if (err && (err.status === 401 || err.code === 'unauthenticated')) {
+      toast('Your session ended — sign in again', 'error');
+    } else {
+      toast(err?.message || 'Message failed to send', 'error');
+    }
+  } finally {
+    chatState.busy = false;
+    if (els.inboxSend) els.inboxSend.disabled = !els.inboxInput.value.trim();
+    autoGrowTextarea();
+  }
+}
+
+/* ---------- Live: WebSocket with polling fallback ---------- */
+
+function chatWsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${location.host}/ws/chat`;
+}
+
+function connectChatSocket() {
+  if (!authState.user) return;
+  if (chatState.ws && (chatState.ws.readyState === WebSocket.OPEN || chatState.ws.readyState === WebSocket.CONNECTING)) return;
+
+  let ws;
+  try { ws = new WebSocket(chatWsUrl()); } catch { scheduleReconnect(); return; }
+  chatState.ws = ws;
+  chatState.wsReady = false;
+
+  ws.addEventListener('open', () => {
+    chatState.wsReady = true;
+    chatState.reconnectTries = 0;
+    // Re-enter the channel we were watching (if any) and refresh the list.
+    if (chatState.mode === 'channels' && chatState.selectedChannelId) chatSubscribe(chatState.selectedChannelId);
+    refreshChannels();
+    updateChannelLiveStatus();
+  });
+
+  ws.addEventListener('message', (ev) => {
+    let frame;
+    try { frame = JSON.parse(ev.data); } catch { return; }
+    if (frame.type === 'message' && frame.message) receiveChannelMessage(frame.message);
+    else if (frame.type === 'error' && frame.code === 'permission' && frame.channel) {
+      // Membership revoked while subscribed — drop out of the channel.
+      if (chatState.selectedChannelId === Number(frame.channel)) {
+        toast(frame.error || 'You left this channel', 'info');
+        closeChannelDetail();
+        renderChannelList();
+      }
+    }
+  });
+
+  const onDown = () => {
+    chatState.wsReady = false;
+    chatState.ws = null;
+    chatState.subscribedId = null;
+    updateChannelLiveStatus();
+    scheduleReconnect();
+  };
+  ws.addEventListener('close', onDown);
+  ws.addEventListener('error', () => { try { ws.close(); } catch { /* already down */ } });
+}
+
+function scheduleReconnect() {
+  if (!authState.user || chatState.reconnectTimer) return;
+  chatState.reconnectTries += 1;
+  const delay = Math.min(30000, 1500 * (2 ** Math.min(chatState.reconnectTries, 4)));
+  chatState.reconnectTimer = setTimeout(() => {
+    chatState.reconnectTimer = null;
+    if (chatState.mode === 'channels') connectChatSocket();
+  }, delay);
+}
+
+function chatSubscribe(id) {
+  chatState.subscribedId = id;
+  if (chatState.ws && chatState.ws.readyState === WebSocket.OPEN) {
+    chatState.ws.send(JSON.stringify({ type: 'subscribe', channel: id }));
+  }
+  // No socket → the polling fallback covers us.
+  startChannelPolling();
+}
+
+function chatUnsubscribe() {
+  if (chatState.ws && chatState.ws.readyState === WebSocket.OPEN && chatState.subscribedId) {
+    try { chatState.ws.send(JSON.stringify({ type: 'unsubscribe', channel: chatState.subscribedId })); } catch { /* closing */ }
+  }
+  chatState.subscribedId = null;
+}
+
+function updateChannelLiveStatus() {
+  if (chatState.mode !== 'channels' || !chatState.selectedChannelId) return;
+  const statusText = els.inboxDetailStatusText;
+  const statusDot = els.inboxDetailStatusDot;
+  if (statusText) statusText.textContent = chatState.wsReady ? 'Live' : 'Polling';
+  if (statusDot) statusDot.className = `status-dot ${chatState.wsReady ? 'online' : 'offline'}`;
+}
+
+/* Polling fallback: keeps previews fresh without WS, and receives messages
+   for the open channel when the socket is down. */
+function startChannelPolling() {
+  if (!authState.user) return;
+  if (!chatState.listTimer) chatState.listTimer = setInterval(pollChannelList, 6000);
+  if (!chatState.msgTimer) chatState.msgTimer = setInterval(pollChannelMessages, 3000);
+}
+
+function stopChannelPolling() {
+  if (chatState.listTimer) { clearInterval(chatState.listTimer); chatState.listTimer = null; }
+  if (chatState.msgTimer) { clearInterval(chatState.msgTimer); chatState.msgTimer = null; }
+}
+
+function pollChannelList() {
+  if (!authState.user || chatState.mode !== 'channels' || chatState.loading) return;
+  refreshChannels();
+}
+
+function pollChannelMessages() {
+  // WS already delivers these — only poll when it is down.
+  if (chatState.wsReady) return;
+  if (!authState.user || chatState.mode !== 'channels') return;
+  const id = chatState.selectedChannelId;
+  if (!id || chatState.busy) return;
+  const list = chatState.messages[id] || [];
+  const since = list.length ? list[list.length - 1].ts : 0;
+  chatMessages(id, { since })
+    .then((data) => {
+      if (chatState.selectedChannelId !== id) return;
+      if (mergeChannelMessages(id, data.messages)) {
+        renderChannelMessages(id);
+        markChannelRead(id);
+      }
+    })
+    .catch(() => { /* transient — next tick retries */ });
+}
+
+/** Tear everything down on sign-out / view leave. */
+function teardownChannels() {
+  chatUnsubscribe();
+  stopChannelPolling();
+  if (chatState.reconnectTimer) { clearTimeout(chatState.reconnectTimer); chatState.reconnectTimer = null; }
+  if (chatState.ws) { try { chatState.ws.close(); } catch { /* already closed */ } chatState.ws = null; }
+  chatState.wsReady = false;
+  chatState.selectedChannelId = null;
+  chatState.messages = {};
+  chatState.channels = [];
+  chatState.departments = [];
+  chatState.mode = 'direct';
+}
+
+/* ---------- Create channel (inline form) ---------- */
+
+function wireChannelComposer() {
+  const newBtn = document.getElementById('inboxNewChannel');
+  const form = document.getElementById('inboxNewChannelForm');
+  const input = document.getElementById('inboxNewChannelInput');
+  const cancel = document.getElementById('inboxNewChannelCancel');
+  if (!newBtn || !form || !input) return;
+
+  newBtn.addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) input.focus();
+  });
+  cancel?.addEventListener('click', () => { form.hidden = true; input.value = ''; });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = input.value.trim();
+    if (!name) return;
+    if (!authState.user) { toast('Sign in to create channels', 'error'); return; }
+    try {
+      const { channel } = await chatCreateChannel(name);
+      input.value = '';
+      form.hidden = true;
+      await refreshChannels();
+      toast(`Channel #${channel.name} created`, 'success');
+      selectChannel(channel.id);
+    } catch (err) {
+      toast(err?.message || 'Could not create channel', 'error');
+    }
+  });
 }
 
 /* ---------- Send inbox message (delivered + persisted server-side) ---------- */
 async function sendInboxMessage() {
+  // Channels mode posts to the open channel instead of a 1:1 peer.
+  if (chatState.mode === 'channels') { await sendChannelMessage(); return; }
   if (!els.inboxInput) return;
   const text = els.inboxInput.value.trim();
   if (!text || inboxState.activeRequest) return;
@@ -2825,7 +3446,7 @@ function applyAuthUser(user) {
   if (authEls.menuAvatar) authEls.menuAvatar.textContent = initial;
   if (authEls.menuName) authEls.menuName.textContent = user ? user.name : 'Not signed in';
   if (authEls.menuEmail) authEls.menuEmail.textContent = user ? user.email : '';
-  if (!user) stopInboxPolling();
+  if (!user) { stopInboxPolling(); teardownChannels(); }
 }
 
 function closeUserMenu() {
@@ -2978,6 +3599,7 @@ authEls.logout?.addEventListener('click', async () => {
   inboxState.users = [];
   inboxState.selectedUserId = null;
   inboxState.meId = null;
+  teardownChannels(); // drop WS + channel cache with it
   aiDraft.peer = null;
   closeAiDraft();
   if (els.inboxDetail) els.inboxDetail.hidden = true;
@@ -3804,6 +4426,32 @@ document.getElementById('copilotNewChat')?.addEventListener('click', () => {
 
 /* ---------- Inbox composer event listeners ---------- */
 els.inboxSend?.addEventListener('click', sendInboxMessage);
+
+/* ---------- Direct / Channels tabs + channel actions ---------- */
+document.getElementById('inboxTabDirect')?.addEventListener('click', () => setInboxMode('direct'));
+document.getElementById('inboxTabChannels')?.addEventListener('click', () => setInboxMode('channels'));
+
+document.getElementById('inboxLeaveChannel')?.addEventListener('click', async () => {
+  const id = chatState.selectedChannelId;
+  if (!id) return;
+  const ch = chatState.channels.find((c) => c.id === id);
+  try {
+    const data = await chatLeaveChannel(id);
+    const wasDeleted = data && data.channel && data.channel.deleted;
+    toast(wasDeleted ? `Deleted #${ch ? ch.name : 'channel'}` : `Left #${ch ? ch.name : 'channel'}`, 'info');
+    closeChannelDetail();
+    await refreshChannels();
+    renderInboxList();
+  } catch (err) {
+    toast(err?.message || 'Could not leave channel', 'error');
+  }
+});
+
+// Inline "New channel" form (shown only while the Channels tab is active).
+wireChannelComposer();
+// Apply the initial (direct) mode visibility once at boot.
+applyInboxModeDom();
+
 els.inboxAi?.addEventListener('click', async (e) => {
   e.preventDefault();
   if (!authState.user) {
@@ -4088,6 +4736,12 @@ els.inboxSearch?.addEventListener('input', () => {
   });
 });
 els.inboxBack?.addEventListener('click', () => {
+  if (chatState.mode === 'channels') {
+    closeChannelDetail();
+    chatUnsubscribe();
+    renderInboxList();
+    return;
+  }
   inboxState.selectedUserId = null;
   closeAiDraft();
   if (els.inboxDetail) els.inboxDetail.hidden = true;

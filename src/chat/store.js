@@ -271,17 +271,41 @@ function joinChannel(dataDir, uid, channelId) {
 
 function leaveChannel(dataDir, uid, channelId) {
   const db = getDb(dataDir);
-  requireChannel(dataDir, channelId);
+  const chan = requireChannel(dataDir, channelId);
   if (!isMember(dataDir, channelId, uid)) throw new ChatError(403, 'permission', 'You are not in this channel.');
-  // The last owner cannot abandon a channel they created.
-  const mine = db.prepare("SELECT role FROM channel_members WHERE channel_id = ? AND uid = ?").get(channelId, uid);
-  const owners = db.prepare("SELECT COUNT(*) AS n FROM channel_members WHERE channel_id = ? AND role = 'owner'")
-    .get(channelId).n;
-  if (mine.role === 'owner' && owners <= 1) {
-    throw new ChatError(409, 'conflict', 'Promote another owner before leaving.');
+  const mine = db.prepare('SELECT role FROM channel_members WHERE channel_id = ? AND uid = ?').get(channelId, uid);
+  const members = db.prepare('SELECT uid, role, joined_at FROM channel_members WHERE channel_id = ? ORDER BY joined_at')
+    .all(channelId);
+
+  // Sole member leaving a group channel = the channel is over → delete it.
+  // Department channels survive (the department still exists and can be
+  // rejoined from the Departments list).
+  if (members.length <= 1) {
+    if (chan.type === 'department') {
+      db.prepare('DELETE FROM channel_members WHERE channel_id = ? AND uid = ?').run(channelId, uid);
+      return { left: true, deleted: false };
+    }
+    db.prepare('DELETE FROM channels WHERE id = ?').run(channelId); // cascades
+    return { left: true, deleted: true };
   }
+
   db.prepare('DELETE FROM channel_members WHERE channel_id = ? AND uid = ?').run(channelId, uid);
-  return { left: true };
+
+  // Owner walking away hands ownership to the longest-standing member —
+  // no "promote someone first" friction, the channel never becomes ownerless.
+  if (mine && mine.role === 'owner') {
+    const owners = db.prepare("SELECT COUNT(*) AS n FROM channel_members WHERE channel_id = ? AND role = 'owner'")
+      .get(channelId).n;
+    if (owners === 0) {
+      const next = db.prepare('SELECT uid FROM channel_members WHERE channel_id = ? ORDER BY joined_at LIMIT 1')
+        .get(channelId);
+      if (next) {
+        db.prepare("UPDATE channel_members SET role = 'owner' WHERE channel_id = ? AND uid = ?")
+          .run(channelId, next.uid);
+      }
+    }
+  }
+  return { left: true, deleted: false };
 }
 
 // ---------- messages ----------
