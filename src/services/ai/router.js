@@ -80,8 +80,8 @@ class HybridProvider {
     try {
       return await this.primary.sendMessage({ 
         ...options, 
-        timeoutMs: 5000,
-        maxTokens: options.maxTokens || 500
+        timeoutMs: options.timeoutMs || 5000,
+        max_tokens: options.max_tokens || options.maxTokens || 500
       });
     } catch (primaryError) {
       // Check if error is retryable (400, 404, 500+) or just timeout/connection
@@ -97,7 +97,10 @@ class HybridProvider {
       }
       
       try {
-        const result = await this.fallback.sendMessage(options);
+        const result = await this.fallback.sendMessage({
+          ...options,
+          max_tokens: options.max_tokens || options.maxTokens || 500,
+        });
         return { ...result, provider: 'fallback', fallback: true, originalError: primaryError.message };
       } catch (fallbackError) {
         // If both fail and it's a 404-like error, provide helpful message
@@ -111,11 +114,18 @@ class HybridProvider {
 
   async streamMessage(options = {}) {
     try {
-      return await this.primary.streamMessage(options);
+      return await this.primary.streamMessage({
+        ...options,
+        timeoutMs: options.timeoutMs || 15000,
+        max_tokens: options.max_tokens || options.maxTokens || 2000,
+      });
     } catch (primaryError) {
       console.warn(`[AI] Primary streaming failed, falling back to ${this.fallback.name}`);
       try {
-        const result = await this.fallback.streamMessage(options);
+        const result = await this.fallback.streamMessage({
+          ...options,
+          max_tokens: options.max_tokens || options.maxTokens || 2000,
+        });
         return { ...result, provider: 'fallback', fallback: true };
       } catch (fallbackError) {
         throw primaryError;
