@@ -14,19 +14,23 @@
  *   GET    /api/chat/channels/:id/messages?since=&limit= → { messages }
  *   POST   /api/chat/channels/:id/messages { body }       → { message }
  *   POST   /api/chat/channels/:id/read  { ts }   → { readTs }
+ *   POST   /api/chat/channels/:id/members { uid }         → { channel }   (invite)
+ *   DELETE /api/chat/channels/:id/members/:uid            → { channel }   (remove)
  *
  *   GET    /api/chat/people                      → { people }      (directory)
  *   GET    /api/chat/unread                      → { unread }      (total badge)
+ *   GET    /api/chat/find?q=                     → { people, channels, departments, answer }
+ *                                                 (keyword scorer + LLM re-rank)
  *
  * Every route requires a signed-in account and is bound to `req.authUid`.
  * Permission tiers come from src/auth/roles.js: employees may read/post in
- * channels they joined, managers+ may create channels, admins+ may create
- * departments.
+ * channels they joined and invite members, admins+ may create departments.
  */
 const express = require('express');
 const { requireUser } = require('../auth/session');
 const { ROLES } = require('../auth/roles');
 const store = require('./store');
+const { reRank } = require('./aiFind');
 
 function createChatRouter(options = {}) {
   const dataDir = options.dataDir;
@@ -38,14 +42,25 @@ function createChatRouter(options = {}) {
     try {
       handler(req, res);
     } catch (err) {
-      const status = (err && err.status) || 500;
-      const code = (err && err.code) || 'failed';
-      if (status >= 500) {
-        console.warn(`[chat] ${req.method} ${req.originalUrl}: ${String((err && err.message) || err).slice(0, 200)}`);
-      }
-      res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
+      sendError(req, res, err);
     }
   };
+
+  // Async twin of `wrap` — used by endpoints that may call the LLM.
+  const wrapAsync = (handler) => (req, res) => {
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => sendError(req, res, err));
+  };
+
+  function sendError(req, res, err) {
+    const status = (err && err.status) || 500;
+    const code = (err && err.code) || 'failed';
+    if (status >= 500) {
+      console.warn(`[chat] ${req.method} ${req.originalUrl}: ${String((err && err.message) || err).slice(0, 200)}`);
+    }
+    res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
+  }
 
   const myRole = (req) => ((req.user && req.user.role) || 'employee');
   const roleLevel = (role) => (ROLES[role] ? ROLES[role].level : 99);
@@ -127,6 +142,33 @@ function createChatRouter(options = {}) {
     res.json(store.markRead(dataDir, req.authUid, idParam(req, 'id'), body.ts));
   }));
 
+  // ---------- membership (member picker) ----------
+
+  router.post('/channels/:id/members', wrap((req, res) => {
+    const id = idParam(req, 'id');
+    const channel = store.addMember(dataDir, req.authUid, id, (req.body || {}).uid);
+    // Tell every open socket the roster changed so headers refresh live.
+    if (typeof options.broadcast === 'function') {
+      options.broadcast(id, { type: 'members', channel: id, action: 'add', by: req.authUid });
+    }
+    res.status(201).json({ channel });
+  }));
+
+  router.delete('/channels/:id/members/:uid', wrap((req, res) => {
+    const id = idParam(req, 'id');
+    const target = String(req.params.uid || '');
+    const result = store.removeMember(dataDir, req.authUid, id, target);
+    if (typeof options.broadcast === 'function') {
+      options.broadcast(id, { type: 'members', channel: id, action: 'remove', uid: target, by: req.authUid });
+    }
+    // Self-leave reuses leaveChannel → { left, deleted } instead of a roster.
+    if (result && result.left) {
+      res.json({ left: true, deleted: !!result.deleted });
+      return;
+    }
+    res.json({ channel: result });
+  }));
+
   // ---------- directory + badges ----------
 
   router.get('/people', wrap((req, res) => {
@@ -135,6 +177,42 @@ function createChatRouter(options = {}) {
 
   router.get('/unread', wrap((req, res) => {
     res.json({ unread: store.unreadCount(dataDir, req.authUid) });
+  }));
+
+  /**
+   * AI-assisted directory search. Keyword hits come back instantly; the LLM
+   * re-ranks them from a closed candidate list (never invents ids). When the
+   * model is unreachable the keyword results are served as-is — `ai: false`
+   * tells the UI to say so.
+   */
+  router.get('/find', wrapAsync(async (req, res) => {
+    const base = store.findInWorkspace(dataDir, req.authUid, req.query.q);
+    const { candidates, ...keyword } = base;
+    const ranked = await reRank(base.query, candidates);
+    if (ranked) {
+      // Order the deterministic lists by the model's picks; keep any keyword
+      // hits it didn't mention (so nothing that matched is silently dropped).
+      const order = (list, ids, key) => {
+        const byId = new Map(list.map((x) => [String(x[key]), x]));
+        const out = [];
+        for (const id of ids) {
+          const hit = byId.get(String(id));
+          if (hit) { out.push(hit); byId.delete(String(id)); }
+        }
+        for (const rest of byId.values()) out.push(rest);
+        return out;
+      };
+      res.json({
+        ...keyword,
+        people: order(keyword.people, ranked.people, 'uid'),
+        channels: order(keyword.channels, ranked.channels, 'id'),
+        departments: order(keyword.departments, ranked.departments, 'id'),
+        answer: ranked.answer,
+        ai: true,
+      });
+      return;
+    }
+    res.json({ ...keyword, answer: '', ai: false });
   }));
 
   return router;

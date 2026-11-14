@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -120,6 +120,12 @@ const chatState = {
   msgTimer: null, // ms-interval fallback when WS is down
   busy: false,
   loading: false,
+  typing: {}, // { [channelId]: { [uid]: { name, ts } } } — live "is typing"
+  readBy: {}, // { [channelId]: { [uid]: ts } } — read watermarks for ✓ ticks
+  membersOpen: false, // member picker panel visible
+  lastTypingSent: 0, // throttle for outgoing typing frames
+  people: null, // cached directory from /api/chat/people (member picker)
+  typingTimer: null, // sweeps expired "is typing" entries
 };
 
 /* Start in the most recent thread (or lazily create one in the Zara view). */
@@ -2716,8 +2722,10 @@ function renderDepartments() {
 async function selectChannel(id) {
   if (chatState.selectedChannelId === id) return;
   closeAiDraft();
+  closeMembersPanel(); // panel belongs to the previous channel
   chatState.selectedChannelId = id;
   chatUnsubscribe(); // socket follows the open channel
+  renderTypingLine(); // re-evaluated against the new channel's bucket
   renderChannelList();
   showChannelDetail(id);
   await loadChannelHistory(id);
@@ -2727,6 +2735,11 @@ async function selectChannel(id) {
 function closeChannelDetail() {
   chatState.selectedChannelId = null;
   chatState.channelDetail = null;
+  closeMembersPanel();
+  const membersBtn = document.getElementById('inboxMembersBtn');
+  if (membersBtn) membersBtn.hidden = true;
+  const typing = document.getElementById('chatTyping');
+  if (typing) typing.hidden = true;
   if (els.inboxDetail) els.inboxDetail.hidden = true;
   if (els.inboxEmptyDetail) els.inboxEmptyDetail.style.display = '';
 }
@@ -2751,6 +2764,8 @@ async function showChannelDetail(id) {
 
   const leaveBtn = document.getElementById('inboxLeaveChannel');
   if (leaveBtn) leaveBtn.hidden = false;
+  const membersBtn = document.getElementById('inboxMembersBtn');
+  if (membersBtn) membersBtn.hidden = false;
   const statusText = els.inboxDetailStatusText;
   const statusDot = els.inboxDetailStatusDot;
   if (statusText) statusText.textContent = 'Connecting…';
@@ -2761,11 +2776,9 @@ async function showChannelDetail(id) {
     const data = await chatChannel(id);
     if (chatState.selectedChannelId !== id) return;
     chatState.channelDetail = data.channel;
-    if (els.inboxDetailRole && data.channel) {
-      const n = (data.channel.members || []).length;
-      const names = (data.channel.members || []).slice(0, 3).map((m) => m.name).join(', ');
-      els.inboxDetailRole.textContent = `${n} member${n === 1 ? '' : 's'}${names ? ` · ${names}` : ''}`;
-    }
+    seedReadFromDetail(data.channel); // ✓ ticks know who already read
+    updateChannelSubtitle();
+    if (chatState.membersOpen) renderMembersPanel();
     if (statusText) statusText.textContent = chatState.wsReady ? 'Live' : 'Polling';
     if (statusDot) statusDot.className = `status-dot ${chatState.wsReady ? 'online' : 'offline'}`;
   } catch { /* header stays on the cached row data */ }
@@ -2834,14 +2847,19 @@ function renderChannelMessages(id) {
 
     const mine = msg.from === meUid;
     const grouped = lastFrom === msg.from;
+    const seen = mine && isMessageSeen(id, msg);
     const el = document.createElement('div');
-    el.className = `msg ${mine ? 'user' : 'agent'}${grouped ? ' msg-grouped' : ''}`;
+    el.className = `msg ${mine ? 'user' : 'agent'}${grouped ? ' msg-grouped' : ''}${seen ? ' seen' : ''}`;
 
     const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // My messages carry ✓ (sent) / ✓✓ Seen once any other member read up to them.
+    const ticks = mine
+      ? `<span class="msg-ticks" title="${seen ? 'Seen' : 'Sent'}">${seen ? '✓✓' : '✓'}</span>${seen ? '<span class="msg-seen">Seen</span>' : ''}`
+      : '';
     el.innerHTML = `
       ${mine || grouped ? '' : `<div class="msg-sender">${esc(msg.fromName || 'Member')}</div>`}
       <div class="msg-body"><div class="msg-content">${renderMarkdown(msg.body || '')}</div></div>
-      <span class="msg-time">${timeStr}</span>
+      <span class="msg-meta"><span class="msg-time">${timeStr}</span>${ticks}</span>
     `;
     els.inboxMessages.appendChild(el);
     lastFrom = msg.from;
@@ -2858,7 +2876,16 @@ function markChannelRead(id) {
     ch.lastReadTs = Date.now();
   }
   if (hadUnread) renderChannelBadge();
-  if (authState.user) chatRead(id).catch(() => { /* best-effort */ });
+  if (!authState.user) return;
+  // Prefer the WS frame — server persists AND broadcasts the watermark so
+  // everyone's ✓ ticks update live. REST covers the not-subscribed gap.
+  if (chatState.wsReady && chatState.subscribedId === id && chatState.ws) {
+    try {
+      chatState.ws.send(JSON.stringify({ type: 'read', channel: id, ts: Date.now() }));
+    } catch { chatRead(id).catch(() => { /* best-effort */ }); }
+  } else {
+    chatRead(id).catch(() => { /* best-effort */ });
+  }
 }
 
 /** Append one live message (WS push or REST echo) and refresh the row. */
@@ -2897,6 +2924,7 @@ async function sendChannelMessage() {
   chatState.busy = true;
   try {
     const { message } = await chatSend(id, text);
+    sendTyping(false); // I stopped composing — clear my "typing" flag
     receiveChannelMessage(message);
     const ch = chatState.channels.find((c) => c.id === id);
     if (ch) { ch.lastBody = message.body; ch.lastTs = message.ts; }
@@ -2944,6 +2972,9 @@ function connectChatSocket() {
     let frame;
     try { frame = JSON.parse(ev.data); } catch { return; }
     if (frame.type === 'message' && frame.message) receiveChannelMessage(frame.message);
+    else if (frame.type === 'typing') receiveTypingFrame(frame);
+    else if (frame.type === 'read') receiveReadFrame(frame);
+    else if (frame.type === 'members') receiveMembersFrame(frame);
     else if (frame.type === 'error' && frame.code === 'permission' && frame.channel) {
       // Membership revoked while subscribed — drop out of the channel.
       if (chatState.selectedChannelId === Number(frame.channel)) {
@@ -2980,6 +3011,12 @@ function chatSubscribe(id) {
   if (chatState.ws && chatState.ws.readyState === WebSocket.OPEN) {
     chatState.ws.send(JSON.stringify({ type: 'subscribe', channel: id }));
   }
+  // Sweep expired "is typing" entries so the line clears itself.
+  if (!chatState.typingTimer) {
+    chatState.typingTimer = setInterval(() => {
+      if (chatState.selectedChannelId) renderTypingLine();
+    }, 1500);
+  }
   // No socket → the polling fallback covers us.
   startChannelPolling();
 }
@@ -2989,6 +3026,9 @@ function chatUnsubscribe() {
     try { chatState.ws.send(JSON.stringify({ type: 'unsubscribe', channel: chatState.subscribedId })); } catch { /* closing */ }
   }
   chatState.subscribedId = null;
+  if (chatState.typingTimer) { clearInterval(chatState.typingTimer); chatState.typingTimer = null; }
+  const typing = document.getElementById('chatTyping');
+  if (typing) typing.hidden = true;
 }
 
 function updateChannelLiveStatus() {
@@ -3042,12 +3082,374 @@ function teardownChannels() {
   stopChannelPolling();
   if (chatState.reconnectTimer) { clearTimeout(chatState.reconnectTimer); chatState.reconnectTimer = null; }
   if (chatState.ws) { try { chatState.ws.close(); } catch { /* already closed */ } chatState.ws = null; }
+  closeMembersPanel();
   chatState.wsReady = false;
   chatState.selectedChannelId = null;
   chatState.messages = {};
   chatState.channels = [];
   chatState.departments = [];
+  chatState.channelDetail = null;
+  chatState.typing = {};
+  chatState.readBy = {};
+  chatState.people = null;
   chatState.mode = 'direct';
+}
+
+/* ==========================================================================
+   PHASE 3 — member picker + AI find + typing + read receipts
+   ========================================================================== */
+
+/* ---------- Typing indicators ---------- */
+
+/** Throttled heartbeat so others see "X is typing…" while I compose. */
+function sendTyping(active) {
+  if (!chatState.wsReady || !chatState.subscribedId || !authState.user) return;
+  const now = Date.now();
+  if (active) {
+    if (now - chatState.lastTypingSent < 1500) return; // at most every 1.5s
+    chatState.lastTypingSent = now;
+  }
+  try {
+    chatState.ws.send(JSON.stringify({ type: 'typing', channel: chatState.subscribedId, active }));
+  } catch { /* socket died mid-send — next keystroke retries */ }
+}
+
+function receiveTypingFrame(frame) {
+  const id = Number(frame.channel);
+  if (!id) return;
+  const bucket = chatState.typing[id] || (chatState.typing[id] = {});
+  if (frame.active === false) delete bucket[frame.uid];
+  else bucket[frame.uid] = { name: frame.name || 'Someone', ts: Date.now() };
+  if (chatState.selectedChannelId === id) renderTypingLine();
+}
+
+/** Show the typing line for the open channel; sweeps entries older than 4.5s. */
+function renderTypingLine() {
+  const el = document.getElementById('chatTyping');
+  if (!el) return;
+  const id = chatState.selectedChannelId;
+  const bucket = (id && chatState.typing[id]) || {};
+  const now = Date.now();
+  const names = [];
+  for (const uid of Object.keys(bucket)) {
+    if (now - bucket[uid].ts > 4500) { delete bucket[uid]; continue; }
+    names.push(bucket[uid].name);
+  }
+  if (!names.length) { el.hidden = true; return; }
+  const label = names.length === 1
+    ? `${names[0]} is typing`
+    : names.length === 2
+      ? `${names[0]} and ${names[1]} are typing`
+      : `${names.length} people are typing`;
+  el.innerHTML = `<span class="chat-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>${esc(label)}</span>`;
+  el.hidden = false;
+}
+
+/* ---------- Read receipts (✓ ticks on my messages) ---------- */
+
+/** Adopt the watermarks already stored on the roster when a channel opens. */
+function seedReadFromDetail(channel) {
+  if (!channel) return;
+  const map = chatState.readBy[channel.id] || (chatState.readBy[channel.id] = {});
+  for (const m of channel.members || []) {
+    if (m.lastReadTs) map[m.uid] = Math.max(Number(map[m.uid]) || 0, Number(m.lastReadTs) || 0);
+  }
+}
+
+function receiveReadFrame(frame) {
+  const id = Number(frame.channel);
+  if (!id || !frame.uid) return;
+  const map = chatState.readBy[id] || (chatState.readBy[id] = {});
+  const ts = Number(frame.ts) || Date.now();
+  if ((Number(map[frame.uid]) || 0) >= ts) return;
+  map[frame.uid] = ts;
+  if (chatState.selectedChannelId === id) renderChannelMessages(id);
+}
+
+/** Has ANY other member read this message yet? */
+function isMessageSeen(channelId, msg) {
+  const map = chatState.readBy[channelId];
+  if (!map) return false;
+  const meUid = authState.user && authState.user.id;
+  for (const uid of Object.keys(map)) {
+    if (uid === meUid) continue;
+    if (Number(map[uid]) >= Number(msg.ts)) return true;
+  }
+  return false;
+}
+
+/* ---------- Member picker + AI find ---------- */
+
+async function ensureChatPeople() {
+  if (chatState.people && chatState.people.length) return chatState.people;
+  try {
+    const data = await chatPeople();
+    chatState.people = Array.isArray(data.people) ? data.people : [];
+  } catch { chatState.people = chatState.people || []; }
+  return chatState.people;
+}
+
+function updateChannelSubtitle() {
+  const det = chatState.channelDetail;
+  if (!det || !els.inboxDetailRole) return;
+  const n = (det.members || []).length;
+  const names = (det.members || []).slice(0, 3).map((m) => m.name).join(', ');
+  els.inboxDetailRole.textContent = `${n} member${n === 1 ? '' : 's'}${names ? ` · ${names}` : ''}`;
+}
+
+function openMembersPanel() {
+  const panel = document.getElementById('chatMembers');
+  if (!panel || !chatState.selectedChannelId) return;
+  chatState.membersOpen = true;
+  panel.hidden = false;
+  const input = document.getElementById('chatMemberSearch');
+  if (input) input.value = '';
+  hideFindAnswer();
+  renderMembersPanel();
+  renderMemberResults();
+  input?.focus();
+}
+
+function closeMembersPanel() {
+  chatState.membersOpen = false;
+  const panel = document.getElementById('chatMembers');
+  if (panel) panel.hidden = true;
+}
+
+function showFindAnswer(text) {
+  const el = document.getElementById('chatFindAnswer');
+  if (!el) return;
+  el.innerHTML = text;
+  el.hidden = false;
+}
+function hideFindAnswer() {
+  const el = document.getElementById('chatFindAnswer');
+  if (el) { el.hidden = true; el.innerHTML = ''; }
+}
+
+/** Roster inside the panel: name, role badge, remove/leave. */
+function renderMembersPanel() {
+  const list = document.getElementById('chatMembersList');
+  const count = document.getElementById('chatMembersCount');
+  const det = chatState.channelDetail;
+  if (!list || !det) return;
+  const members = det.members || [];
+  if (count) count.textContent = String(members.length);
+  list.innerHTML = '';
+
+  const meUid = authState.user && authState.user.id;
+  const iAmOwner = det.myRole === 'owner';
+
+  for (const m of members) {
+    const isSelf = m.uid === meUid;
+    const row = document.createElement('div');
+    row.className = 'chat-person-row';
+
+    const ava = document.createElement('span');
+    ava.className = 'chat-person-ava';
+    ava.textContent = String(m.name || '?').trim().charAt(0).toUpperCase() || '?';
+
+    const copy = document.createElement('span');
+    copy.className = 'chat-person-copy';
+    const name = document.createElement('span');
+    name.className = `chat-person-name${m.uid === meUid ? ' chat-member-you' : ''}`;
+    name.textContent = m.uid === meUid ? `${m.name} (you)` : m.name;
+    const role = document.createElement('span');
+    role.className = 'chat-person-role';
+    role.textContent = m.role === 'owner' ? (isSelf ? 'You' : 'Owner') : 'Member';
+    copy.append(name, role);
+
+    row.append(ava, copy);
+
+    if (m.role === 'owner') {
+      const badge = document.createElement('span');
+      badge.className = 'chat-member-owner';
+      badge.textContent = 'Owner';
+      row.appendChild(badge);
+    }
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-member-remove';
+    btn.textContent = isSelf ? 'Leave' : 'Remove';
+    // Only owners may remove others; anyone may remove themselves.
+    if (!isSelf && !iAmOwner) {
+      btn.disabled = true;
+      btn.title = 'Only channel owners can remove people';
+    }
+    btn.addEventListener('click', () => removeMemberFromChannel(m));
+    row.appendChild(btn);
+
+    list.appendChild(row);
+  }
+}
+
+async function removeMemberFromChannel(m) {
+  const id = chatState.selectedChannelId;
+  if (!id) return;
+  const meUid = authState.user && authState.user.id;
+  const isSelf = m.uid === meUid;
+  try {
+    const data = await chatRemoveMember(id, m.uid);
+    if (data && data.left) {
+      // I left (possibly deleting the channel) — close everything.
+      closeMembersPanel();
+      closeChannelDetail();
+      toast(data.deleted ? 'Channel deleted' : 'Left channel', 'info');
+      await refreshChannels();
+      renderInboxList();
+      return;
+    }
+    if (data && data.channel) {
+      chatState.channelDetail = data.channel;
+      seedReadFromDetail(data.channel);
+      updateChannelSubtitle();
+      renderMembersPanel();
+      renderMemberResults();
+      if (isSelf) toast('Left the channel', 'info');
+      else toast(`Removed ${m.name}`, 'success');
+    }
+  } catch (err) {
+    toast(err?.message || 'Could not update members', 'error');
+  }
+}
+
+/**
+ * People-to-invite rows. Without a find payload this filters the directory
+ * by the search box; with one it renders the AI/keyword results instead.
+ */
+async function renderMemberResults(query = '', findData = null) {
+  const box = document.getElementById('chatMembersResults');
+  if (!box) return;
+  const det = chatState.channelDetail;
+  if (!det) return;
+  const memberIds = new Set((det.members || []).map((m) => m.uid));
+  const q = String(query || '').trim().toLowerCase();
+
+  let people;
+  if (findData) {
+    people = Array.isArray(findData.people) ? findData.people : [];
+  } else {
+    const all = await ensureChatPeople();
+    people = all
+      .filter((p) => !memberIds.has(p.uid))
+      .filter((p) => !q || `${p.name} ${p.role}`.toLowerCase().includes(q))
+      .slice(0, 8);
+  }
+
+  box.innerHTML = '';
+  if (!people.length) {
+    const none = document.createElement('div');
+    none.className = 'chat-find-empty';
+    none.textContent = findData
+      ? 'No matching people found.'
+      : q
+        ? 'No one matches that search.'
+        : 'Everyone in the workspace is already here — or type a name above.';
+    box.appendChild(none);
+    return;
+  }
+
+  for (const p of people) {
+    const row = document.createElement('div');
+    row.className = 'chat-person-row';
+
+    const ava = document.createElement('span');
+    ava.className = 'chat-person-ava';
+    ava.textContent = String(p.name || '?').trim().charAt(0).toUpperCase() || '?';
+
+    const copy = document.createElement('span');
+    copy.className = 'chat-person-copy';
+    const name = document.createElement('span');
+    name.className = 'chat-person-name';
+    name.textContent = p.name || 'Member';
+    const role = document.createElement('span');
+    role.className = 'chat-person-role';
+    role.textContent = p.role || 'Member';
+    copy.append(name, role);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const inChannel = memberIds.has(p.uid);
+    btn.className = `chat-person-add${inChannel ? ' in' : ''}`;
+    btn.textContent = inChannel ? 'In' : 'Add';
+    if (inChannel) btn.disabled = true;
+    btn.addEventListener('click', () => addMemberToChannel(p, btn));
+
+    row.append(ava, copy, btn);
+    box.appendChild(row);
+  }
+}
+
+async function addMemberToChannel(p, btn) {
+  const id = chatState.selectedChannelId;
+  if (!id || !p || !p.uid) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const data = await chatAddMember(id, p.uid);
+    if (data && data.channel) {
+      chatState.channelDetail = data.channel;
+      seedReadFromDetail(data.channel);
+      updateChannelSubtitle();
+      renderMembersPanel();
+      renderMemberResults(document.getElementById('chatMemberSearch')?.value || '');
+      toast(`Added ${p.name}`, 'success');
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Add'; }
+    toast(err?.message || 'Could not add member', 'error');
+  }
+}
+
+/** AI-assisted pick: server keyword-scores, LLM re-ranks from a whitelist. */
+async function runAiFind() {
+  const input = document.getElementById('chatMemberSearch');
+  const btn = document.getElementById('chatMemberAiFind');
+  const q = (input && input.value.trim()) || '';
+  if (!q) { toast('Type a query — e.g. "who handles billing?"', 'info'); input?.focus(); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  showFindAnswer('Searching the workspace…');
+  try {
+    const data = await chatFind(q);
+    if (data.answer) {
+      showFindAnswer(`${data.ai ? '✨' : '🔎'} ${esc(data.answer)}${data.ai ? '' : ' <b>(keyword match — AI offline)</b>'}`);
+    } else {
+      showFindAnswer('🔎 Keyword matches below.');
+    }
+    await renderMemberResults(q, data);
+  } catch (err) {
+    hideFindAnswer();
+    toast(err?.message || 'Search failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✨ AI'; }
+  }
+}
+
+/** Someone joined/left while I'm looking at the channel → refresh roster. */
+async function receiveMembersFrame(frame) {
+  const id = Number(frame.channel);
+  if (!id) return;
+  const meUid = authState.user && authState.user.id;
+  if (frame.action === 'remove' && frame.uid === meUid) {
+    closeMembersPanel();
+    closeChannelDetail();
+    toast('You were removed from this channel', 'info');
+    await refreshChannels();
+    renderInboxList();
+    return;
+  }
+  if (chatState.selectedChannelId !== id) return;
+  try {
+    const data = await chatChannel(id);
+    if (chatState.selectedChannelId !== id) return;
+    chatState.channelDetail = data.channel;
+    seedReadFromDetail(data.channel);
+    updateChannelSubtitle();
+    if (chatState.membersOpen) {
+      renderMembersPanel();
+      renderMemberResults(document.getElementById('chatMemberSearch')?.value || '');
+    }
+  } catch { /* next refresh will catch it */ }
 }
 
 /* ---------- Create channel (inline form) ---------- */
@@ -4449,6 +4851,29 @@ document.getElementById('inboxLeaveChannel')?.addEventListener('click', async ()
 
 // Inline "New channel" form (shown only while the Channels tab is active).
 wireChannelComposer();
+
+// ---------- Member picker panel (roster + invite + AI find) ----------
+document.getElementById('inboxMembersBtn')?.addEventListener('click', () => {
+  if (chatState.membersOpen) closeMembersPanel();
+  else openMembersPanel();
+});
+document.getElementById('chatMembersClose')?.addEventListener('click', closeMembersPanel);
+
+let memberSearchTimer = null;
+document.getElementById('chatMemberSearch')?.addEventListener('input', (e) => {
+  // Local filter as you type (debounced); Enter / ✨ AI runs the smart search.
+  if (memberSearchTimer) clearTimeout(memberSearchTimer);
+  const q = e.target.value.trim();
+  memberSearchTimer = setTimeout(() => {
+    hideFindAnswer();
+    renderMemberResults(q);
+  }, 160);
+});
+document.getElementById('chatMemberSearch')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); runAiFind(); }
+});
+document.getElementById('chatMemberAiFind')?.addEventListener('click', runAiFind);
+
 // Apply the initial (direct) mode visibility once at boot.
 applyInboxModeDom();
 
@@ -4474,7 +4899,11 @@ els.inboxInput?.addEventListener('keydown', (e) => {
   }
   autoGrowTextarea();
 });
-els.inboxInput?.addEventListener('input', autoGrowTextarea);
+els.inboxInput?.addEventListener('input', () => {
+  autoGrowTextarea();
+  // Live "is typing…" heartbeat (throttled inside) while composing in a channel.
+  if (chatState.mode === 'channels' && chatState.selectedChannelId) sendTyping(true);
+});
 
 /* ==========================================================================
    SETTINGS OVERLAY (ported from app.js) ================================== */

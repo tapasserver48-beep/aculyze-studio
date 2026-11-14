@@ -786,6 +786,24 @@ export async function chatPeople() {
   return authRequest('/api/chat/people');
 }
 
+/** Invite someone into a channel. ? { channel }. */
+export async function chatAddMember(id, uid) {
+  return authRequest(`/api/chat/channels/${id}/members`, { method: 'POST', body: { uid } });
+}
+
+/** Remove someone (owner) — or yourself (leave). ? { channel } | { left, deleted }. */
+export async function chatRemoveMember(id, uid) {
+  return authRequest(`/api/chat/channels/${id}/members/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+}
+
+/**
+ * AI-assisted directory search: "who handles billing?" → people/channels.
+ * ? { query, people, channels, departments, answer, ai }
+ */
+export async function chatFind(q) {
+  return authRequest(`/api/chat/find?q=${encodeURIComponent(q)}`);
+}
+
 /** Total unread across my channels. ? { unread }. */
 export async function chatUnread() {
   return authRequest('/api/chat/unread');

@@ -8,11 +8,15 @@
  * Client → server:
  *   { type: 'subscribe',   channel: <id> }   watch a channel for new messages
  *   { type: 'unsubscribe', channel: <id> }
+ *   { type: 'typing', channel, active? }     keystroke heartbeat (throttled by client)
+ *   { type: 'read',   channel, ts? }         I read up to ts → persist + broadcast
  *   { type: 'ping' }                          keepalive
  *
  * Server → client:
  *   { type: 'ready', uid }                    handshake done
  *   { type: 'message', message }              new message in a watched channel
+ *   { type: 'typing', channel, uid, name, active }   someone is/typing (sender excluded)
+ *   { type: 'read',   channel, uid, name, ts }       someone read up to ts
  *   { type: 'error', error, code }            bad frame / not a member
  *
  * Membership is re-checked on every broadcast, so leaving a channel stops
@@ -20,7 +24,7 @@
  */
 const { WebSocketServer } = require('ws');
 const { verifySession, SESSION_COOKIE } = require('../auth/session');
-const { isMember } = require('./store');
+const { isMember, markRead, nameLookup } = require('./store');
 
 function parseCookieHeader(header) {
   const out = {};
@@ -59,6 +63,7 @@ function attachChatRealtime(httpServer, { dataDir }) {
     const subs = new Set();
     socket.isAlive = true;
     socket.on('pong', () => { socket.isAlive = true; });
+    const displayName = nameLookup(dataDir)(uid);
 
     const send = (payload) => {
       if (socket.readyState === 1) socket.send(JSON.stringify(payload));
@@ -89,6 +94,31 @@ function attachChatRealtime(httpServer, { dataDir }) {
 
       if (type === 'ping') {
         send({ type: 'pong', ts: Date.now() });
+        return;
+      }
+
+      if (type === 'typing') {
+        // Only while subscribed AND still a member; never echo to the sender.
+        if (!subs.has(channelId) || !isMember(dataDir, channelId, uid)) return;
+        broadcast(channelId, {
+          type: 'typing',
+          channel: channelId,
+          uid,
+          name: displayName,
+          active: frame.active !== false,
+        }, socket);
+        return;
+      }
+
+      if (type === 'read') {
+        if (!subs.has(channelId) || !isMember(dataDir, channelId, uid)) return;
+        const ts = Number(frame.ts) || Date.now();
+        try {
+          markRead(dataDir, uid, channelId, ts);
+        } catch { /* channel vanished mid-flight */ return; }
+        // Everyone (including the reader) learns the new read watermark —
+        // the sender turns it into a ✓ seen tick.
+        broadcast(channelId, { type: 'read', channel: channelId, uid, name: displayName, ts });
         return;
       }
 
@@ -136,12 +166,13 @@ function attachChatRealtime(httpServer, { dataDir }) {
   }, 30000);
   wss.on('close', () => clearInterval(heartbeat));
 
-  /** Deliver a payload to every live subscriber of a channel. */
-  function broadcast(channelId, payload) {
+  /** Deliver a payload to every live subscriber of a channel (minus `exclude`). */
+  function broadcast(channelId, payload, exclude = null) {
     const room = rooms.get(Number(channelId));
     if (!room || room.size === 0) return;
     const data = JSON.stringify(payload);
     for (const socket of room) {
+      if (socket === exclude) continue;
       if (socket.readyState === 1) {
         try { socket.send(data); } catch { /* socket died mid-send */ }
       }

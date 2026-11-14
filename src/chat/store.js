@@ -226,7 +226,7 @@ function getChannel(dataDir, uid, channelId) {
     .get(channelId, uid);
   const names = nameLookup(dataDir);
   const members = db.prepare(`
-    SELECT cm.uid, cm.role, cm.joined_at FROM channel_members cm
+    SELECT cm.uid, cm.role, cm.joined_at, cm.last_read_ts FROM channel_members cm
     WHERE cm.channel_id = ? ORDER BY cm.joined_at
   `).all(channelId);
   const counts = db.prepare('SELECT COUNT(*) AS n FROM messages WHERE channel_id = ?').get(channelId);
@@ -242,7 +242,13 @@ function getChannel(dataDir, uid, channelId) {
     createdAt: row.created_at,
     createdBy: row.created_by,
     createdByName: names(row.created_by),
-    members: members.map((m) => ({ uid: m.uid, name: names(m.uid), role: m.role, joinedAt: m.joined_at })),
+    members: members.map((m) => ({
+      uid: m.uid,
+      name: names(m.uid),
+      role: m.role,
+      joinedAt: m.joined_at,
+      lastReadTs: m.last_read_ts,
+    })),
   };
 }
 
@@ -306,6 +312,112 @@ function leaveChannel(dataDir, uid, channelId) {
     }
   }
   return { left: true, deleted: false };
+}
+
+// ---------- membership (member picker) ----------
+
+/**
+ * Add a registered account to a channel. Any current member may invite
+ * (Slack-style); the invitee must be a signed-in account of this workspace.
+ * Idempotent — adding an existing member is a no-op.
+ */
+function addMember(dataDir, actorUid, channelId, targetUid) {
+  const db = getDb(dataDir);
+  requireChannel(dataDir, channelId);
+  if (!isMember(dataDir, channelId, actorUid)) {
+    throw new ChatError(403, 'permission', 'Join this channel before inviting people.');
+  }
+  const target = String(targetUid || '');
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(target)) {
+    throw new ChatError(400, 'validation', 'Unknown user.');
+  }
+  // Must be a real account of this workspace (not an arbitrary id).
+  const known = readDoc(dataDir).users.some((u) => u.id === target);
+  if (!known) throw new ChatError(404, 'not_found', 'User not found.');
+  if (target === actorUid) throw new ChatError(400, 'validation', 'You are already in this channel.');
+  db.prepare('INSERT OR IGNORE INTO channel_members (channel_id, uid, role, joined_at) VALUES (?, ?, ?, ?)')
+    .run(channelId, target, 'member', Date.now());
+  return getChannel(dataDir, actorUid, channelId);
+}
+
+/**
+ * Remove someone from a channel. Owners can remove anyone; members can only
+ * remove themselves (leave). The last owner cannot be removed.
+ */
+function removeMember(dataDir, actorUid, channelId, targetUid) {
+  const db = getDb(dataDir);
+  requireChannel(dataDir, channelId);
+  const mine = db.prepare('SELECT role FROM channel_members WHERE channel_id = ? AND uid = ?')
+    .get(channelId, actorUid);
+  if (!mine) throw new ChatError(403, 'permission', 'You are not in this channel.');
+  const target = String(targetUid || '');
+  if (target === actorUid) return leaveChannel(dataDir, actorUid, channelId); // self-leave reuses the rules
+
+  if (mine.role !== 'owner') {
+    throw new ChatError(403, 'permission', 'Only channel owners can remove people.');
+  }
+  const theirs = db.prepare('SELECT role FROM channel_members WHERE channel_id = ? AND uid = ?')
+    .get(channelId, target);
+  if (!theirs) throw new ChatError(404, 'not_found', 'That person is not in this channel.');
+  if (theirs.role === 'owner') {
+    const owners = db.prepare("SELECT COUNT(*) AS n FROM channel_members WHERE channel_id = ? AND role = 'owner'")
+      .get(channelId).n;
+    if (owners <= 1) throw new ChatError(409, 'conflict', 'This is the last owner of the channel.');
+  }
+  db.prepare('DELETE FROM channel_members WHERE channel_id = ? AND uid = ?').run(channelId, target);
+  return getChannel(dataDir, actorUid, channelId);
+}
+
+/**
+ * AI-assisted directory search: "who handles billing?" → the right people and
+ * channels. Deterministic keyword scoring first (works with no LLM); the LLM
+ * re-ranks only when configured and reachable, and never invents ids — every
+ * returned id must come from the candidate list we hand it.
+ */
+function findInWorkspace(dataDir, uid, rawQuery) {
+  const query = String(rawQuery || '').trim().slice(0, 300);
+  if (!query) throw new ChatError(400, 'validation', 'Ask something first.');
+
+  const people = listPeople(dataDir, uid);
+  const channels = listChannels(dataDir, uid);
+  const depts = listDepartments(dataDir, uid);
+
+  // Token overlap score against name + role (people) / name (channels).
+  const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  const score = (hay, words) => {
+    const h = String(hay || '').toLowerCase();
+    let n = 0;
+    for (const t of tokens) if (h.includes(t)) n += 1;
+    return n + (words || 0);
+  };
+  const peopleHits = people
+    .map((p) => ({ ...p, _s: score(`${p.name} ${p.role}`) }))
+    .filter((p) => p._s > 0)
+    .sort((a, b) => b._s - a._s)
+    .slice(0, 5);
+  const channelHits = channels
+    .map((c) => ({ ...c, _s: score(c.name) }))
+    .filter((c) => c._s > 0)
+    .sort((a, b) => b._s - a._s)
+    .slice(0, 5);
+  const deptHits = depts
+    .map((d) => ({ ...d, _s: score(d.name) }))
+    .filter((d) => d._s > 0)
+    .sort((a, b) => b._s - a._s)
+    .slice(0, 3);
+
+  return {
+    query,
+    people: peopleHits.map(({ _s, ...p }) => p),
+    channels: channelHits.map(({ _s, ...c }) => c),
+    departments: deptHits.map(({ _s, ...d }) => d),
+    // Candidates the LLM may re-rank from (ids it must not invent).
+    candidates: {
+      people: people.map((p) => ({ uid: p.uid, name: p.name, role: p.role })),
+      channels: channels.map((c) => ({ id: c.id, name: c.name })),
+      departments: depts.map((d) => ({ id: d.id, name: d.name })),
+    },
+  };
 }
 
 // ---------- messages ----------
@@ -405,4 +517,8 @@ module.exports = {
   markRead,
   unreadCount,
   listPeople,
+  addMember,
+  removeMember,
+  findInWorkspace,
+  nameLookup,
 };
