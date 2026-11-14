@@ -25,6 +25,8 @@ const { createOrchestratorRouter } = require('./src/orchestrator/routes');
 const { createAuthRouter } = require('./src/auth/routes');
 const { attachAuth } = require('./src/auth/session');
 const { createInboxRouter } = require('./src/inbox/routes');
+const { createChatRouter } = require('./src/chat/routes');
+const { attachChatRealtime } = require('./src/chat/realtime');
 
 // Dual-stack hosts (e.g. Render) can hand an outbound fetch a broken IPv6
 // route first, which surfaces as a bare "fetch failed". Prefer IPv4; Node's
@@ -1134,8 +1136,12 @@ app.get('/api/sales/records', async (req, res) => {
 // ============ AUTH + INBOX (local login, human-to-human messaging) ============
 // /api/auth → register/login/logout/me + signed httpOnly session cookie.
 // /api/inbox → threads/messages/read, all bound to the signed-in account.
+// /api/chat  → departments/channels/messages (SQLite) + /ws/chat push layer.
 app.use('/api/auth', createAuthRouter({ dataDir: DATA_DIR }));
 app.use('/api/inbox', createInboxRouter({ dataDir: DATA_DIR }));
+// The broadcast hook is filled in once the HTTP server exists (see below).
+let chatBroadcast = null;
+app.use('/api/chat', createChatRouter({ dataDir: DATA_DIR, broadcast: (...a) => chatBroadcast && chatBroadcast(...a) }));
 
 // ============ APPS & INTEGRATIONS (OAuth / API-key app connections) ============
 // UI → backend → IntegrationManager → provider adapter → external API.
@@ -1168,7 +1174,9 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
+  // WebSocket layer for the group chat (authenticated by the session cookie).
+  chatBroadcast = attachChatRealtime(server, { dataDir: DATA_DIR }).broadcast;
   console.log(`Aculyze Studio server running on http://localhost:${PORT}`);
   console.log(`  Provider : ${router.providerName}`);
   if (router.providerName === 'lmstudio') console.log(`  LM Studio: ${router.lmstudioBaseUrl}`);
@@ -1179,6 +1187,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     if (searchProvider.shutdown) await searchProvider.shutdown();
     await observability.shutdown();
+    try { require('./src/chat/db').closeDb(); } catch { /* not open */ }
     process.exit(0);
   });
 }
