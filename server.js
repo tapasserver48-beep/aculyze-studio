@@ -175,6 +175,15 @@ function sanitizeMessagesImpl(messages) {
   return out;
 }
 
+/** Plain text of a message content — a string or an OpenAI parts array. */
+function contentText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.filter((p) => p && p.type === 'text').map((p) => String(p.text || '')).join('\n');
+  }
+  return '';
+}
+
 /** Safe public config — never leak secrets. */
 app.get('/api/config', (req, res) => {
   res.json({
@@ -668,6 +677,29 @@ app.post('/api/sales/connect', async (req, res) => {
  *   2. the LMS_API_KEY / ACULYZE_LMS_BASE_URL env vars as a fallback
  * The key is never included in any response.
  */
+/**
+ * A saved LMS base URL must never point back at THIS app.
+ *
+ * If it does, `/api/sales/*` asks itself for the same data, the request
+ * recurses until Render's proxy gives up and answers **502 Bad Gateway** —
+ * which is exactly the failure the Render audit was chasing (the browser
+ * then shows requests to aculyze-studio.onrender.com instead of
+ * lm.aculyze.in). Any base URL on our own host/port is treated as
+ * "not configured" so the env/default LMS URL is used instead.
+ */
+function isSelfBaseUrl(baseUrl, req) {
+  let u;
+  try { u = new URL(String(baseUrl)); } catch { return false; }
+  const host = String((req && req.headers && req.headers.host) || '').toLowerCase();
+  if (host && u.host.toLowerCase() === host) return true;
+  const localHosts = ['localhost', '127.0.0.1', '[::1]', '::1'];
+  if (localHosts.includes(u.hostname.toLowerCase())) {
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+    if (port === PORT) return true;
+  }
+  return false;
+}
+
 function lmsCredentials(req, res) {
   let key = '';
   let baseUrl = '';
@@ -679,6 +711,10 @@ function lmsCredentials(req, res) {
       baseUrl = conn.baseUrl || '';
     }
   } catch { /* fall through to env */ }
+  if (baseUrl && isSelfBaseUrl(baseUrl, req)) {
+    console.warn('[lms] saved base URL points at this app — ignoring it, using the env/default LMS URL');
+    baseUrl = '';
+  }
   if (!key) key = String(process.env.LMS_API_KEY || '').trim();
   if (!baseUrl) baseUrl = String(process.env.ACULYZE_LMS_BASE_URL || '').trim() || lms.LMS_DEFAULT_BASE_URL;
   return { key, baseUrl };
@@ -790,9 +826,15 @@ app.post('/api/sales/query', async (req, res) => {
  * Never exposes the API key. Completely separate from Zara.
  */
 app.post('/api/sales/chat', async (req, res) => {
-  const { messages, model, temperature, max_tokens, stream } = req.body || {};
-  const userMsg = messages && Array.isArray(messages) ? messages[messages.length - 1] : null;
-  const question = userMsg && userMsg.role === 'user' ? String(userMsg.content || '') : '';
+  const { model, temperature, max_tokens, stream } = req.body || {};
+  // Same hardening as /api/chat: content must be a plain string or validated
+  // OpenAI parts. Previously the raw body was forwarded to the model untouched.
+  const messages = sanitizeMessages(req.body?.messages);
+  if (!messages || messages.length === 0) {
+    return res.status(400).json({ error: 'Messages are required.' });
+  }
+  const userMsg = messages[messages.length - 1];
+  const question = userMsg && userMsg.role === 'user' ? contentText(userMsg.content) : '';
   if (!question.trim()) {
     return res.status(400).json({ error: 'User message is required.' });
   }
@@ -1169,33 +1211,51 @@ app.use('/api/computer', createComputerRouter({ dataDir: path.join(__dirname, 'd
 // the SAME existing search provider and synthesizes via the existing LLM provider.
 app.use('/api/orchestrator', createOrchestratorRouter({ searchProvider, llm: provider }));
 
-// SPA fallback
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 /**
  * GET /api/debug/status — quick check of external service connectivity.
+ *
+ * MUST stay above the SPA catch-all below: Express matches routes in the
+ * order they are registered, so `app.get('*')` would otherwise swallow this
+ * path and answer with index.html (that is exactly what happened — the
+ * endpoint was unreachable and the Render audit had nothing to read).
+ *
  * Render deployments: if LMS returns "server_unavailable" or 502, the host
  * firewall (or the LMS endpoint itself) may need the Render outbound IPs
  * whitelisted. See: https://render.com/docs/network-connectivity
  */
 app.get('/api/debug/status', async (req, res) => {
   const result = {
+    // Did the render.yaml envVars actually reach this process? Render only
+    // applies blueprint changes when the blueprint is synced from the
+    // dashboard — a git push alone never updates them.
+    env: {
+      hostingEnv: process.env.HOSTING_ENV || null,
+      voiceProvider: voiceProviderName,
+      aiProvider: process.env.AI_PROVIDER || null,
+      searchProvider: process.env.SEARCH_PROVIDER || null,
+      lmsKeySet: !!String(process.env.LMS_API_KEY || '').trim(),
+      lmsBaseUrl: String(process.env.ACULYZE_LMS_BASE_URL || '').trim() || lms.LMS_DEFAULT_BASE_URL,
+      nvidiaKeySet: !!String(process.env.NVIDIA_API_KEY || '').trim(),
+    },
     lms: { reachable: false, status: null, label: null },
-    voice: { reachable: false, status: null },
+    voice: { reachable: false, status: null, enabled: !!voiceProvider, provider: voiceProviderName },
     ai: { provider: router.providerName, modelEndpoint: null },
   };
   try {
-    const v = await lms.verifyConnection({ baseUrl: process.env.ACULYZE_LMS_BASE_URL || 'https://lm.aculyze.in/api/v1', apiKey: process.env.LMS_API_KEY });
+    const v = await lms.verifyConnection({ baseUrl: result.env.lmsBaseUrl, apiKey: process.env.LMS_API_KEY });
     result.lms.reachable = true;
     result.lms.status = v;
   } catch (e) { result.lms.label = e.message?.slice(0, 100) || 'unknown'; }
   if (voiceProvider) {
     try { const v = await voiceProvider.checkConnection(); result.voice.reachable = v.online; } catch { /* */ }
   }
-  result.ai.modelEndpoint = (await router.getStatus()).server || null;
+  try { result.ai.modelEndpoint = (await router.getStatus()).server || null; } catch { /* */ }
   res.json(result);
+});
+
+// SPA fallback — keep LAST so every real API route above it wins.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const server = app.listen(PORT, () => {

@@ -5,20 +5,25 @@ services:
     buildCommand: npm install --legacy-peer-deps
     startCommand: npm start
     envVars:
+      # Secrets live in the Render dashboard. `sync: false` stops a blueprint
+      # sync from overwriting the working keys with the truncated placeholders
+      # that used to sit here (that would break AI AND LMS in one click).
+      # NOTE: pushing this file never changes Render's env vars by itself —
+      # only the dashboard's "Sync Blueprint" button applies them.
       - key: NVIDIA_API_KEY
-        value: nvapi-4pjOVOL7CR9r...
+        sync: false
       - key: SEARCH_PROVIDER
         value: duckduckgo
       - key: AI_PROVIDER
         value: hybrid
       - key: LMS_API_KEY
-        value: ak_live_...
+        sync: false
       - key: ACULYZE_LMS_BASE_URL
         value: https://lm.aculyze.in/api/v1
       - key: GOOGLE_CLIENT_ID
-        value: ""
+        sync: false
       - key: GOOGLE_CLIENT_SECRET
-        value: ""
+        sync: false
       # OmniVoice is LOCAL ONLY (requires localhost access). Disable on Render.
       - key: VOICE_PROVIDER
         value: disabled
