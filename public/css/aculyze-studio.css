@@ -260,6 +260,8 @@ img, svg {
 .side-title { font-size: 13px; font-weight: 750; letter-spacing: 0.06em; line-height: 1.2; }
 .side-title small { display: block; font-size: 9.5px; font-weight: 650; letter-spacing: 0.2em; color: var(--text-muted); margin-top: 1px; }
 .sidebar-scroll { flex: 1 1 auto; overflow-y: auto; }
+/* Nav links that navigate to a real page (e.g. /planto.html) must not look like plain text */
+a.sidebar-item { text-decoration: none; }
 .sidebar-item,
 .agent-item {
   width: 100%;
