@@ -3,27 +3,30 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PlantChip — Planto storage plans</title>
-<meta name="description" content="PlantChip stores your files in living plant tissue. Pick a Planto plan and let your data take root." />
+<title>PlantChip — Planto storage</title>
+<meta name="description" content="PlantChip stores your files in living plant tissue. Upload photos and videos, deploy files and manage your Planto storage." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://images.unsplash.com" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
 <style>
 /* ============================================================
-   PlantChip / Planto — single-file marketing page
+   PlantChip / Planto — storage page
+   Cloud-storage console layout over a farm landscape hero.
    Palette, radii and shadows live here as custom properties.
    ============================================================ */
 :root {
   --bg: #EEF1F2;          /* page background (matte) */
+  --panel: #FFFFFF;       /* console panels / cards */
   --text: #10201F;        /* primary text */
   --muted: #3C5250;       /* secondary text */
   --teal: #0E7C7B;        /* ACCENT — change this one value to re-brand */
-  --teal-dark: #0E3F40;   /* deep teal (highlighted card) */
+  --teal-dark: #0E3F40;   /* deep teal (scrim, highlighted card) */
   --led: #19D3C5;         /* bright LED teal */
-  --aloe-1: #2F8F5B;      /* aloe green (outer leaves) */
-  --aloe-2: #3AA56A;      /* aloe green (centre leaf) */
-  --card: #FFFFFF;
+  --aloe-1: #2F8F5B;      /* aloe green */
+  --aloe-2: #3AA56A;      /* aloe green */
+  --line: rgba(16, 32, 31, 0.10);
   --radius-card: 28px;
   --radius-pill: 999px;
   --shadow: 0 12px 32px rgba(16, 32, 31, 0.08);
@@ -57,10 +60,12 @@ a { color: inherit; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   min-height: 48px;
   padding: 0 26px;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
+  font-family: inherit;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
@@ -70,22 +75,27 @@ a { color: inherit; }
 }
 .btn:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .btn:active { transform: translateY(0); }
-.btn:focus-visible { outline: 3px solid var(--teal-dark); outline-offset: 3px; }
+.btn:focus-visible { outline: 3px solid var(--led); outline-offset: 3px; }
 
 .btn-teal { background: var(--teal); color: #FFFFFF; }              /* white on #0E7C7B = 5.01:1 */
 .btn-white { background: #FFFFFF; color: var(--teal-dark); border-color: rgba(16, 32, 31, 0.10); }
+.btn-ghost { background: transparent; color: #FFFFFF; border-color: rgba(255, 255, 255, 0.7); }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.14); box-shadow: none; }
 .btn-sm { min-height: 44px; padding: 0 22px; font-size: 15px; }
 
 /* ============================================================
-   1. NAVBAR (84px)
+   1. NAVBAR (84px) — logo, Back to Studio, See plans
    ============================================================ */
-.site-nav { background: var(--bg); }
+.site-nav { background: var(--bg); border-bottom: 1px solid rgba(16, 32, 31, 0.06); }
 .nav-inner {
-  height: 84px;
+  min-height: 84px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 .brand {
   display: inline-flex;
@@ -98,17 +108,21 @@ a { color: inherit; }
   letter-spacing: -0.02em;
 }
 .brand svg { display: block; flex: none; }
+.nav-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* ============================================================
-   2. HERO (two columns, stacks on mobile)
+   2. HERO — farm landscape photo, dark teal scrim, copy on top
    ============================================================ */
-.hero { padding: 40px 0 80px; }
-.hero-grid {
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 48px;
-  align-items: center;
+.hero { position: relative; isolation: isolate; overflow: hidden; }
+.hero-media { position: absolute; inset: 0; z-index: -2; }
+.hero-media img { width: 100%; height: 100%; object-fit: cover; object-position: center 62%; display: block; }
+.hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(100deg, rgba(14, 63, 64, 0.94) 0%, rgba(14, 63, 64, 0.86) 45%, rgba(14, 63, 64, 0.55) 100%);
 }
+.hero-inner { padding: 84px 0 96px; max-width: 720px; color: #FFFFFF; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -128,78 +142,101 @@ a { color: inherit; }
   font-weight: 800;
   line-height: 1.02;
 }
-.hero-copy {
-  max-width: 480px;
-  font-size: 20px;
-  color: var(--muted);           /* #3C5250 on #EEF1F2 = 7.26:1 */
-}
+.hero-copy { max-width: 520px; font-size: 20px; color: rgba(255, 255, 255, 0.94); }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
 
-/* ---------- Pure-CSS product illustration ---------- */
-.illu {
-  width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.chip {
-  position: relative;
-  width: min(320px, 100%);
-  height: 112px;
-  background: #FFFFFF;
-  border: 1px solid rgba(16, 32, 31, 0.06);
-  border-radius: 30px;
+/* ============================================================
+   3. STORAGE CONSOLE — upload, deploy, your storage (cloud-style)
+   ============================================================ */
+.storage { padding: 56px 0 40px; }
+.storage-head { max-width: 720px; margin-bottom: 28px; }
+.storage-head h2 { font-size: clamp(30px, 6vw, 44px); font-weight: 800; }
+.storage-head p { margin-top: 12px; font-size: 18px; color: var(--muted); }
+
+.console {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.led {
-  position: absolute;
-  left: 50%;
-  bottom: 26px;
-  transform: translateX(-50%);
-  width: 120px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--led);
-  box-shadow: 0 0 10px rgba(25, 211, 197, 0.9), 0 0 26px rgba(25, 211, 197, 0.55);
-}
-.connectors {
+.console-bar {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.console-crumb { font-size: 14px; font-weight: 600; color: var(--muted); }
+.console-crumb strong { display: block; font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.console-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Upload drop-zone (static mock — no JS, no endpoint yet) */
+.dropzone {
+  margin: 20px 24px;
+  padding: 30px 20px;
+  border: 2px dashed rgba(14, 124, 123, 0.45);
+  border-radius: 20px;
+  background: rgba(14, 124, 123, 0.05);
+  text-align: center;
+}
+.dropzone svg { display: block; margin: 0 auto 10px; }
+.dropzone h3 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+.dropzone p { margin-top: 6px; font-size: 15px; color: var(--muted); }
+
+/* File table — horizontal scroll on narrow screens */
+.filelist { padding: 0 24px 24px; }
+.filelist-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 0 12px;
+}
+.filetable-scroll { overflow-x: auto; }
+.filetable { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; }
+.filetable th {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.filetable td { font-size: 15px; padding: 14px 12px; border-bottom: 1px solid rgba(16, 32, 31, 0.06); vertical-align: middle; }
+.filetable tr:last-child td { border-bottom: 0; }
+.file-name { display: flex; align-items: center; gap: 12px; font-weight: 600; white-space: nowrap; }
+.file-ico {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 72px;
-  height: 36px;
+  border-radius: 10px;
+  background: rgba(14, 124, 123, 0.10);
+  color: var(--teal);
 }
-.connectors span {
-  width: 2px;
-  height: 100%;
-  background: linear-gradient(var(--teal), rgba(14, 124, 123, 0.35));
+.file-ico.is-video { background: rgba(47, 143, 91, 0.12); color: var(--aloe-1); }
+.file-meta { color: var(--muted); white-space: nowrap; }
+.file-class {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
   border-radius: var(--radius-pill);
+  background: rgba(14, 63, 64, 0.08);
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.pots { display: flex; gap: clamp(10px, 4vw, 18px); }
-.pot {
-  position: relative;
-  width: 64px;
-  height: 48px;
-  background: #FFFFFF;
-  border: 1px solid rgba(16, 32, 31, 0.07);
-  border-radius: 6px 6px 20px 20px;
-  box-shadow: 0 8px 20px rgba(16, 32, 31, 0.10);
-}
-.leaf {
-  position: absolute;
-  bottom: 24px;
-  width: 9px;
-  height: 38px;
-  border-radius: 9px 9px 3px 3px;
-  transform-origin: bottom center;
-}
-.leaf-l { left: 13px; background: var(--aloe-1); transform: rotate(-22deg); }
-.leaf-c { left: 50%; margin-left: -4.5px; height: 44px; background: var(--aloe-2); }
-.leaf-r { right: 13px; background: var(--aloe-1); transform: rotate(22deg); }
 
 /* ============================================================
-   3. PRICING (#plans)
+   4. PRICING (#plans)
    ============================================================ */
 .pricing { padding: 40px 0 96px; }
 .pricing-head { text-align: center; max-width: 640px; margin: 0 auto 44px; }
@@ -219,8 +256,8 @@ a { color: inherit; }
   display: flex;
   flex-direction: column;
   padding: 34px 30px;
-  background: var(--card);
-  border: 1px solid rgba(16, 32, 31, 0.06);
+  background: var(--card, #FFFFFF);
+  border: 1px solid var(--line);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -251,7 +288,7 @@ a { color: inherit; }
 .plan--featured .plan-price .per { color: rgba(255, 255, 255, 0.82); }
 
 /* ============================================================
-   4. CLOSING BANNER (full width footer)
+   5. CLOSING BANNER (full width footer)
    ============================================================ */
 .banner {
   background: var(--teal);       /* white text on #0E7C7B = 5.01:1 */
@@ -265,17 +302,21 @@ a { color: inherit; }
 /* ============================================================
    RESPONSIVE — 360px mobile up to 1440px desktop
    ============================================================ */
-@media (max-width: 900px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+@media (max-width: 760px) {
+  .hero-inner { padding: 56px 0 64px; }
   .hero-copy { max-width: 100%; }
+  .console-bar { padding: 18px 18px; }
+  .dropzone { margin: 16px 18px; }
+  .filelist { padding: 0 18px 18px; }
 }
 @media (max-width: 560px) {
   :root { --pad: 20px; }
-  .hero { padding: 24px 0 56px; }
+  .storage { padding: 40px 0 32px; }
   .pricing { padding: 32px 0 72px; }
   .banner { padding: 56px 0; }
-  .btn { width: 100%; }
-  .hero-actions { gap: 12px; }
+  .hero-actions .btn,
+  .nav-actions .btn { width: 100%; }
+  .nav-actions { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -289,7 +330,7 @@ a { color: inherit; }
 <body id="top">
 
 <!-- ============================================================
-     1. NAVBAR — teal logo (rounded rect + two-leaf sprout) + wordmark
+     1. NAVBAR — logo + wordmark, Back to Studio, See plans
      ============================================================ -->
 <header class="site-nav">
   <div class="wrap nav-inner">
@@ -303,50 +344,139 @@ a { color: inherit; }
       </svg>
       <span>PlantChip</span>
     </a>
-    <!-- TODO: nothing to change here — this is the in-page anchor to the plans -->
-    <a class="btn btn-teal btn-sm" href="#plans">See plans</a>
+    <div class="nav-actions">
+      <!-- Back to the Aculyze Studio app -->
+      <a class="btn btn-white btn-sm" href="/">Back to Studio</a>
+      <a class="btn btn-teal btn-sm" href="#plans">See plans</a>
+    </div>
   </div>
 </header>
 
 <main>
 
   <!-- ============================================================
-       2. HERO — copy left, pure-CSS product illustration right
+       2. HERO — farm landscape photo background + dark teal scrim
        ============================================================ -->
   <section class="hero" aria-labelledby="hero-title">
-    <div class="wrap hero-grid">
-      <div>
-        <span class="badge">Introducing Planto</span>
-        <h1 id="hero-title">What if your data could grow?</h1>
-        <p class="hero-copy">PlantChip stores your files in living plant tissue. Pick a Planto plan and let your data take root.</p>
-        <div class="hero-actions">
-          <!-- TODO: point these at checkout/signup when it exists; today they scroll to the plans -->
-          <a class="btn btn-teal" href="#plans">Choose your Planto</a>
-          <a class="btn btn-white" href="#plans">Compare plans</a>
-        </div>
+    <div class="hero-media">
+      <!-- Farm landscape background photo (Unsplash CDN). Swap the URL to change it. -->
+      <img src="https://images.unsplash.com/photo-1560493676-04071c5f467b?auto=format&amp;fit=crop&amp;w=1600&amp;q=80"
+           alt="Farm fields in long green rows under an open sky" width="1600" height="1067" fetchpriority="high" />
+    </div>
+    <div class="hero-scrim" aria-hidden="true"></div>
+
+    <div class="wrap hero-inner">
+      <span class="badge">Introducing Planto</span>
+      <h1 id="hero-title">What if your data could grow?</h1>
+      <p class="hero-copy">PlantChip stores your files in living plant tissue. Pick a Planto plan and let your data take root.</p>
+      <div class="hero-actions">
+        <!-- TODO: point these at checkout/signup when it exists; today they scroll to the plans -->
+        <a class="btn btn-white" href="#plans">Choose your Planto</a>
+        <a class="btn btn-ghost" href="#plans">Compare plans</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. STORAGE CONSOLE — upload photos & videos, deploy files,
+          your storage. Static cloud-style mock: no JS, no endpoint.
+       ============================================================ -->
+  <section class="storage" aria-labelledby="storage-title">
+    <div class="wrap">
+      <div class="storage-head">
+        <h2 id="storage-title">Your storage, in one field.</h2>
+        <p>Upload photos and videos, deploy files, and keep everything growing in your Planto bucket.</p>
       </div>
 
-      <!-- HERO ILLUSTRATION (pure CSS)
-           To use a real hero image later, replace this whole <div class="illu">…</div>
-           with e.g. <img src="hero.png" alt="PlantChip device with Planto planters" width="520" height="360"> -->
-      <div class="illu" aria-hidden="true">
-        <!-- Matte-white chip box with the glowing teal LED strip -->
-        <div class="chip"><span class="led"></span></div>
-        <!-- Two thin teal connector lines down to the planters -->
-        <div class="connectors"><span></span><span></span></div>
-        <!-- Row of four identical planters, three aloe leaves each -->
-        <div class="pots">
-          <div class="pot"><i class="leaf leaf-l"></i><i class="leaf leaf-c"></i><i class="leaf leaf-r"></i></div>
-          <div class="pot"><i class="leaf leaf-l"></i><i class="leaf leaf-c"></i><i class="leaf leaf-r"></i></div>
-          <div class="pot"><i class="leaf leaf-l"></i><i class="leaf leaf-c"></i><i class="leaf leaf-r"></i></div>
-          <div class="pot"><i class="leaf leaf-l"></i><i class="leaf leaf-c"></i><i class="leaf leaf-r"></i></div>
+      <div class="console">
+        <div class="console-bar">
+          <p class="console-crumb">Storage browser<strong>planto://your-storage</strong></p>
+          <div class="console-actions">
+            <!-- TODO: wire this button to the photo/video upload flow -->
+            <button type="button" class="btn btn-teal btn-sm">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              Upload photos and videos
+            </button>
+            <!-- TODO: wire this button to the deploy flow -->
+            <button type="button" class="btn btn-white btn-sm">Deploy files</button>
+          </div>
+        </div>
+
+        <!-- Upload zone (visual only) -->
+        <div class="dropzone">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0E7C7B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V6"/><path d="m8 10 4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          <h3>Drag photos and videos here</h3>
+          <p>JPG, PNG and MP4 files deploy straight to your Planto storage.</p>
+        </div>
+
+        <!-- File table (sample rows — swap for real data later) -->
+        <div class="filelist">
+          <p class="filelist-title">Files in your storage</p>
+          <div class="filetable-scroll">
+            <table class="filetable">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Modified</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <span class="file-name">
+                      <span class="file-ico" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg></span>
+                      sunrise-field.jpg
+                    </span>
+                  </td>
+                  <td class="file-meta">Photo · JPEG</td>
+                  <td class="file-meta">4.2 MB</td>
+                  <td class="file-meta">Today</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span class="file-name">
+                      <span class="file-ico" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg></span>
+                      orchard-rows.png
+                    </span>
+                  </td>
+                  <td class="file-meta">Photo · PNG</td>
+                  <td class="file-meta">6.8 MB</td>
+                  <td class="file-meta">Yesterday</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span class="file-name">
+                      <span class="file-ico is-video" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2.5v9L17 14"/></svg></span>
+                      harvest-tour.mp4
+                    </span>
+                  </td>
+                  <td class="file-meta">Video · MP4</td>
+                  <td class="file-meta">128 MB</td>
+                  <td class="file-meta">3 days ago</td>
+                </tr>
+                <tr>
+                  <td>
+                    <span class="file-name">
+                      <span class="file-ico is-video" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2.5v9L17 14"/></svg></span>
+                      greenhouse-timelapse.mp4
+                    </span>
+                  </td>
+                  <td class="file-meta">Video · MP4</td>
+                  <td class="file-meta">96 MB</td>
+                  <td class="file-meta">Last week</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ============================================================
-       3. PRICING — the three Planto plans
+       4. PRICING — the three Planto plans
        PRICES: each card carries one data-price attribute (see the
        small script at the end of this file); change it there only.
        ============================================================ -->
@@ -393,7 +523,7 @@ a { color: inherit; }
 </main>
 
 <!-- ============================================================
-     4. CLOSING BANNER — full-width teal
+     5. CLOSING BANNER — full-width teal
      ============================================================ -->
 <footer class="banner">
   <div class="wrap">
@@ -404,7 +534,7 @@ a { color: inherit; }
 
 <script>
 /* PRICES — single source of truth.
-   The values live in each plan card's data-price attribute (section 3 above).
+   The values live in each plan card's data-price attribute (section 4 above).
    This script simply prints them into the card; the static text in the HTML
    is the same value, so the page still reads correctly with JS disabled. */
 document.querySelectorAll('.plan[data-price]').forEach(function (card) {
