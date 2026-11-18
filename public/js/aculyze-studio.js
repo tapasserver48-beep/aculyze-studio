@@ -892,7 +892,7 @@ function setView(view) {
     if (copilotAgent) copilotAgent.textContent = 'Zara';
     if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
     if (els.workspaceTitle) {
-      els.workspaceTitle.textContent = 'Aculyze Store';
+      els.workspaceTitle.textContent = 'Store';
     }
   }
   // --- Command Centre view ---
@@ -4018,6 +4018,17 @@ document.addEventListener('keydown', (e) => {
 
 authEls.logout?.addEventListener('click', async () => {
   closeUserMenu();
+
+  // Confirm first — a stray click on the menu must not end the session.
+  // Reuses the shared utility dialog (Escape / backdrop / × all cancel).
+  const confirmed = await showAppConfirm({
+    title: 'Log out?',
+    detail: 'You will need to sign in again to open your workspace. Your conversations and settings stay saved on this device.',
+    okLabel: 'Log out',
+    cancelLabel: 'Stay signed in',
+  });
+  if (!confirmed) return;
+
   try { await authLogout(); } catch { /* cookie cleared best effort */ }
 
   // Reset inbox to a signed-out state so no account data lingers on screen.

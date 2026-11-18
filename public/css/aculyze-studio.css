@@ -363,7 +363,7 @@ body.sidebar-collapsed .sidebar .sidebar-foot,
   display: none;
 }
 
-/* Sidebar footer — "Powered by Aculyze / Local models · Private by default" */
+/* Sidebar footer — "Powered by Aculyze" */
 .sidebar-foot {
   margin-top: auto;
   flex: 0 0 auto;
@@ -389,31 +389,6 @@ body.sidebar-collapsed .sidebar .sidebar-foot,
   font-weight: 750;
   color: var(--text-2);
   letter-spacing: 0.02em;
-}
-
-.sidebar-foot > small {
-  display: block;
-  font-size: 9.5px;
-  font-family: var(--font);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* Local / privacy status dot */
-.sidebar-foot > small::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--success, #4ade80);
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.14);
-  vertical-align: middle;
 }
 
 /* Collapsed rail width — JS toggles 'sidebar-collapsed' on <body> */
@@ -1912,7 +1887,8 @@ body.copilot-collapsed .copilot-rail {
 .utility-actions .utility-primary,
 .utility-actions .utility-secondary {
   flex: 1 1 150px;
-  height: 40px;
+  /* 44px — minimum touch target (confirm, contact and draft dialogs) */
+  height: 44px;
   justify-content: center;
 }
 
