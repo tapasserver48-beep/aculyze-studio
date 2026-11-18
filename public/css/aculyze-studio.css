@@ -5150,6 +5150,7 @@ body.copilot-collapsed .copilot-rail {
 .auth-submit {
   width: 100%;
   height: 44px;
+  border-radius: 16px; /* rounded corners for origami paper */
   background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 62%, #7c3aed 100%);
   color: #ffffff;
   font-size: 14.5px;
@@ -5157,15 +5158,24 @@ body.copilot-collapsed .copilot-rail {
   font-family: inherit;
   letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(109, 40, 217, 0.32);
-  transition: transform 0.12s ease, box-shadow 0.14s ease, filter 0.14s ease;
+  box-shadow:
+    /* origami paper fold shadows:
+       top-left corner darker (simulating folded edge),
+       bottom-right corner lighter (simulating lifted edge) */
+    4px 4px 0 0 rgba(109, 40, 217, 0.42),
+    -2px -2px 0 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
 }
 .auth-submit:hover:not(:disabled) {
   filter: brightness(1.08);
-  box-shadow: 0 14px 30px rgba(109, 40, 217, 0.42);
-  transform: translateY(-1px);
+  box-shadow:
+    4px 6px 0 0 rgba(109, 40, 217, 0.48),
+    -2px -2px 0 0 rgba(255, 255, 255, 0.42);
+  transform: translateY(-2px);
 }
-.auth-submit:active:not(:disabled) { transform: translateY(0); }
+.auth-submit:active:not(:disabled) {
+  transform: translateY(1px) rotate(0.5deg);
+}
 .auth-submit:disabled { opacity: 0.7; cursor: progress; box-shadow: none; }
 .auth-submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 
