@@ -185,9 +185,9 @@ function createGoogleAuth({ dataDir }) {
       // Match by verified email; otherwise create a Google-backed account.
       // The password is random and never shown — that account can only ever
       // be opened again through this Google flow.
-      let user = findByEmail(dataDir, email);
+      let user = await findByEmail(dataDir, email);
       if (!user) {
-        user = createUser(dataDir, {
+        user = await createUser(dataDir, {
           name: String(profile.name || email.split('@')[0] || 'Google user').trim().slice(0, 80),
           email,
           password: crypto.randomBytes(24).toString('base64url'),

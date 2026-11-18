@@ -44,22 +44,25 @@ function createAuthRouter(options = {}) {
   // Body parsing is global (server.js mounts express.json() for every route),
   // so the field-level checks inside each handler bound the actual payload.
 
+  // Promise-aware: the account store is async in Phase 1 (PostgreSQL), so a
+  // handler may throw synchronously or reject — both land here.
   const wrap = (handler) => (req, res) => {
-    try {
-      handler(req, res);
-    } catch (err) {
-      const status = err && err.status ? err.status : 500;
-      const code = (err && err.code) || 'failed';
-      if (status >= 500) {
-        console.warn(`[auth] ${req.method} ${req.originalUrl}: ${String(err && err.message || err).slice(0, 200)}`);
-      }
-      res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
-    }
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => {
+        const status = err && err.status ? err.status : 500;
+        const code = (err && err.code) || 'failed';
+        if (status >= 500) {
+          console.warn(`[auth] ${req.method} ${req.originalUrl}: ${String(err && err.message || err).slice(0, 200)}`);
+        }
+        if (res.headersSent) return;
+        res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
+      });
   };
 
-  router.post('/register', wrap((req, res) => {
+  router.post('/register', wrap(async (req, res) => {
     const body = req.body || {};
-    const user = createUser(dataDir, {
+    const user = await createUser(dataDir, {
       name: body.name,
       email: body.email,
       password: body.password,
@@ -71,9 +74,9 @@ function createAuthRouter(options = {}) {
     res.status(201).json({ user: publicUser(user) });
   }));
 
-  router.post('/login', wrap((req, res) => {
+  router.post('/login', wrap(async (req, res) => {
     const body = req.body || {};
-    const user = authenticate(dataDir, body.email, body.password);
+    const user = await authenticate(dataDir, body.email, body.password);
     if (!user) {
       throw authError(401, 'invalid_credentials', 'Wrong email or password.');
     }
@@ -112,15 +115,15 @@ function createAuthRouter(options = {}) {
 
   // -------- User Management (Admin routes) --------
   // List all users
-  router.get('/users', requireUser, requireRole(['admin', 'founder']), wrap((req, res) => {
-    const users = listUsers(dataDir);
+  router.get('/users', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
+    const users = await listUsers(dataDir);
     res.json({ users });
   }));
 
   // Get user details
-  router.get('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap((req, res) => {
+  router.get('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
     const { findById } = require('./store');
-    const user = findById(dataDir, req.params.id);
+    const user = await findById(dataDir, req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found', code: 'not_found' });
     }
@@ -128,9 +131,9 @@ function createAuthRouter(options = {}) {
   }));
 
   // Update user (role assignment)
-  router.patch('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap((req, res) => {
+  router.patch('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
     const { canAssignRole } = require('./roles');
-    const user = updateUser(dataDir, req.params.id, req.body);
+    const user = await updateUser(dataDir, req.params.id, req.body);
     if (!user) {
       return res.status(404).json({ error: 'User not found', code: 'not_found' });
     }
@@ -138,8 +141,8 @@ function createAuthRouter(options = {}) {
   }));
 
   // Delete user
-  router.delete('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap((req, res) => {
-    const deleted = deleteUser(dataDir, req.params.id);
+  router.delete('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
+    const deleted = await deleteUser(dataDir, req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'User not found', code: 'not_found' });
     }

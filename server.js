@@ -1258,20 +1258,48 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const server = app.listen(PORT, () => {
-  // WebSocket layer for the group chat (authenticated by the session cookie).
-  chatBroadcast = attachChatRealtime(server, { dataDir: DATA_DIR }).broadcast;
-  console.log(`Aculyze Studio server running on http://localhost:${PORT}`);
-  console.log(`  Provider : ${router.providerName}`);
-  if (router.providerName === 'lmstudio') console.log(`  LM Studio: ${router.lmstudioBaseUrl}`);
-  console.log(`  Langfuse : ${observability.configured ? 'tracing enabled' : 'disabled'}`);
-});
-
-for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, async () => {
-    if (searchProvider.shutdown) await searchProvider.shutdown();
-    await observability.shutdown();
-    try { require('./src/chat/db').closeDb(); } catch { /* not open */ }
-    process.exit(0);
-  });
+/**
+ * Phase 1 storage boot: when DATABASE_URL is set, open PostgreSQL, create the
+ * schema and one-time import the legacy JSON files (accounts, inbox boxes)
+ * before the server accepts traffic. Without DATABASE_URL this is a no-op and
+ * every store keeps using `data/*.json` exactly as before.
+ * An unreachable database FAILS boot — see src/db/pg.js for why.
+ */
+async function initStorage() {
+  const pg = require('./src/db/pg');
+  const db = await pg.init();
+  if (!db) return;
+  const authStore = require('./src/auth/store');
+  const inboxStore = require('./src/inbox/store');
+  const a = await authStore.migrateToPostgres(DATA_DIR);
+  const b = await inboxStore.migrateToPostgres(DATA_DIR);
+  console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
 }
+
+initStorage()
+  .then(() => {
+    const server = app.listen(PORT, () => {
+      // WebSocket layer for the group chat (authenticated by the session cookie).
+      chatBroadcast = attachChatRealtime(server, { dataDir: DATA_DIR }).broadcast;
+      console.log(`Aculyze Studio server running on http://localhost:${PORT}`);
+      console.log(`  Provider : ${router.providerName}`);
+      if (router.providerName === 'lmstudio') console.log(`  LM Studio: ${router.lmstudioBaseUrl}`);
+      console.log(`  Langfuse : ${observability.configured ? 'tracing enabled' : 'disabled'}`);
+    });
+
+    for (const sig of ['SIGINT', 'SIGTERM']) {
+      process.on(sig, async () => {
+        if (searchProvider.shutdown) await searchProvider.shutdown();
+        await observability.shutdown();
+        try { require('./src/chat/db').closeDb(); } catch { /* not open */ }
+        try { await require('./src/db/pg').closePool(); } catch { /* not open */ }
+        server.close(() => process.exit(0));
+        // Fallback if a connection lingers past the close.
+        setTimeout(() => process.exit(0), 3000).unref();
+      });
+    }
+  })
+  .catch((err) => {
+    console.error(`[storage] Failed to start: ${String((err && err.message) || err)}`);
+    process.exit(1);
+  });

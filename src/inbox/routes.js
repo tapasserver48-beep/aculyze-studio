@@ -28,26 +28,29 @@ function createInboxRouter(options = {}) {
 
   const myId = (req) => boxIdForAccount(req.authUid);
 
+  // Promise-aware: the store is async in Phase 1 (PostgreSQL), so a handler
+  // may throw synchronously or reject — both land here.
   const wrap = (handler) => (req, res) => {
-    try {
-      handler(req, res);
-    } catch (err) {
-      const status = (err && err.status) || 500;
-      const code = (err && err.code) || 'failed';
-      if (status >= 500) {
-        console.warn(`[inbox] ${req.method} ${req.originalUrl}: ${String(err && err.message || err).slice(0, 200)}`);
-      }
-      res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
-    }
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => {
+        const status = (err && err.status) || 500;
+        const code = (err && err.code) || 'failed';
+        if (status >= 500) {
+          console.warn(`[inbox] ${req.method} ${req.originalUrl}: ${String(err && err.message || err).slice(0, 200)}`);
+        }
+        if (res.headersSent) return;
+        res.status(status).json({ error: (err && err.message) || 'Something went wrong.', code });
+      });
   };
 
-  router.get('/threads', wrap((req, res) => {
-    res.json({ threads: listThreads(dataDir, myId(req)), me: myId(req) });
+  router.get('/threads', wrap(async (req, res) => {
+    res.json({ threads: await listThreads(dataDir, myId(req)), me: myId(req) });
   }));
 
   /**
    * Registered local accounts as contacts — these are the peers that can
-   * actually sign in and receive. Shown alongside the LMS employee list.
+   * actually sign in and receive. The Inbox page lists accounts only.
    */
   router.get('/contacts', wrap((req, res) => {
     const contacts = readDoc(dataDir).users
@@ -56,12 +59,12 @@ function createInboxRouter(options = {}) {
     res.json({ contacts });
   }));
 
-  router.get('/messages', wrap((req, res) => {
-    const out = listMessages(dataDir, myId(req), String(req.query.peer || ''), req.query.since);
+  router.get('/messages', wrap(async (req, res) => {
+    const out = await listMessages(dataDir, myId(req), String(req.query.peer || ''), req.query.since);
     res.json(out);
   }));
 
-  router.post('/messages', wrap((req, res) => {
+  router.post('/messages', wrap(async (req, res) => {
     const body = req.body || {};
     const me = readDoc(dataDir).users.find((u) => u.id === req.authUid);
 
@@ -74,7 +77,7 @@ function createInboxRouter(options = {}) {
       if (peer) toName = peer.name;
     }
 
-    const message = sendMessage(dataDir, {
+    const message = await sendMessage(dataDir, {
       from: myId(req),
       fromName: (me && me.name) || 'Someone',
       to,
@@ -87,8 +90,8 @@ function createInboxRouter(options = {}) {
     res.status(201).json({ message, maxBody: MAX_BODY });
   }));
 
-  router.post('/read', wrap((req, res) => {
-    const readTs = markRead(dataDir, myId(req), String((req.body || {}).peer || ''));
+  router.post('/read', wrap(async (req, res) => {
+    const readTs = await markRead(dataDir, myId(req), String((req.body || {}).peer || ''));
     res.json({ readTs });
   }));
 

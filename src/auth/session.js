@@ -116,19 +116,24 @@ function clearSessionCookie(dataDir, req, res) {
  */
 function attachAuth(dataDir) {
   return (req, res, next) => {
-    try {
-      const uid = verifySession(dataDir, parseCookies(req)[SESSION_COOKIE]);
-      if (uid) {
+    // The user store is async in Phase 1 (PostgreSQL), so resolution happens
+    // before next(): anonymous requests still fall through untouched.
+    Promise.resolve()
+      .then(() => {
+        const uid = verifySession(dataDir, parseCookies(req)[SESSION_COOKIE]);
+        if (!uid) return null;
         // Lazy require avoids a store↔session require cycle.
         const { findById, publicUser } = require('./store');
-        const user = findById(dataDir, uid);
-        if (user) {
-          req.user = publicUser(user);
-          req.authUid = uid;
-        }
-      }
-    } catch { /* treat as signed out */ }
-    next();
+        return findById(dataDir, uid).then((user) => {
+          if (user) {
+            req.user = publicUser(user);
+            req.authUid = uid;
+          }
+          return null;
+        });
+      })
+      .catch(() => { /* treat as signed out */ })
+      .then(next, next);
   };
 }
 

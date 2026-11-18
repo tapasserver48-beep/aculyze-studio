@@ -1,3 +1,14 @@
+# Phase 1 storage: a Render-managed Postgres linked into the web service as
+# DATABASE_URL. The app boots against PostgreSQL only when DATABASE_URL is set
+# (it then imports data/users.json + data/inbox/*.json once, into empty tables);
+# without it every store keeps using the flat JSON files, so local dev is
+# unaffected. Deleting the database block reverts the service to files.
+databases:
+  - name: aculyze-studio-db
+    plan: starter   # free tier until billing is needed
+    databaseName: aculyze_studio
+    user: aculyze_studio
+
 services:
   - type: web
     name: aculyze-studio
@@ -10,6 +21,10 @@ services:
       # that used to sit here (that would break AI AND LMS in one click).
       # NOTE: pushing this file never changes Render's env vars by itself —
       # only the dashboard's "Sync Blueprint" button applies them.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aculyze-studio-db
+          property: connectionString
       - key: NVIDIA_API_KEY
         sync: false
       - key: SEARCH_PROVIDER

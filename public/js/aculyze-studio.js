@@ -2253,29 +2253,16 @@ function renderInboxList() {
   }
 }
 
-/* ---------- Load inbox contacts: LMS employees + local accounts ---------- */
-function normalizeEmployee(e) {
-  if (!e) return null;
-  const raw = e.id ?? e.employee_id ?? e.email;
-  if (raw === undefined || raw === null || String(raw).trim() === '') return null;
-  return {
-    id: 'emp-' + String(raw).trim(),
-    name: e.name || e.full_name || e.email || 'Employee',
-    role: e.role || 'Employee',
-    kind: 'employee',
-    status: e.status === 'online' ? 'online' : 'offline',
-    avatar: e.avatar,
-  };
-}
-
+/* ---------- Load inbox contacts: registered local accounts only ----------
+ * The Inbox page lists people who can actually sign in and reply — LMS
+ * employees were removed from this view (Phase 1); Command Centre still
+ * shows the full LMS roster. */
 async function loadInboxUsers() {
-  const [employeesRes, threadsRes, contactsRes] = await Promise.allSettled([
-    loadEmployees(),
+  const [threadsRes, contactsRes] = await Promise.allSettled([
     inboxThreads(),
     inboxContacts(),
   ]);
 
-  const employees = employeesRes.status === 'fulfilled' ? (employeesRes.value.employees || []) : [];
   const contacts = contactsRes.status === 'fulfilled' ? (contactsRes.value.contacts || []) : [];
   const threads = threadsRes.status === 'fulfilled' ? (threadsRes.value.threads || []) : [];
 
@@ -2286,7 +2273,7 @@ async function loadInboxUsers() {
   for (const t of threads) threadMap[t.peerId] = t;
   inboxState.threads = threadMap;
 
-  // Local accounts first (they can actually reply), then employees.
+  // Local accounts only — they can actually reply.
   const merged = [];
   const seen = new Set();
   const push = (u) => {
@@ -2298,7 +2285,6 @@ async function loadInboxUsers() {
   for (const c of contacts) {
     push({ id: c.id, name: c.name || 'Member', role: c.role || 'Local account', kind: 'account', status: 'offline' });
   }
-  for (const e of employees) push(normalizeEmployee(e));
 
   for (const u of merged) {
     const t = threadMap[u.id];
@@ -2311,9 +2297,11 @@ async function loadInboxUsers() {
     if (t.peerName && t.peerName !== t.peerId && u.kind !== 'account') u.name = t.peerName;
   }
 
-  // Someone new wrote to us but isn't in either contact source yet.
+  // Someone wrote to us but isn't in the contact source yet. LMS peers
+  // (`emp-*`) stay out of this page — they belong to Command Centre.
   for (const t of threads) {
     if (seen.has(t.peerId)) continue;
+    if (String(t.peerId).startsWith('emp-')) continue;
     push({
       id: t.peerId,
       name: t.peerName || t.peerId,
@@ -2536,7 +2524,11 @@ function pollInboxThreads() {
       for (const t of data.threads) map[t.peerId] = t;
       inboxState.threads = map;
 
-      const unknown = data.threads.some((t) => !inboxState.users.some((u) => u.id === t.peerId));
+      // New conversation appeared — but LMS peers (`emp-*`) never render on
+      // this page, so they must not trigger a reload loop.
+      const unknown = data.threads.some((t) =>
+        !String(t.peerId).startsWith('emp-') &&
+        !inboxState.users.some((u) => u.id === t.peerId));
       if (unknown) { loadInboxUsers(); return; } // a new conversation appeared
 
       let changed = false;
