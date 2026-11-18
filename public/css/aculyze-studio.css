@@ -4969,12 +4969,13 @@ body.copilot-collapsed .copilot-rail {
      shell and the bottom of a tall form (Google button) was clipped away
      with no scrollbar. */
   grid-template-rows: minmax(0, 1fr);
-  width: min(440px, 100%);
-  height: min(716px, calc(100dvh - 40px));
+  width: min(400px, 100%);
+  height: min(716px, calc(100dvh - 48px));
+  margin-right: clamp(24px, 8vw, 120px);
   border-radius: 26px;
   overflow: hidden;
   /* Frosted light-blue glass floating over the mascot banner. */
-  background: linear-gradient(155deg, rgba(238, 248, 255, 0.87), rgba(204, 231, 252, 0.74));
+  background: linear-gradient(155deg, rgba(238, 248, 255, 0.88), rgba(204, 231, 252, 0.76));
   backdrop-filter: blur(24px) saturate(165%);
   -webkit-backdrop-filter: blur(24px) saturate(165%);
   border: 1px solid rgba(255, 255, 255, 0.78);
@@ -4992,11 +4993,9 @@ body.copilot-collapsed .copilot-rail {
 /* ---- Form card ---- */
 .auth-card {
   min-width: 0;
-  min-height: 0; /* lets the row shrink so overflow-y scrolls instead of clipping */
-  padding: 34px 32px 28px;
-  /* Fixed LIGHT palette scoped here: the card always sits on the light
-     banner, whatever app theme is active behind the login screen. Every
-     control below inherits these, so contrast never flips with the theme. */
+  min-height: 0;
+  padding: 28px 24px 22px;
+  /* Fixed LIGHT palette scoped here */
   --surface: rgba(255, 255, 255, 0.88);
   --surface-2: rgba(255, 255, 255, 0.46);
   --text: #0c2d4d;
@@ -5013,34 +5012,43 @@ body.copilot-collapsed .copilot-rail {
   overscroll-behavior: contain;
 }
 
-.auth-head { margin-bottom: 16px; }
+.auth-head {
+  margin-bottom: 16px;
+  text-align: center;
+}
 .auth-head h1 {
   margin: 0;
-  font-size: 27px;
+  font-size: 26px;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   line-height: 1.18;
   color: var(--text);
 }
-.auth-head p { margin: 7px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--text-muted); }
-
+.auth-head p {
+  margin: 7px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
   padding: 4px;
   margin-bottom: 16px;
+  margin-left: auto;
+  margin-right: auto;
+  width: fit-content;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 11px;
 }
 .auth-tab {
-  height: 34px;
-  border: 0;
+  height: 32px;
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
@@ -5125,7 +5133,7 @@ body.copilot-collapsed .copilot-rail {
 .auth-eye.on .ico-hide { display: block; }
 
 .auth-error-slot {
-  min-height: 41px; /* exactly one line of .auth-error → zero layout shift */
+  min-height: 32px;
 }
 .auth-error {
   margin: 0;
@@ -5141,10 +5149,7 @@ body.copilot-collapsed .copilot-rail {
 
 .auth-submit {
   width: 100%;
-  height: 46px;
-  margin-top: 2px;
-  border: 0;
-  border-radius: 12px;
+  height: 44px;
   background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 62%, #7c3aed 100%);
   color: #ffffff;
   font-size: 14.5px;
@@ -5160,7 +5165,7 @@ body.copilot-collapsed .copilot-rail {
   box-shadow: 0 14px 30px rgba(109, 40, 217, 0.42);
   transform: translateY(-1px);
 }
-.auth-submit:active:not(:disabled) { transform: translateY(0) scale(0.99); }
+.auth-submit:active:not(:disabled) { transform: translateY(0); }
 .auth-submit:disabled { opacity: 0.7; cursor: progress; box-shadow: none; }
 .auth-submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 
@@ -5194,14 +5199,16 @@ body.copilot-collapsed .copilot-rail {
   }
   .auth-shell {
     border-radius: 22px;
+    width: min(360px, 100%);
   }
-  .auth-card { padding: 30px 28px 24px; }
+  .auth-card { padding: 26px 20px 22px; }
 }
 @media (max-width: 480px) {
   .auth-screen { padding: 14px; }
-  .auth-card { padding: 24px 20px 20px; }
-  .auth-head h1 { font-size: 24px; }
-  .auth-tabs { margin-bottom: 14px; }
+  .auth-shell { width: min(320px, 100%); }
+  .auth-card { padding: 20px 16px 18px; }
+  .auth-head h1 { font-size: 22px; }
+  .auth-tabs { margin-bottom: 12px; }
 }
 
 /* Signed out: no voice assistant or mascot floating over the login card. */
