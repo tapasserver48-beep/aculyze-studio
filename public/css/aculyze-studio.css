@@ -3593,6 +3593,14 @@ body.copilot-collapsed .copilot-rail {
 }
 [data-theme="light"] .data-panel { background: rgba(255, 255, 255, 0.88); box-shadow: var(--shadow); }
 .sd-panel-revenue { border-color: var(--border); }
+/* Echo the KPI cards' accent stripe on the revenue panel. */
+.sd-panel-revenue::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent);
+  opacity: 0.55;
+}
+#revenueMetrics { margin-top: -4px; }
 
 .panel-title {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
@@ -3627,7 +3635,10 @@ body.copilot-collapsed .copilot-rail {
 .chart-line { fill: none; stroke: var(--cyan); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 .chart-line.orders-line { stroke: var(--violet); stroke-width: 2; }
 .chart-area { fill: var(--cyan); opacity: 0.5; }
-.sd-panel-orders .chart-area { fill: var(--violet); opacity: 0.4; }
+/* New month-chart primitives (gradient stroke/fill come from the SVG itself). */
+.sd-chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.sd-chart-dot { stroke: var(--bg-2); stroke-width: 2; }
+.chart-axis.is-now { fill: var(--text-2); font-weight: 650; }
 .chart-dot { fill: var(--cyan); stroke: var(--bg-2); stroke-width: 2; }
 .chart-bar { fill: var(--cyan); }
 .chart-bar.orders-bar { fill: var(--violet); }

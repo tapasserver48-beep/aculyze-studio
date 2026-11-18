@@ -5409,11 +5409,17 @@ async function loadSalesDashboard(attempt = 0) {
   if (kpiEls.orders) kpiEls.orders.textContent = (summ.orders || 0).toLocaleString();
   if (kpiEls.customers) kpiEls.customers.textContent = (summ.customers || 0).toLocaleString();
 
-  // Delta chips + sparklines — both derived from by_month (latest month vs previous month).
-  renderKpiDeltas(summary.byMonth || []);
+  // Continuous month series: zero-fills gaps and — unless a "to" date filter
+  // is set — extends through the current calendar month, so this month's
+  // revenue (even when 0) is always on the chart and in the panel chips.
+  const monthSeries = normalizeByMonth(summary.byMonth || [], !dateTo);
 
-  renderSalesChart(summary.byMonth || []);
-  renderOrdersChart(summary.byMonth || []);
+  // Delta chips + sparklines — both derived from by_month (latest month vs previous month).
+  renderKpiDeltas(monthSeries);
+
+  renderSalesChart(monthSeries);
+  renderOrdersChart(monthSeries);
+  renderRevenueMetrics(monthSeries, currency);
   renderEmployeeBars(summary.byEmployee || []);
   renderStatusDonut(summary.byStatus || []);
 
@@ -5548,138 +5554,253 @@ function renderKpiDeltas(byMonth) {
   });
 }
 
-/** Monthly revenue line chart (by_month.total_sales) — cyan. */
-function renderSalesChart(byMonth) {
-  const svg = document.getElementById('revenueChart');
-  const empty = document.getElementById('revenueChartEmpty');
+/* ---------- Month-series helpers ------------------------------------------------
+   The LMS only lists months that HAVE sales, so gaps — and months up to today
+   — are missing from by_month (that's why only 2026-09 showed up). We zero-fill
+   the continuous range and, unless a "to" date filter is applied, extend the
+   series through the current calendar month, so current-month revenue (even 0)
+   is always visible. */
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAME_TO_IDX = (() => {
+  const names = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const map = {};
+  names.forEach((n, i) => { map[n] = i; map[n.slice(0, 3)] = i; });
+  return map;
+})();
+
+/** Parse a by_month label into { y, mo, fmt } — supports 2026-09, 09/2026, Sep 2026. */
+function parseMonthKey(key) {
+  const s = String(key == null ? '' : key).trim();
+  let m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
+  if (m) return { y: +m[1], mo: +m[2], fmt: 'ym' };
+  m = /^(\d{1,2})[-/.](\d{4})$/.exec(s);
+  if (m) return { y: +m[2], mo: +m[1], fmt: 'my' };
+  m = /^([A-Za-z]{3,9})\.?\s+(\d{4})$/.exec(s);
+  if (m) {
+    const name = m[1].toLowerCase();
+    const idx = MONTH_NAME_TO_IDX[name] != null ? MONTH_NAME_TO_IDX[name] : MONTH_NAME_TO_IDX[name.slice(0, 3)];
+    if (idx != null) return { y: +m[2], mo: idx + 1, fmt: 'nameY' };
+  }
+  return null;
+}
+
+function formatMonthKey(y, mo, fmt) {
+  const pad = (n) => String(n).padStart(2, '0');
+  if (fmt === 'my') return `${pad(mo)}/${y}`;
+  if (fmt === 'nameY') return `${MONTH_ABBR[mo - 1]} ${y}`;
+  return `${y}-${pad(mo)}`;
+}
+
+/** Chronological, gap-free { month, total_sales, orders } series (gaps = 0). */
+function normalizeByMonth(byMonth, extendToCurrent) {
+  if (!Array.isArray(byMonth) || !byMonth.length) return [];
+  const rows = byMonth.filter((m) => m && m.month != null);
+  const parsed = rows.map((m) => ({ raw: m, key: parseMonthKey(m.month) }));
+  if (!parsed.length || parsed.some((p) => !p.key || p.key.mo < 1 || p.key.mo > 12)) {
+    // Year-less labels ("Jun") can't be ordered or gap-filled safely — pass through.
+    return rows.map((m) => ({ month: String(m.month), total_sales: Number(m.total_sales) || 0, orders: Number(m.orders) || 0 }));
+  }
+  const fmt = parsed[0].key.fmt;
+  const byIndex = new Map();
+  parsed.forEach(({ raw, key }) => {
+    const idx = key.y * 12 + (key.mo - 1);
+    const add = { total_sales: Number(raw.total_sales) || 0, orders: Number(raw.orders) || 0 };
+    const cur = byIndex.get(idx);
+    byIndex.set(idx, cur
+      ? { month: cur.month, total_sales: cur.total_sales + add.total_sales, orders: cur.orders + add.orders }
+      : { month: String(raw.month), ...add });
+  });
+  let minIdx = Math.min(...byIndex.keys());
+  let maxIdx = Math.max(...byIndex.keys());
+  const now = new Date();
+  const nowIdx = now.getFullYear() * 12 + now.getMonth();
+  // Extend through the current month — but never invent more than 6 months of
+  // zeros (that would mean the data source is stale, not that sales are zero).
+  if (extendToCurrent && nowIdx > maxIdx && nowIdx - maxIdx <= 6) maxIdx = nowIdx;
+  const out = [];
+  for (let i = minIdx; i <= maxIdx; i += 1) {
+    out.push(byIndex.get(i) || { month: formatMonthKey(Math.floor(i / 12), (i % 12) + 1, fmt), total_sales: 0, orders: 0 });
+  }
+  return out;
+}
+
+const SD_SVG_NS = 'http://www.w3.org/2000/svg';
+function sdSvg(tag, attrs) {
+  const el = document.createElementNS(SD_SVG_NS, tag);
+  Object.keys(attrs || {}).forEach((k) => el.setAttribute(k, attrs[k]));
+  return el;
+}
+
+/** Round an axis maximum up to 1 / 2 / 2.5 / 5 × 10^k. */
+function chartNiceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+}
+
+function chartAxisNum(v) {
+  if (Math.abs(v) >= 10000) return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v);
+  return Math.round(v).toLocaleString();
+}
+
+/**
+ * Month line chart shared by Revenue performance + Orders trend.
+ * Horizontal grid + value axis, gradient area/line, current-month band,
+ * emphasised latest point, thinned labels — and a readable single-point
+ * state instead of the degenerate triangle.
+ */
+function renderMonthChart({ svgId, emptyId, series, valueKey, colors, fallbackHeight, idPrefix }) {
+  const svg = document.getElementById(svgId);
+  const empty = document.getElementById(emptyId);
   if (!svg) return;
-  if (!byMonth || !byMonth.length) { svg.innerHTML = ''; if (empty) empty.hidden = false; return; }
+  const rows = Array.isArray(series) ? series : [];
+  if (!rows.length) { svg.innerHTML = ''; if (empty) empty.hidden = false; return; }
   if (empty) empty.hidden = true;
 
   const width = svg.clientWidth || 660;
-  const height = 288;
-  const padding = { t: 10, r: 24, b: 34, l: 42 };
-  const chartW = width - padding.l - padding.r;
-  const chartH = height - padding.t - padding.b;
-
-  const months = byMonth.map((m) => m.month);
-  const values = byMonth.map((m) => Number(m.total_sales) || 0);
-  const maxVal = Math.max(...values, 1);
-
-  const xAt = (i) => (values.length === 1 ? padding.l + chartW / 2 : padding.l + (i / (values.length - 1)) * chartW);
-  const yAt = (v) => height - padding.b - (v / maxVal) * chartH;
+  const height = svg.clientHeight || fallbackHeight;
+  const padding = { t: 18, r: 22, b: 34, l: 54 };
+  const chartW = Math.max(width - padding.l - padding.r, 40);
+  const chartH = Math.max(height - padding.t - padding.b, 40);
+  const values = rows.map((m) => Number(m[valueKey]) || 0);
+  const labels = rows.map((m) => String(m.month));
+  const n = values.length;
+  const maxVal = Math.max(...values);
+  const gridCount = maxVal > 0 ? 4 : 1;
+  const yMax = maxVal > 0 ? chartNiceMax(maxVal) : 1;
+  const step = n > 1 ? chartW / (n - 1) : 0;
+  const xAt = (i) => (n === 1 ? padding.l + chartW / 2 : padding.l + i * step);
+  const yAt = (v) => height - padding.b - (v / yMax) * chartH;
+  const baseY = height - padding.b;
+  const [cA, cB] = colors;
 
   svg.innerHTML = '';
   svg.setAttribute('width', width);
   svg.setAttribute('height', height);
+  const frag = document.createDocumentFragment();
 
-  // grid
-  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  for (let i = 0; i < values.length; i++) {
-    const x = xAt(i);
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', x); line.setAttribute('y1', padding.t);
-    line.setAttribute('x2', x); line.setAttribute('y2', height - padding.b);
-    line.setAttribute('class', 'chart-grid');
-    g.appendChild(line);
+  // Current-month emphasis band (behind the data).
+  if (n > 1) {
+    const half = step / 2;
+    const bx = Math.max(xAt(n - 1) - half, padding.l);
+    const bw = Math.min(xAt(n - 1) + half, padding.l + chartW) - bx;
+    frag.appendChild(sdSvg('rect', { x: bx, y: padding.t, width: Math.max(bw, 0), height: chartH, rx: 6, fill: cA, 'fill-opacity': 0.06 }));
   }
-  svg.appendChild(g);
 
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-  grad.setAttribute('id', 'sdLine'); grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0'); grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
-  const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#22D3EE'); s1.setAttribute('stop-opacity', '1');
-  const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', '#8B4DFF'); s2.setAttribute('stop-opacity', '1');
-  grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
+  // Horizontal grid + value labels on the left.
+  for (let g = 0; g <= gridCount; g += 1) {
+    const v = (yMax * g) / gridCount;
+    const y = yAt(v);
+    frag.appendChild(sdSvg('line', { x1: padding.l, y1: y, x2: padding.l + chartW, y2: y, class: 'chart-grid' }));
+    const t = sdSvg('text', { x: padding.l - 9, y: y + 3.5, 'text-anchor': 'end', class: 'chart-axis' });
+    t.textContent = chartAxisNum(v);
+    frag.appendChild(t);
+  }
 
-  const areaGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-  areaGrad.setAttribute('id', 'sdArea'); areaGrad.setAttribute('x1', '0'); areaGrad.setAttribute('y1', '0'); areaGrad.setAttribute('x2', '0'); areaGrad.setAttribute('y2', '1');
-  const a1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); a1.setAttribute('offset', '0%'); a1.setAttribute('stop-color', '#22D3EE'); a1.setAttribute('stop-opacity', '0.35');
-  const a2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); a2.setAttribute('offset', '100%'); a2.setAttribute('stop-color', '#22D3EE'); a2.setAttribute('stop-opacity', '0');
-  areaGrad.appendChild(a1); areaGrad.appendChild(a2); defs.appendChild(areaGrad);
-  svg.appendChild(defs);
+  // Gradients: area fade (vertical) + two-tone line (horizontal).
+  const defs = sdSvg('defs', {});
+  const areaGrad = sdSvg('linearGradient', { id: `${idPrefix}Area`, x1: 0, y1: 0, x2: 0, y2: 1 });
+  areaGrad.appendChild(sdSvg('stop', { offset: '0%', 'stop-color': cA, 'stop-opacity': 0.4 }));
+  areaGrad.appendChild(sdSvg('stop', { offset: '100%', 'stop-color': cA, 'stop-opacity': 0 }));
+  const lineGrad = sdSvg('linearGradient', { id: `${idPrefix}Line`, x1: 0, y1: 0, x2: 1, y2: 0 });
+  lineGrad.appendChild(sdSvg('stop', { offset: '0%', 'stop-color': cA }));
+  lineGrad.appendChild(sdSvg('stop', { offset: '100%', 'stop-color': cB }));
+  defs.appendChild(areaGrad);
+  defs.appendChild(lineGrad);
+  frag.appendChild(defs);
 
-  const points = values.map((v, i) => `${xAt(i)},${yAt(v)}`);
-
-  const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  areaPath.setAttribute('d', `M ${padding.l},${height - padding.b} L ${points.join(' ')} L ${xAt(values.length - 1)},${height - padding.b} Z`);
-  areaPath.setAttribute('class', 'chart-area'); svg.appendChild(areaPath);
-
-  const linePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  linePath.setAttribute('d', values.length > 1 ? `M ${points.join(' ')}` : `M ${points[0]} L ${points[0]}`);
-  linePath.setAttribute('class', 'chart-line'); svg.appendChild(linePath);
+  const points = values.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`);
+  if (n > 1) {
+    frag.appendChild(sdSvg('path', {
+      d: `M ${xAt(0).toFixed(1)},${baseY} L ${points.join(' ')} L ${xAt(n - 1).toFixed(1)},${baseY} Z`,
+      fill: `url(#${idPrefix}Area)`,
+    }));
+    frag.appendChild(sdSvg('path', { d: `M ${points.join(' ')}`, class: 'sd-chart-line', stroke: `url(#${idPrefix}Line)` }));
+  } else {
+    // Single month: level guide across the plot — never the old wedge.
+    frag.appendChild(sdSvg('line', {
+      x1: padding.l, y1: yAt(values[0]), x2: padding.l + chartW, y2: yAt(values[0]),
+      stroke: cA, 'stroke-opacity': 0.5, 'stroke-width': 2, 'stroke-dasharray': '6 8',
+    }));
+  }
 
   values.forEach((v, i) => {
-    const x = xAt(i); const y = yAt(v);
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', 4); dot.setAttribute('class', 'chart-dot'); svg.appendChild(dot);
+    frag.appendChild(sdSvg('circle', {
+      cx: xAt(i), cy: yAt(v), r: i === n - 1 && n > 1 ? 5.5 : 3.5, fill: cA, class: 'sd-chart-dot',
+    }));
+  });
 
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', x); label.setAttribute('y', height - padding.b + 17);
-    label.setAttribute('text-anchor', 'middle'); label.setAttribute('class', 'chart-axis');
-    label.textContent = months[i]; svg.appendChild(label);
+  // Value at the latest month (the "current month" number, even when 0).
+  const valText = sdSvg('text', {
+    x: n === 1 ? xAt(0) + 14 : xAt(n - 1),
+    y: Math.max(yAt(values[n - 1]) - 13, padding.t + 4),
+    'text-anchor': n === 1 ? 'start' : 'end',
+    class: 'chart-value',
+  });
+  valText.textContent = chartAxisNum(values[n - 1]);
+  frag.appendChild(valText);
+
+  // X labels — thin them on long series, always keep the latest one.
+  const skip = n > 8 ? 2 : 1;
+  labels.forEach((lbl, i) => {
+    if (i % skip !== 0 && i !== n - 1) return;
+    const t = sdSvg('text', {
+      x: xAt(i), y: baseY + 19, 'text-anchor': 'middle',
+      class: i === n - 1 ? 'chart-axis is-now' : 'chart-axis',
+    });
+    t.textContent = lbl;
+    frag.appendChild(t);
+  });
+
+  svg.appendChild(frag);
+}
+
+/** Revenue performance line chart (by_month.total_sales) — cyan → violet. */
+function renderSalesChart(series) {
+  renderMonthChart({
+    svgId: 'revenueChart', emptyId: 'revenueChartEmpty', series,
+    valueKey: 'total_sales', colors: ['#22D3EE', '#8B4DFF'], fallbackHeight: 288, idPrefix: 'revGrad',
   });
 }
 
-/** Monthly orders line chart (by_month.orders) — violet. */
-function renderOrdersChart(byMonth) {
-  const svg = document.getElementById('ordersChart');
-  const empty = document.getElementById('ordersChartEmpty');
-  if (!svg) return;
-  if (!byMonth || !byMonth.length) { svg.innerHTML = ''; if (empty) empty.hidden = false; return; }
-  if (empty) empty.hidden = true;
-
-  const width = svg.clientWidth || 440;
-  const height = 208;
-  const padding = { t: 10, r: 16, b: 34, l: 42 };
-  const chartW = width - padding.l - padding.r;
-  const chartH = height - padding.t - padding.b;
-
-  const months = byMonth.map((m) => m.month);
-  const values = byMonth.map((m) => Number(m.orders) || 0);
-  const maxVal = Math.max(...values, 1);
-
-  const xAt = (i) => (values.length === 1 ? padding.l + chartW / 2 : padding.l + (i / (values.length - 1)) * chartW);
-  const yAt = (v) => height - padding.b - (v / maxVal) * chartH;
-
-  svg.innerHTML = '';
-  svg.setAttribute('width', width);
-  svg.setAttribute('height', height);
-
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-  grad.setAttribute('id', 'sdLine'); grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0'); grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
-  const s1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); s1.setAttribute('offset', '0%'); s1.setAttribute('stop-color', '#8B4DFF'); s1.setAttribute('stop-opacity', '1');
-  const s2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); s2.setAttribute('offset', '100%'); s2.setAttribute('stop-color', '#FF4FC3'); s2.setAttribute('stop-opacity', '1');
-  grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
-
-  const areaGrad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-  areaGrad.setAttribute('id', 'sdArea'); areaGrad.setAttribute('x1', '0'); areaGrad.setAttribute('y1', '0'); areaGrad.setAttribute('x2', '0'); areaGrad.setAttribute('y2', '1');
-  const a1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); a1.setAttribute('offset', '0%'); a1.setAttribute('stop-color', '#8B4DFF'); a1.setAttribute('stop-opacity', '0.30');
-  const a2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop'); a2.setAttribute('offset', '100%'); a2.setAttribute('stop-color', '#8B4DFF'); a2.setAttribute('stop-opacity', '0');
-  areaGrad.appendChild(a1); areaGrad.appendChild(a2); defs.appendChild(areaGrad);
-  svg.appendChild(defs);
-
-  const points = values.map((v, i) => `${xAt(i)},${yAt(v)}`);
-
-  const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  areaPath.setAttribute('d', `M ${padding.l},${height - padding.b} L ${points.join(' ')} L ${xAt(values.length - 1)},${height - padding.b} Z`);
-  areaPath.setAttribute('class', 'chart-area'); svg.appendChild(areaPath);
-
-  const linePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  linePath.setAttribute('d', values.length > 1 ? `M ${points.join(' ')}` : `M ${points[0]} L ${points[0]}`);
-  linePath.setAttribute('class', 'chart-line orders-line'); svg.appendChild(linePath);
-
-  values.forEach((v, i) => {
-    const x = xAt(i); const y = yAt(v);
-    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', 3.5); dot.setAttribute('class', 'chart-dot'); svg.appendChild(dot);
-
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', x); label.setAttribute('y', height - padding.b + 16);
-    label.setAttribute('text-anchor', 'middle'); label.setAttribute('class', 'chart-axis');
-    label.textContent = months[i]; svg.appendChild(label);
+/** Orders trend line chart (by_month.orders) — violet → pink. */
+function renderOrdersChart(series) {
+  renderMonthChart({
+    svgId: 'ordersChart', emptyId: 'ordersChartEmpty', series,
+    valueKey: 'orders', colors: ['#A78BFA', '#F472B6'], fallbackHeight: 208, idPrefix: 'ordGrad',
   });
+}
+
+/** "This month" / "Previous month" (+ peak) chips for the Revenue panel. */
+function renderRevenueMetrics(series, currency) {
+  const el = document.getElementById('revenueMetrics');
+  if (!el) return;
+  const rows = Array.isArray(series) ? series : [];
+  if (!rows.length) { el.innerHTML = ''; return; }
+
+  const now = new Date();
+  const nowIdx = now.getFullYear() * 12 + now.getMonth();
+  const isCurrent = (row) => {
+    const k = parseMonthKey(row.month);
+    return !!k && k.y * 12 + (k.mo - 1) === nowIdx;
+  };
+  const money = (v) => `${esc(currency || 'INR')} ${(Number(v) || 0).toLocaleString()}`;
+
+  const last = rows[rows.length - 1];
+  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
+  const chips = [`<span class="sd-metric"><span>${isCurrent(last) ? 'This month' : esc(last.month)}</span><b>${money(last.total_sales)}</b></span>`];
+  if (prev) {
+    chips.push(`<span class="sd-metric"><span>${isCurrent(last) ? 'Previous month' : esc(prev.month)}</span><b>${money(prev.total_sales)}</b></span>`);
+  }
+  // Peak month — only when it adds information (i.e. isn't the latest month).
+  const values = rows.map((r) => Number(r.total_sales) || 0);
+  const peakVal = Math.max(...values);
+  const peakIdx = values.indexOf(peakVal);
+  if (peakVal > 0 && peakIdx !== rows.length - 1) {
+    chips.push(`<span class="sd-metric"><span>Peak ${esc(rows[peakIdx].month)}</span><b>${money(peakVal)}</b></span>`);
+  }
+  el.innerHTML = chips.join('');
 }
 
 /** Ranked horizontal bar chart — sales by employee (total_sales). */
