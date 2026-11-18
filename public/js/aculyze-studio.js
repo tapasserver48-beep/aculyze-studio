@@ -3889,7 +3889,7 @@ function setAuthMode(mode) {
   if (authEls.submit) authEls.submit.textContent = authSubmitLabel();
 
   // Headline + the "already have an account?" link follow the active tab.
-  if (authEls.heading) authEls.heading.textContent = isReg ? 'Create your account' : 'Welcome back';
+  if (authEls.heading) authEls.heading.textContent = isReg ? 'Create your account' : 'Sign in';
   if (authEls.subtitle) {
     authEls.subtitle.textContent = isReg
       ? 'It takes a minute — then your workspace is ready.'
