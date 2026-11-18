@@ -5404,20 +5404,18 @@ async function loadSalesDashboard(attempt = 0) {
     total_sales: document.querySelector('#salesKpis [data-context="total_sales"] strong'),
     orders: document.querySelector('#salesKpis [data-context="orders"] strong'),
     customers: document.querySelector('#salesKpis [data-context="customers"] strong'),
-    average_order_value: document.querySelector('#salesKpis [data-context="average_order_value"] strong'),
   };
   if (kpiEls.total_sales) kpiEls.total_sales.textContent = `${currency} ${(summ.total_sales || 0).toLocaleString()}`;
   if (kpiEls.orders) kpiEls.orders.textContent = (summ.orders || 0).toLocaleString();
   if (kpiEls.customers) kpiEls.customers.textContent = (summ.customers || 0).toLocaleString();
-  if (kpiEls.average_order_value) kpiEls.average_order_value.textContent = `${currency} ${(summ.average_order_value || 0).toLocaleString()}`;
+
+  // Delta chips + sparklines — both derived from by_month (latest month vs previous month).
+  renderKpiDeltas(summary.byMonth || []);
 
   renderSalesChart(summary.byMonth || []);
   renderOrdersChart(summary.byMonth || []);
   renderEmployeeBars(summary.byEmployee || []);
   renderStatusDonut(summary.byStatus || []);
-
-  const employeeData = document.getElementById('employeeData');
-  const statusData = document.getElementById('statusData');
 
   const salesBody = document.getElementById('salesTableBody');
   if (salesBody) {
@@ -5427,14 +5425,13 @@ async function loadSalesDashboard(attempt = 0) {
           <td>${esc(r.proposal_number || (r.id != null ? `#${r.id}` : ''))}</td>
           <td>${esc(r.customer)}</td>
           <td>${esc(r.employee)}</td>
-          <td class="sd-amount">${Number(r.amount || 0).toLocaleString()}</td>
-          <td>${esc(r.currency || currency)}</td>
+          <td class="sd-amount">${esc(r.currency || currency)} ${Number(r.amount || 0).toLocaleString()}</td>
           <td><span class="app-status ${r.status === 'won' ? 'connected' : r.status === 'lost' ? 'action' : ''}">${esc(r.status)}</span></td>
           <td>${esc(dateOnly(r.date))}</td>
         </tr>
       `).join('');
     } else {
-      salesBody.innerHTML = '<tr><td colspan="7" class="data-empty">No sales data available for this period.</td></tr>';
+      salesBody.innerHTML = '<tr><td colspan="6" class="data-empty">No sales data available for this period.</td></tr>';
     }
   }
 
@@ -5498,9 +5495,57 @@ async function loadSalesDashboard(attempt = 0) {
   if (customersMetrics) {
     customersMetrics.innerHTML = `<span class="sd-metric"><span>Total customers</span><b>${customersRows.length}</b></span>`;
   }
+}
 
-  // Hide empty-state placeholders now that charts/tables render into their panels.
-  [employeeData, statusData].forEach((el) => { if (el) el.style.display = 'none'; });
+/**
+ * KPI delta chips + sparklines — computed from by_month only (no invented stats).
+ * Delta = latest month vs previous month for revenue and orders; sparkline = the
+ * full monthly series. Cards with no series (customers) are left untouched.
+ */
+function renderKpiDeltas(byMonth) {
+  const series = [
+    { key: 'total_sales', get: (m) => Number(m.total_sales) || 0 },
+    { key: 'orders', get: (m) => Number(m.orders) || 0 },
+  ];
+  series.forEach(({ key, get }) => {
+    const values = (byMonth || []).map(get);
+    const chip = document.querySelector(`#salesKpis [data-delta="${key}"]`);
+    const spark = document.querySelector(`#salesKpis [data-spark="${key}"]`);
+
+    // Sparkline: polyline across the monthly series.
+    if (spark) {
+      if (values.length >= 2) {
+        const max = Math.max(...values, 1);
+        const min = Math.min(...values, 0);
+        const span = max - min || 1;
+        const pts = values.map((v, i) => {
+          const x = (i / (values.length - 1)) * 94 + 1;
+          const y = 28 - ((v - min) / span) * 26;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        spark.innerHTML = `<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+        spark.hidden = false;
+      } else {
+        spark.innerHTML = '';
+        spark.hidden = true;
+      }
+    }
+
+    // Delta chip: latest month vs previous month.
+    if (!chip) return;
+    if (values.length >= 2 && values[values.length - 2] !== 0) {
+      const prev = values[values.length - 2];
+      const curr = values[values.length - 1];
+      const pct = ((curr - prev) / Math.abs(prev)) * 100;
+      const up = pct >= 0;
+      chip.hidden = false;
+      chip.className = `kpi-delta ${up ? 'is-up' : 'is-down'}`;
+      chip.innerHTML = `<span aria-hidden="true">${up ? '▲' : '▼'}</span> ${Math.abs(pct).toFixed(1)}% <em>vs prev month</em>`;
+      chip.title = `${curr.toLocaleString()} this month vs ${prev.toLocaleString()} last month`;
+    } else {
+      chip.hidden = true;
+    }
+  });
 }
 
 /** Monthly revenue line chart (by_month.total_sales) — cyan. */
@@ -5641,7 +5686,13 @@ function renderOrdersChart(byMonth) {
 function renderEmployeeBars(byEmployee) {
   const panel = document.getElementById('employeeData');
   if (!panel) return;
-  if (!byEmployee || !byEmployee.length) { panel.innerHTML = '<div class="data-empty">No employee data</div>'; panel.style.display = ''; return; }
+  if (!byEmployee || !byEmployee.length) {
+    panel.classList.add('data-empty');
+    panel.innerHTML = 'No employee data';
+    panel.style.display = '';
+    return;
+  }
+  panel.classList.remove('data-empty');
 
   const sorted = [...byEmployee].sort((a, b) => Number(b.total_sales || 0) - Number(a.total_sales || 0));
   const maxVal = Math.max(...sorted.map((e) => Number(e.total_sales || 0)), 1);
@@ -5670,34 +5721,48 @@ function renderEmployeeBars(byEmployee) {
 function renderStatusDonut(byStatus) {
   const panel = document.getElementById('statusData');
   if (!panel) return;
-  if (!byStatus || !byStatus.length) { panel.innerHTML = '<div class="data-empty">No status data</div>'; panel.style.display = ''; return; }
+  if (!byStatus || !byStatus.length) {
+    panel.classList.add('data-empty');
+    panel.innerHTML = 'No status data';
+    panel.style.display = '';
+    return;
+  }
+  panel.classList.remove('data-empty');
 
   const total = byStatus.reduce((s, x) => s + Number(x.count || 0), 0);
   const colors = { won: '#22D3EE', hold: '#FFC93A', lost: '#FF4FC3', open: '#8B4DFF' };
-  let start = 0;
-  const slices = byStatus.map((s) => {
-    const sweep = total ? (Number(s.count || 0) / total) * 360 : 0;
-    const col = colors[s.status] || '#8B4DFF';
-    const end = start + sweep;
-    const rad = (a) => (a * Math.PI) / 180;
-    const x1 = 74 + 70 * Math.cos(rad(start)); const y1 = 74 + 70 * Math.sin(rad(start));
-    const x2 = 74 + 70 * Math.cos(rad(end)); const y2 = 74 + 70 * Math.sin(rad(end));
-    const arcFlag = sweep > 180 ? 1 : 0;
-    const d = `M ${x1} ${y1} A 70 70 0 ${arcFlag} 1 ${x2} ${y2} L 74 74 Z`;
-    const out = { d, col, status: s.status, count: Number(s.count || 0), pct: total ? Math.round((Number(s.count || 0) / total) * 100) : 0 };
-    start = end;
+
+  // Ring segments: one <circle> per status with stroke-dasharray (a true donut,
+  // so the centre total sits on the panel background, not on top of the slices).
+  const R = 58;
+  const CIRC = 2 * Math.PI * R;
+  let startFrac = 0;
+  const segs = byStatus.map((s) => {
+    const frac = total ? Number(s.count || 0) / total : 0;
+    const out = {
+      col: colors[s.status] || '#8B4DFF',
+      status: s.status,
+      count: Number(s.count || 0),
+      pct: Math.round(frac * 100),
+      len: Math.max(frac * CIRC - 3, 0.001),   // 3px gap between segments
+      offset: startFrac * CIRC,
+    };
+    startFrac += frac;
     return out;
   });
 
   panel.innerHTML = `
     <div class="sd-donut-wrap">
       <svg class="sd-donut" viewBox="0 0 148 148" role="img" aria-label="Sales status distribution">
-        ${slices.map((sl) => `<path d="${sl.d}" fill="${sl.col}" stroke="#050713" stroke-width="2"/>`).join('')}
+        <circle cx="74" cy="74" r="${R}" fill="none" stroke="rgba(140,160,255,0.12)" stroke-width="26"/>
+        ${segs.map((sl) => `<circle cx="74" cy="74" r="${R}" fill="none" stroke="${sl.col}" stroke-width="26"
+          stroke-dasharray="${sl.len.toFixed(2)} ${(CIRC - sl.len).toFixed(2)}"
+          stroke-dashoffset="${(-sl.offset).toFixed(2)}" transform="rotate(-90 74 74)"/>`).join('')}
         <text class="sd-donut-center-val" x="74" y="72" text-anchor="middle">${total}</text>
         <text class="sd-donut-center-lbl" x="74" y="90" text-anchor="middle">orders</text>
       </svg>
       <div class="sd-legend">
-        ${slices.map((sl) => `
+        ${segs.map((sl) => `
           <div class="sd-legend-row">
             <div class="sd-legend-dot" style="background:${sl.col}"></div>
             <span class="sd-legend-name">${sl.status}</span>

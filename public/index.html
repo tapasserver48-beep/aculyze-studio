@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
-  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261116a" />
+  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261118a" />
 </head>
 <body>
   <div id="app" class="app">
@@ -314,7 +314,7 @@
                 </div>
                 <div class="sales-filters">
                   <label class="sd-field"><span>From</span><input type="date" id="salesDateFrom" aria-label="Date from"></label>
-                  <label class="sd-field"><span>To</label>
+                  <label class="sd-field"><span>To</span><input type="date" id="salesDateTo" aria-label="Date to"></label>
                   <button class="period-select sd-refresh" id="salesRefresh" type="button"><span>Refresh data</span></button>
                 </div>
               </div>
@@ -323,19 +323,45 @@
             <div id="salesState" class="sales-state" hidden></div>
             <div class="data-note" id="salesDataNote" role="status">Loading Aculyze LMS data…</div>
 
-            <!-- KPI row -->
+            <!-- KPI row: total customers · total revenue · total purchase orders -->
             <div class="kpi-grid" id="salesKpis">
-              <button class="kpi-card kpi-primary" type="button" data-context="total_sales">
-                <span>Total Sales</span><strong>—</strong><small>Aculyze LMS · summary.total_sales</small>
+              <button class="kpi-card kpi-customers" type="button" data-context="customers">
+                <span class="kpi-top">
+                  <span class="kpi-ico" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H6.4A3.4 3.4 0 0 0 3 18.4V20"/><circle cx="9.5" cy="8" r="3.4"/><path d="M21 20v-1.6a3.4 3.4 0 0 0-2.6-3.3"/><path d="M15.5 4.7a3.4 3.4 0 0 1 0 6.6"/></svg>
+                  </span>
+                  <span class="kpi-label">Total customers</span>
+                </span>
+                <strong>—</strong>
+                <span class="kpi-meta"><span class="kpi-hint">On record in Aculyze LMS</span></span>
               </button>
-              <button class="kpi-card" type="button" data-context="orders">
-                <span>Orders</span><strong>—</strong><small>Aculyze LMS · summary.orders</small>
+
+              <button class="kpi-card kpi-revenue" type="button" data-context="total_sales">
+                <span class="kpi-top">
+                  <span class="kpi-ico" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><path d="M17 14.5h1.5"/></svg>
+                  </span>
+                  <span class="kpi-label">Total revenue</span>
+                </span>
+                <strong>—</strong>
+                <span class="kpi-meta">
+                  <span class="kpi-delta" data-delta="total_sales" hidden></span>
+                  <svg class="kpi-spark" data-spark="total_sales" viewBox="0 0 96 30" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </span>
               </button>
-              <button class="kpi-card" type="button" data-context="customers">
-                <span>Customers</span><strong>—</strong><small>Aculyze LMS · summary.customers</small>
-              </button>
-              <button class="kpi-card" type="button" data-context="average_order_value">
-                <span>Average Order Value</span><strong>—</strong><small>Aculyze LMS · summary.average_order_value</small>
+
+              <button class="kpi-card kpi-orders" type="button" data-context="orders">
+                <span class="kpi-top">
+                  <span class="kpi-ico" aria-hidden="true">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.8h12v18.4l-3-1.8-3 1.8-3-1.8-3 1.8z"/><path d="M9.2 8.2h5.6"/><path d="M9.2 12.2h5.6"/></svg>
+                  </span>
+                  <span class="kpi-label">Total purchase orders</span>
+                </span>
+                <strong>—</strong>
+                <span class="kpi-meta">
+                  <span class="kpi-delta" data-delta="orders" hidden></span>
+                  <svg class="kpi-spark" data-spark="orders" viewBox="0 0 96 30" preserveAspectRatio="none" aria-hidden="true"></svg>
+                </span>
               </button>
             </div>
 
@@ -343,7 +369,7 @@
             <div class="sd-row sd-row-primary">
               <section class="data-panel sd-panel-revenue">
                 <div class="panel-title">
-                  <div><h2>Revenue performance</h2><p>Monthly revenue trend · <span class="mono">by_month.total_sales</span></p></div>
+                  <div><h2>Revenue performance</h2><p>Month-by-month revenue from Aculyze LMS</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <svg id="revenueChart" class="sales-chart sd-chart-lg" role="img" aria-label="Monthly revenue chart"></svg>
@@ -352,7 +378,7 @@
 
               <section class="data-panel sd-panel-employee">
                 <div class="panel-title">
-                  <div><h2>Sales by employee</h2><p>Ranked by revenue · <span class="mono">by_employee</span></p></div>
+                  <div><h2>Sales by employee</h2><p>Ranked by revenue</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <div id="employeeData" class="data-empty">No data</div>
@@ -363,7 +389,7 @@
             <div class="sd-row sd-row-secondary">
               <section class="data-panel sd-panel-orders">
                 <div class="panel-title">
-                  <div><h2>Orders trend</h2><p>Monthly order volume · <span class="mono">by_month.orders</span></p></div>
+                  <div><h2>Orders trend</h2><p>Month-by-month order volume</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <svg id="ordersChart" class="sales-chart sd-chart-sm" role="img" aria-label="Monthly orders chart"></svg>
@@ -372,7 +398,7 @@
 
               <section class="data-panel sd-panel-status">
                 <div class="panel-title">
-                  <div><h2>Sales status</h2><p>Proposal outcomes · <span class="mono">by_status</span></p></div>
+                  <div><h2>Sales status</h2><p>Proposal outcomes by status</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <div id="statusData" class="data-empty">No data</div>
@@ -383,7 +409,7 @@
             <div class="sd-row sd-row-tables">
               <section class="data-panel leads-table-panel">
                 <div class="panel-title">
-                  <div><h2>Lead pipeline</h2><p>Open opportunities · <span class="mono">/leads</span></p></div>
+                  <div><h2>Lead pipeline</h2><p>Open opportunities</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <div class="sd-metrics" id="leadsMetrics"></div>
@@ -399,7 +425,7 @@
 
               <section class="data-panel sales-table-panel">
                 <div class="panel-title">
-                  <div><h2>Recent sales</h2><p>Proposals · <span class="mono">/sales</span></p></div>
+                  <div><h2>Recent sales</h2><p>Latest proposals from Aculyze LMS</p></div>
                   <span class="live-label">ACULYZE LMS</span>
                 </div>
                 <div class="sd-metrics" id="salesMetrics"></div>
@@ -418,7 +444,7 @@
             <!-- Row 4: Customers (full width) -->
             <section class="data-panel customers-table-panel">
               <div class="panel-title">
-                <div><h2>Customers</h2><p>Account list · <span class="mono">/customers</span></p></div>
+                <div><h2>Customers</h2><p>Account list from Aculyze LMS</p></div>
                 <span class="live-label">ACULYZE LMS</span>
               </div>
               <div class="sd-metrics" id="customersMetrics"></div>
@@ -1151,7 +1177,7 @@
   <script type="module" src="js/voice.js"></script>
   <script type="module" src="js/api.js"></script>
   <script type="module" src="js/mascot.js"></script>
-  <script type="module" src="js/aculyze-studio.js?v=20261116a"></script>
+  <script type="module" src="js/aculyze-studio.js?v=20261118a"></script>
   <script type="module" src="js/voice-assistant.js?v=20261112f"></script>
 </body>
 </html>
