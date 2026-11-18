@@ -193,6 +193,80 @@ function titleFromText(text) {
   return clean.length > 42 ? `${clean.slice(0, 42).trimEnd()}…` : clean || 'New message';
 }
 
+/** Plain text of a message — user turns can be `{content:[{type:'text',…}]}`. */
+function messageText(m) {
+  const c = m && m.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) {
+    const part = c.find((p) => p && typeof p === 'object' && typeof p.text === 'string');
+    return part ? part.text : '';
+  }
+  return '';
+}
+
+/**
+ * Title derived locally from the first chat answer: first non-empty line with
+ * markdown/code fencing stripped, capped at 42 chars. No extra model call and
+ * no network — the answer is already in hand.
+ */
+function titleFromAnswer(answer) {
+  const line = String(answer || '')
+    .replace(/```[\s\S]*?```/g, ' ') // fenced code blocks
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^[\s>*+-]+/, '').replace(/[*_`~#]+/g, '').replace(/\s+/g, ' ').trim())
+    .find((l) => l.length > 0);
+  return line ? titleFromText(line) : '';
+}
+
+/** Placeholder titles a conversation may still be carrying. */
+function isPlaceholderTitle(title) {
+  return !title || title === 'New conversation' || title === 'New sales chat';
+}
+
+/**
+ * Name a conversation from its first answer, once, while it still holds a
+ * placeholder title. Returns true when the title changed (caller persists and
+ * re-renders). Keeps the open detail header in sync.
+ */
+function autoTitleConversation(conv) {
+  if (!conv || !isPlaceholderTitle(conv.title)) return false;
+  const answer = [...conv.messages].reverse().find((m) => m.role === 'assistant');
+  const derived = titleFromAnswer(messageText(answer));
+  if (!derived) return false;
+  conv.title = derived;
+  if (els.conversationTitle && els.conversationDetail && !els.conversationDetail.hidden) {
+    els.conversationTitle.textContent = derived;
+  }
+  return true;
+}
+
+/**
+ * One-time backfill for conversations saved before auto-titling existed:
+ * anything still called "New conversation" / "New sales chat" that already has
+ * messages gets a real title from its first answer (or first message).
+ */
+function backfillConversationTitles() {
+  const apply = (list) => {
+    let changed = false;
+    for (const conv of list || []) {
+      if (!isPlaceholderTitle(conv.title)) continue;
+      const answer = conv.messages.find((m) => m.role === 'assistant' && messageText(m));
+      const first = answer || conv.messages.find((m) => messageText(m));
+      const derived = titleFromAnswer(messageText(first));
+      if (derived) { conv.title = derived; changed = true; }
+    }
+    return changed;
+  };
+  const zara = apply(state.conversationCache);
+  const sales = apply(salesState.conversationCache);
+  if (zara) saveConversationCache();
+  if (sales) saveSalesConversationCache();
+  return zara || sales;
+}
+// Run once during module init — before the first list render, while every
+// conversation still carries whatever title it was saved with.
+backfillConversationTitles();
+
 /* ---------- Element references ---------- */
 const els = {
   sidebar: document.getElementById('sidebar'),
@@ -830,12 +904,10 @@ function setView(view) {
     loadSalesDashboard();
     if (salesState.selectedConversationId) {
       showSalesConversationDetail(salesState.selectedConversationId);
-    } else {
-      if (els.conversationList) {
-        els.conversationList.innerHTML = '';
-        if (els.conversationEmpty) els.conversationEmpty.style.display = '';
-      }
     }
+    // No conversation selected: the list rendered above stays on screen (the
+    // detail panel is already hidden above). Clearing it here is what made the
+    // Sales conversation list look empty on every visit.
   }
   // --- Apps view ---
   else if (next === 'apps') {
@@ -958,7 +1030,7 @@ function renderConversationList() {
     li.innerHTML = `
       <div class="conversation-avatar">Z</div>
       <div class="conversation-details">
-        <span class="conversation-title">${conv.title || 'New conversation'}</span>
+        <span class="conversation-title">${esc(conv.title || 'New conversation')}</span>
         <span class="conversation-preview">${conv.lastMessage ? truncate(conv.lastMessage, 60) : ''}</span>
       </div>
       <div class="conversation-meta">
@@ -1615,7 +1687,9 @@ async function sendZaraMessage() {
       const srcs = [...(res.sources || []), ...integrationSources];
       conv.messages.push({ role: 'assistant', content: finalText, sources: srcs });
       conv.updatedAt = Date.now();
+      autoTitleConversation(conv); // first answer names the conversation
       saveConversationCache();
+      renderConversationList();
     }
 
     // Clear attachments after successful send
@@ -1860,7 +1934,7 @@ function renderSalesConversationList() {
     li.innerHTML = `
       <div class="conversation-avatar">S</div>
       <div class="conversation-details">
-        <span class="conversation-title">${conv.title || 'New sales chat'}</span>
+        <span class="conversation-title">${esc(conv.title || 'New sales chat')}</span>
         <span class="conversation-preview">${conv.lastMessage ? truncate(conv.lastMessage, 60) : ''}</span>
       </div>
       <div class="conversation-meta">
@@ -2062,7 +2136,9 @@ async function sendSalesMessage() {
     if (conv) {
       conv.messages.push({ role: 'assistant', content: finalText, sources: res.sources || [] });
       conv.updatedAt = Date.now();
+      autoTitleConversation(conv); // first answer names the conversation
       saveSalesConversationCache();
+      renderSalesConversationList();
     }
 
     if (els.conversationDetail && !els.conversationDetail.hidden) {
