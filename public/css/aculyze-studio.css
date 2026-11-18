@@ -4970,7 +4970,7 @@ body.copilot-collapsed .copilot-rail {
      with no scrollbar. */
   grid-template-rows: minmax(0, 1fr);
   width: min(400px, 100%);
-  height: min(680px, calc(100dvh - 60px));
+  height: min(650px, calc(100dvh - 70px));
   margin-right: clamp(24px, 8vw, 120px);
   border-radius: 26px;
   overflow: hidden;
