@@ -5333,6 +5333,10 @@ async function loadSalesDashboard(attempt = 0) {
   }
 
   let summary = null, salesRows = [], leadsRows = [], customersRows = [];
+  // Real record counts from each list's pagination.total — the summary endpoint's
+  // `customers` field counts only customers *with sales in the period* (1 sale → 1),
+  // while /customers reports the full directory (639).
+  const totals = { sales: null, leads: null, customers: null };
   try {
     const [sRes, salesRes, leadsRes, customersRes] = await Promise.all([
       fetch(`/api/sales/summary${rangeQs}`),
@@ -5368,8 +5372,18 @@ async function loadSalesDashboard(attempt = 0) {
     summary = await sRes.json();
 
     // Tables: abort on credential/permission errors, otherwise keep whatever loaded.
-    for (const [res, setter] of [[salesRes, (d) => { salesRows = d; }], [leadsRes, (d) => { leadsRows = d; }], [customersRes, (d) => { customersRows = d; }]]) {
-      if (res.ok) { setter((await res.json()).rows || []); continue; }
+    for (const [res, setter, key] of [
+      [salesRes, (d) => { salesRows = d; }, 'sales'],
+      [leadsRes, (d) => { leadsRows = d; }, 'leads'],
+      [customersRes, (d) => { customersRows = d; }, 'customers'],
+    ]) {
+      if (res.ok) {
+        const data = await res.json();
+        setter(data.rows || []);
+        const total = data.pagination && data.pagination.total;
+        if (Number.isFinite(Number(total))) totals[key] = Number(total);
+        continue;
+      }
       const info = await readSalesError(res);
       const type = salesErrorType(info);
       if (type === 'auth' || type === 'permission' || type === 'disconnected') { showSalesState(type); return; }
@@ -5407,7 +5421,11 @@ async function loadSalesDashboard(attempt = 0) {
   };
   if (kpiEls.total_sales) kpiEls.total_sales.textContent = `${currency} ${(summ.total_sales || 0).toLocaleString()}`;
   if (kpiEls.orders) kpiEls.orders.textContent = (summ.orders || 0).toLocaleString();
-  if (kpiEls.customers) kpiEls.customers.textContent = (summ.customers || 0).toLocaleString();
+  // Customers = the LMS customer directory (pagination.total), not the summary's
+  // "customers with sales in period" figure — fall back to the summary if the
+  // list request failed so the card never shows a made-up number.
+  const customersTotal = totals.customers != null ? totals.customers : (Number(summ.customers) || 0);
+  if (kpiEls.customers) kpiEls.customers.textContent = customersTotal.toLocaleString();
 
   // Continuous month series: zero-fills gaps and — unless a "to" date filter
   // is set — extends through the current calendar month, so this month's
@@ -5445,7 +5463,7 @@ async function loadSalesDashboard(attempt = 0) {
   if (salesMetrics) {
     const totalAmt = salesRows.reduce((s, r) => s + Number(r.amount || 0), 0);
     salesMetrics.innerHTML = `
-      <span class="sd-metric"><span>Records</span><b>${salesRows.length}</b></span>
+      <span class="sd-metric"><span>Records</span><b>${(totals.sales != null ? totals.sales : salesRows.length).toLocaleString()}</b></span>
       <span class="sd-metric"><span>Total value</span><b>${esc(currency)} ${totalAmt.toLocaleString()}</b></span>
       <span class="sd-metric"><span>Avg deal</span><b>${esc(currency)} ${salesRows.length ? Math.round(totalAmt / salesRows.length).toLocaleString() : '0'}</b></span>
     `;
@@ -5474,7 +5492,7 @@ async function loadSalesDashboard(attempt = 0) {
     const warm = leadsRows.filter((r) => String(r.temperature_label || r.temperature || '').toLowerCase() === 'warm').length;
     const hot = leadsRows.filter((r) => String(r.temperature_label || r.temperature || '').toLowerCase() === 'hot').length;
     leadsMetrics.innerHTML = `
-      <span class="sd-metric"><span>Total leads</span><b>${leadsRows.length}</b></span>
+      <span class="sd-metric"><span>Total leads</span><b>${(totals.leads != null ? totals.leads : leadsRows.length).toLocaleString()}</b></span>
       <span class="sd-metric"><span>Warm</span><b>${warm}</b></span>
       <span class="sd-metric"><span>Hot</span><b>${hot}</b></span>
     `;
@@ -5499,7 +5517,8 @@ async function loadSalesDashboard(attempt = 0) {
 
   const customersMetrics = document.getElementById('customersMetrics');
   if (customersMetrics) {
-    customersMetrics.innerHTML = `<span class="sd-metric"><span>Total customers</span><b>${customersRows.length}</b></span>`;
+    // Same source as the KPI card: the directory total, not the 10 rows on this page.
+    customersMetrics.innerHTML = `<span class="sd-metric"><span>Total customers</span><b>${customersTotal.toLocaleString()}</b></span>`;
   }
 }
 
