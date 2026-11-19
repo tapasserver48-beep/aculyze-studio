@@ -54,8 +54,11 @@ const state = {
   conversations: loadConversations(),
   threads: loadThreads(),
   threadId: null, // set after loadThreads below
-  // Conversation state: currently selected conversation in the right panel
+  // Conversation state: currently selected conversation in the right panel.
+  // Doubles as the resume pointer — it marks which history row to highlight.
   selectedConversationId: null,
+  // Live filter for the history search box (empty string = show everything).
+  conversationQuery: '',
   // Lightweight conversation cache for UI (localStorage-persisted but NOT model memory)
   conversationCache: loadConversationCache(),
   attachments: [], // pending image attachments { name, type, dataUrl }
@@ -338,6 +341,7 @@ const els = {
   // Conversation architecture elements
   conversationList: document.getElementById('conversationList'),
   conversationEmpty: document.getElementById('conversationEmpty'),
+  conversationSearch: document.getElementById('zaraConversationSearch'),
   conversationDetail: document.getElementById('conversationDetail'),
   conversationTitle: document.getElementById('conversationTitle'),
   conversationMessages: document.getElementById('conversationMessages'),
@@ -423,7 +427,14 @@ function setCopilotCollapsed(collapsed) {
   document.body.classList.toggle('copilot-collapsed', c);
   try { localStorage.setItem(K_COPILOT, c ? '1' : '0'); } catch { /* ignore */ }
 }
-function openCopilot() { setCopilotCollapsed(false); }
+function openCopilot() {
+  setCopilotCollapsed(false);
+  // Expanding must decide what is on screen. This used to toggle only the CSS
+  // class, so the panel opened on whatever stale state the last setView() left
+  // behind — often both sections hidden (a blank panel), or the detail view.
+  // Conversation history is the landing view; the open one stays highlighted.
+  showConversationList();
+}
 function closeCopilot() { setCopilotCollapsed(true); }
 
 // Restore persisted Zara state; default to open on desktop, closed as an overlay
@@ -437,6 +448,19 @@ try {
 // The existing controls: close in the panel header, reopen on the collapsed rail.
 document.getElementById('copilotCollapse')?.addEventListener('click', closeCopilot);
 document.getElementById('copilotExpand')?.addEventListener('click', openCopilot);
+
+// Render the history once at boot. setView() is only ever reached from a nav
+// click, so without this the panel would sit on the static markup — showing
+// "No conversations yet" even when localStorage holds a full history.
+showConversationList();
+
+// History search: filter as you type. The input previously had no handler at
+// all — it rendered in the panel and did nothing. Both agents share this one
+// input, so showConversationList() dispatches to the right cache for them.
+els.conversationSearch?.addEventListener('input', () => {
+  state.conversationQuery = els.conversationSearch.value || '';
+  showConversationList();
+});
 
 // Crossing into a compact viewport turns the panel into a hidden overlay.
 // Visual only — the persisted open/closed choice is left untouched.
@@ -828,18 +852,18 @@ function setView(view) {
   }
   const next = VIEW_META[view] ? view : 'home';
 
-  // Clear agent-specific state when switching away from an agent view
+  // Clear the ACTIVE AGENT when leaving an agent view.
+  // `selectedConversationId` is deliberately KEPT now: since nothing auto-opens
+  // the detail panel any more (see showConversationList), it is no longer a
+  // "which conversation is open" flag but a resume pointer — it marks the row
+  // to highlight so returning to the history costs one click to jump back in.
   if (state.activeView !== next) {
-    if (next === 'home') {
-      state.activeAgent = null;
-      state.selectedConversationId = null;
-    } else if (next === 'zara') {
+    if (next === 'zara') {
       state.activeAgent = 'zara';
     } else if (next === 'sales') {
       state.activeAgent = 'sales';
-    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store' || next === 'command' || next === 'admin') {
+    } else {
       state.activeAgent = null;
-      state.selectedConversationId = null;
     }
   }
 
@@ -873,15 +897,11 @@ function setView(view) {
 
   // --- Zara view ---
   if (next === 'zara') {
-    renderConversationList();
-    if (state.selectedConversationId) {
-      showConversationDetail(state.selectedConversationId);
-    } else {
-      els.zaraConversations.hidden = false;
-      els.conversationDetail.hidden = true;
-      if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
-      if (els.conversationEmpty) els.conversationEmpty.style.display = '';
-    }
+    // Land on the history, never on the last-open conversation. The detail
+    // panel is reached only by an explicit row click or New chat — auto-opening
+    // it here is what forced a back-button round trip before the list appeared.
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
     // Update right panel header for Zara
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
@@ -896,11 +916,11 @@ function setView(view) {
   }
   // --- Sales view ---
   else if (next === 'sales') {
-    // Show Sales conversation panel on right (reuse same DOM elements)
-    if (els.zaraConversations) els.zaraConversations.hidden = false;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // Show Sales conversation panel on right (reuse same DOM elements).
+    // showConversationList() dispatches on activeAgent, so this renders the
+    // Sales cache into the same container — and again lands on the history.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     if (els.workspaceTitle) {
       els.workspaceTitle.textContent = 'Sales Agent';
     }
@@ -912,23 +932,20 @@ function setView(view) {
     // Sales-specific composer placeholder
     if (els.zaraInput) els.zaraInput.placeholder = 'Ask Sales Agent…';
     if (els.zaraInput) els.zaraInput.setAttribute('aria-label', 'Message Sales Agent');
-    // Render sales conversation list
-    renderSalesConversationList();
     // Load live sales dashboard data
     loadSalesDashboard();
-    if (salesState.selectedConversationId) {
-      showSalesConversationDetail(salesState.selectedConversationId);
-    }
-    // No conversation selected: the list rendered above stays on screen (the
-    // detail panel is already hidden above). Clearing it here is what made the
-    // Sales conversation list look empty on every visit.
+    // The list was rendered above and stays on screen. The last-open Sales
+    // conversation is deliberately NOT auto-opened here any more — that hid the
+    // list again and forced a back-button detour (same as the Zara panel).
   }
   // --- Apps view ---
   else if (next === 'apps') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -940,10 +957,12 @@ function setView(view) {
   }
   // --- Settings view ---
   else if (next === 'settings') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -954,10 +973,12 @@ function setView(view) {
   }
   // --- Inbox view ---
   else if (next === 'inbox') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -969,10 +990,12 @@ function setView(view) {
   }
   // --- Store view ---
   else if (next === 'store') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -983,10 +1006,12 @@ function setView(view) {
   }
   // --- Command Centre view ---
   else if (next === 'command') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -998,10 +1023,12 @@ function setView(view) {
   }
   // --- Admin view ---
   else if (next === 'admin') {
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // The right panel is a persistent column: it always shows the conversation
+    // history rather than collapsing to just a header. Hiding BOTH sections
+    // here is what produced the blank panel (header + "Ready" and nothing
+    // else) whenever it was opened from a non-chat view.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
     const copilotAgent = document.getElementById('copilotAgent');
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
@@ -1018,10 +1045,10 @@ function setView(view) {
     const copilotSubtitle = document.getElementById('copilotSubtitle');
     if (copilotAgent) copilotAgent.textContent = 'Zara';
     if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
-    if (els.zaraConversations) els.zaraConversations.hidden = true;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    // Home also keeps the history visible (see the note in the other branches)
+    // — #zaraEmptyState belongs to the main workspace, not this panel.
+    showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'block';
-    if (els.conversationEmpty) els.conversationEmpty.style.display = 'block';
     if (els.workspaceTitle) {
       els.workspaceTitle.textContent = 'Home • AI workspace';
     }
@@ -1033,28 +1060,46 @@ function renderConversationList() {
   if (!els.conversationList) return;
   // Build list from conversationCache
   const cache = state.conversationCache;
+  // NOTE: this wipes the container, which DETACHES #conversationEmpty — it
+  // lives inside it in the markup. Keep the node and re-attach it (setListEmpty)
+  // rather than discarding it: every other call site holds a reference to it,
+  // and writing style.display to a detached node is a silent no-op. That is why
+  // "No conversations yet" could never actually render.
   els.conversationList.innerHTML = '';
-  
+
   if (!cache || cache.length === 0) {
-    if (els.conversationEmpty) els.conversationEmpty.style.display = '';
+    setListEmpty('No conversations yet. Start a new chat.');
     return;
   }
-  
+
+  const query = String(state.conversationQuery || '').trim();
+  // Pinned conversations first, then most recently updated. The filter runs
+  // before the sort so matches keep that order.
+  const sorted = cache
+    .filter((c) => conversationMatches(c, query.toLowerCase()))
+    .sort((a, b) => {
+      const pin = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
+      if (pin) return pin;
+      return toMillis(b.updatedAt) - toMillis(a.updatedAt);
+    });
+
+  if (!sorted.length) {
+    setListEmpty(`No conversations match "${query}".`);
+    return;
+  }
+
   if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
-  
-  // Pinned conversations first, then most recently updated
-  const sorted = [...cache].sort((a, b) => {
-    const pin = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-    if (pin) return pin;
-    return toMillis(b.updatedAt) - toMillis(a.updatedAt);
-  });
-  
+
   const ul = document.createElement('ul');
   ul.className = 'conversation-row-list';
-  
+
   for (const conv of sorted) {
     const li = document.createElement('li');
-    li.className = 'conversation-row has-actions';
+    // The open conversation stays marked so reopening the panel to the list
+    // still shows where you were — resuming costs one click.
+    const isOpen = conv.id === state.selectedConversationId;
+    li.className = 'conversation-row has-actions' + (isOpen ? ' active' : '');
+    if (isOpen) li.setAttribute('aria-current', 'true');
     li.dataset.conversationId = conv.id;
     li.innerHTML = `
       <div class="conversation-avatar">Z</div>
@@ -1090,6 +1135,41 @@ function renderConversationList() {
   els.conversationList.appendChild(ul);
 }
 
+/**
+ * Show the conversation HISTORY (search + list) and hide the detail panel.
+ *
+ * The single source of truth for "the panel is showing the list" — this block
+ * used to be copy-pasted at nine call sites, which is exactly how the panel
+ * grew three different landing states: a blank one (both sections hidden), the
+ * detail view, and the list. Dispatches on the active agent because Zara and
+ * Sales keep separate caches behind the same DOM.
+ */
+function showConversationList() {
+  if (els.conversationDetail) els.conversationDetail.hidden = true;
+  if (els.zaraConversations) els.zaraConversations.hidden = false;
+  if (state.activeAgent === 'sales') renderSalesConversationList();
+  else renderConversationList();
+}
+
+/**
+ * The history's empty message — one node, re-used for both "nothing stored"
+ * and "nothing matches the search". #conversationEmpty lives INSIDE the list
+ * container, so showing it always means re-attaching it: see the note in
+ * renderConversationList() for why a detached node silently swallowed this.
+ */
+function setListEmpty(text) {
+  if (!els.conversationEmpty || !els.conversationList) return;
+  els.conversationEmpty.textContent = text;
+  els.conversationEmpty.style.display = '';
+  els.conversationList.appendChild(els.conversationEmpty);
+}
+
+/** Case-insensitive match against a conversation's title and last message. */
+function conversationMatches(conv, q) {
+  if (!q) return true;
+  return `${conv.title || ''} ${conv.lastMessage || ''}`.toLowerCase().includes(q);
+}
+
 /* ---------- Pin / delete conversation ---------- */
 function togglePinConversation(id) {
   const conv = state.conversationCache.find((c) => c.id === id);
@@ -1111,16 +1191,17 @@ async function deleteConversation(id) {
   });
   if (!ok) return;
   state.conversationCache = state.conversationCache.filter((c) => c.id !== id);
-  // If the deleted conversation is open, close the detail panel
-  if (state.selectedConversationId === id) {
+  const wasOpen = state.selectedConversationId === id;
+  // If the deleted conversation is the one showing, drop it: the detail panel
+  // must not keep rendering something that no longer exists.
+  if (wasOpen) {
     state.selectedConversationId = null;
-    if (els.conversationDetail) els.conversationDetail.hidden = true;
-    if (els.zaraConversations) els.zaraConversations.hidden = false;
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
     if (els.workspaceTitle) els.workspaceTitle.textContent = 'Zara Gen AI';
   }
   saveConversationCache();
-  renderConversationList();
+  if (wasOpen) showConversationList(); // closes the detail and re-renders
+  else renderConversationList(); // some other conversation's detail stays open
   toast('Conversation deleted');
 }
 
@@ -1196,12 +1277,10 @@ function showConversationDetail(conversationId) {
   // Update back button
   if (els.backToListings) {
     els.backToListings.onclick = () => {
+      // Explicitly leaving the conversation, so the resume pointer goes too.
       state.selectedConversationId = null;
-      renderConversationList();
-      if (els.conversationDetail) els.conversationDetail.hidden = true;
-      if (els.zaraConversations) els.zaraConversations.hidden = false;
+      showConversationList();
       if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
-      if (els.conversationEmpty) els.conversationEmpty.style.display = '';
       if (els.workspaceTitle) els.workspaceTitle.textContent = 'Zara Gen AI';
     };
   }
@@ -1214,16 +1293,16 @@ function showConversationDetail(conversationId) {
 
 /* ---------- Select conversation ---------- */
 function selectConversation(conversationId) {
-  if (conversationId === state.selectedConversationId) {
+  // Toggle-close only applies when that conversation's DETAIL is actually on
+  // screen. Reopening the panel lands on the history with the open row
+  // highlighted — treating that highlight as "already open" here would force
+  // two clicks to resume instead of one.
+  const detailOpen = !!els.conversationDetail && !els.conversationDetail.hidden;
+  if (detailOpen && conversationId === state.selectedConversationId) {
     // Deselect
     state.selectedConversationId = null;
-    renderConversationList();
-    if (els.conversationDetail) {
-      els.conversationDetail.hidden = true;
-      if (els.zaraConversations) els.zaraConversations.hidden = false;
-      if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
-      if (els.conversationEmpty) els.conversationEmpty.style.display = '';
-    }
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
     if (els.workspaceTitle) {
       els.workspaceTitle.textContent = 'Zara Gen AI';
     }
@@ -1943,10 +2022,18 @@ els.zaraMic?.addEventListener('click', (e) => {
 function renderSalesConversationList() {
   if (!els.conversationList) return;
   const cache = salesState.conversationCache;
+  // Same detach/re-attach contract as renderConversationList() — see there.
   els.conversationList.innerHTML = '';
 
   if (!cache || cache.length === 0) {
-    if (els.conversationEmpty) els.conversationEmpty.style.display = '';
+    setListEmpty('No conversations yet. Start a new chat.');
+    return;
+  }
+
+  const query = String(state.conversationQuery || '').trim().toLowerCase();
+  const rows = cache.filter((c) => conversationMatches(c, query));
+  if (!rows.length) {
+    setListEmpty(`No conversations match "${state.conversationQuery.trim()}".`);
     return;
   }
 
@@ -1955,9 +2042,11 @@ function renderSalesConversationList() {
   const ul = document.createElement('ul');
   ul.className = 'conversation-row-list';
 
-  for (const conv of cache) {
+  for (const conv of rows) {
     const li = document.createElement('li');
-    li.className = 'conversation-row';
+    const isOpen = conv.id === salesState.selectedConversationId;
+    li.className = 'conversation-row' + (isOpen ? ' active' : '');
+    if (isOpen) li.setAttribute('aria-current', 'true');
     li.dataset.conversationId = conv.id;
     li.dataset.agent = conv.agent || 'sales';
     li.innerHTML = `
@@ -2019,11 +2108,8 @@ function showSalesConversationDetail(conversationId) {
   if (els.backToListings) {
     els.backToListings.onclick = () => {
       salesState.selectedConversationId = null;
-      renderSalesConversationList();
-      if (els.conversationDetail) els.conversationDetail.hidden = true;
-      if (els.zaraConversations) els.zaraConversations.hidden = false;
+      showConversationList(); // activeAgent is 'sales' here → Sales cache
       if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
-      if (els.conversationEmpty) els.conversationEmpty.style.display = '';
       if (els.workspaceTitle) els.workspaceTitle.textContent = 'Sales Agent';
     };
   }
@@ -2035,15 +2121,14 @@ function showSalesConversationDetail(conversationId) {
 
 /* ---------- Select Sales conversation ---------- */
 function selectSalesConversation(conversationId) {
-  if (conversationId === salesState.selectedConversationId) {
+  // Same toggle rule as selectConversation(): only close when the detail is
+  // really on screen, so the highlighted row on a reopened panel opens in one
+  // click rather than deselecting first.
+  const detailOpen = !!els.conversationDetail && !els.conversationDetail.hidden;
+  if (detailOpen && conversationId === salesState.selectedConversationId) {
     salesState.selectedConversationId = null;
-    renderSalesConversationList();
-    if (els.conversationDetail) {
-      els.conversationDetail.hidden = true;
-      els.zaraConversations.hidden = false;
-      if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
-      if (els.conversationEmpty) els.conversationEmpty.style.display = '';
-    }
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = '';
     if (els.workspaceTitle) {
       els.workspaceTitle.textContent = 'Sales Agent';
     }

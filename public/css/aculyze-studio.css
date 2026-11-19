@@ -1106,13 +1106,16 @@ body.copilot-collapsed .copilot-rail {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
+  /* 44px is the minimum comfortable touch target; at 38px (and with only the
+     17px input accepting clicks) the field was too small to hit reliably. */
+  height: 44px;
   padding: 0 12px;
   margin: 10px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text-muted);
+  cursor: text;
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 .conversation-search:focus-within {
@@ -1126,6 +1129,9 @@ body.copilot-collapsed .copilot-rail {
 }
 .conversation-search input {
   flex: 1 1 auto;
+  /* Fill the whole 44px row instead of just the line of text, so the caret
+     area matches the pill the user actually taps. */
+  align-self: stretch;
   min-width: 0;
   border: 0;
   background: transparent;
