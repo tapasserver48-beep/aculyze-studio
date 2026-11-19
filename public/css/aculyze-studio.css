@@ -5955,8 +5955,9 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   font-size: 11px;
   color: var(--dm-in-meta);
   transition: opacity 0.14s ease;
+  /* When paused, this element is hidden entirely so the play icon is visible alone. */
 }
-.dm-thread .msg.audio-time.paused { opacity: 0; }
+.dm-thread .msg.audio-time.paused { display: none; }
 .dm-thread .msg.user .audio-time { color: var(--dm-out-meta); }
 
 /* ---- per-message actions (⋯ → delete) ---- */

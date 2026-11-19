@@ -2617,20 +2617,25 @@ function wireAudioPlayers(root, attachments) {
     const fill = wrap.querySelector('.audio-fill');
     const timeEl = wrap.querySelector('.audio-time');
     const icon = btn && btn.querySelector('.material-symbols-outlined');
-    const recorded = Number(a.dur) || 0;
+    const durSec = Number(a.dur) || 0;
 
     // `audio/webm;codecs=opus` would break the data URL's own parameter
     // parsing — the stored blob type is already parameter-free.
     const audio = new Audio(a.data);
     audio.preload = 'metadata';
 
-    const total = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : recorded);
+    // Initial state: hide the time (paused).
+    if (timeEl) timeEl.classList.add('paused');
+
+    const total = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : durSec);
     const paint = () => {
       const d = total();
       const pct = d ? Math.min(100, (audio.currentTime / d) * 100) : 0;
       if (fill) fill.style.width = `${pct}%`;
       if (track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
-      if (timeEl) timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : d);
+      if (timeEl && !timeEl.classList.contains('paused')) {
+        timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : d);
+      }
     };
     const setIcon = (name) => { if (icon) icon.textContent = name; };
 
@@ -2642,18 +2647,19 @@ function wireAudioPlayers(root, attachments) {
       setIcon('pause');
       wrap.classList.add('playing');
       if (btn) btn.setAttribute('aria-label', 'Pause voice message');
-      if (timeEl) timeEl.classList.remove('paused');
+      // Show current time when playing.
+      if (timeEl) {
+        timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : durSec);
+        timeEl.classList.remove('paused');
+      }
     });
     audio.addEventListener('pause', () => {
       setIcon('play');
       wrap.classList.remove('playing');
       if (btn) btn.setAttribute('aria-label', 'Play voice message');
       if (activeVoice && activeVoice.audio === audio) activeVoice = null;
-      // Show duration time when paused.
-      if (timeEl) {
-        timeEl.textContent = fmtClock(durSec);
-        timeEl.classList.add('paused');
-      }
+      // Hide time when paused - only the play icon should show.
+      if (timeEl) timeEl.classList.add('paused');
     });
     audio.addEventListener('ended', () => { audio.currentTime = 0; paint(); });
 
