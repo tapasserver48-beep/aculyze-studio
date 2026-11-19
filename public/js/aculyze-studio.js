@@ -2642,12 +2642,18 @@ function wireAudioPlayers(root, attachments) {
       setIcon('pause');
       wrap.classList.add('playing');
       if (btn) btn.setAttribute('aria-label', 'Pause voice message');
+      if (timeEl) timeEl.classList.remove('paused');
     });
     audio.addEventListener('pause', () => {
       setIcon('play');
       wrap.classList.remove('playing');
       if (btn) btn.setAttribute('aria-label', 'Play voice message');
       if (activeVoice && activeVoice.audio === audio) activeVoice = null;
+      // Show duration time when paused.
+      if (timeEl) {
+        timeEl.textContent = fmtClock(durSec);
+        timeEl.classList.add('paused');
+      }
     });
     audio.addEventListener('ended', () => { audio.currentTime = 0; paint(); });
 

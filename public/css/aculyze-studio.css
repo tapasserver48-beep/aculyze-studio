@@ -5954,7 +5954,9 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   font-family: var(--mono);
   font-size: 11px;
   color: var(--dm-in-meta);
+  transition: opacity 0.14s ease;
 }
+.dm-thread .msg.audio-time.paused { opacity: 0; }
 .dm-thread .msg.user .audio-time { color: var(--dm-out-meta); }
 
 /* ---- per-message actions (⋯ → delete) ---- */
