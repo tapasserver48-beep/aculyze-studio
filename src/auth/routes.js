@@ -33,6 +33,15 @@ const {
   setSessionCookie,
   clearSessionCookie
 } = require('./session');
+const {
+  ROLES,
+  ROLE_LIST,
+  PAGE_LIST,
+  ROLE_PAGES,
+  canAssignRole,
+  normalizePermissions,
+  effectivePages
+} = require('./roles');
 const { createGoogleAuth } = require('./google');
 
 function createAuthRouter(options = {}) {
@@ -114,14 +123,36 @@ function createAuthRouter(options = {}) {
   });
 
   // -------- User Management (Admin routes) --------
-  // List all users
-  router.get('/users', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
+  const adminOnly = [requireUser, requireRole(['admin', 'founder'])];
+
+  // Shared guard: an admin may only touch users at or below their own rank.
+  // Levels run founder(0) → admin(1) → manager(2) → employee(3), so the
+  // actor must be at least as high (lower level number) as the target.
+  const canManageTarget = (actorRole, targetRole) => {
+    const actor = ROLES[actorRole];
+    const target = ROLES[targetRole];
+    if (!actor || !target) return false;
+    return actor.level <= target.level;
+  };
+
+  // List all users (with permissions + resolved pages for the admin matrix)
+  router.get('/users', ...adminOnly, wrap(async (req, res) => {
     const users = await listUsers(dataDir);
     res.json({ users });
   }));
 
+  // Page catalogue + role defaults — what the permission matrix renders.
+  router.get('/pages', ...adminOnly, (req, res) => {
+    res.json({
+      pages: PAGE_LIST,
+      roles: ROLE_LIST.map((r) => ({ id: r, label: ROLES[r].label, defaults: ROLE_PAGES[r] })),
+      // Roles this actor may assign — drives the create-form dropdown.
+      assignable: ROLE_LIST.filter((r) => canAssignRole(req.user.role, r)),
+    });
+  });
+
   // Get user details
-  router.get('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
+  router.get('/users/:id', ...adminOnly, wrap(async (req, res) => {
     const { findById } = require('./store');
     const user = await findById(dataDir, req.params.id);
     if (!user) {
@@ -130,18 +161,107 @@ function createAuthRouter(options = {}) {
     res.json({ user: publicUserWithRole(user) });
   }));
 
-  // Update user (role assignment)
-  router.patch('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
-    const { canAssignRole } = require('./roles');
-    const user = await updateUser(dataDir, req.params.id, req.body);
-    if (!user) {
+  // Create a user (admin use — role is validated against the actor's canAssign)
+  router.post('/users', ...adminOnly, wrap(async (req, res) => {
+    const body = req.body || {};
+    const targetRole = String(body.role || 'employee').trim().toLowerCase();
+
+    if (!ROLE_LIST.includes(targetRole)) {
+      return res.status(422).json({ error: 'Unknown role.', code: 'validation' });
+    }
+    if (!canAssignRole(req.user.role, targetRole)) {
+      return res.status(403).json({
+        error: `Your role cannot assign the ${ROLES[targetRole].label} role.`,
+        code: 'forbidden',
+      });
+    }
+
+    const user = await createUser(dataDir, {
+      name: body.name,
+      email: body.email,
+      password: body.password,
+      role: targetRole,
+      permissions: body.permissions,
+    });
+    // The admin stays signed in — no session cookie is issued here.
+    res.status(201).json({ user: publicUserWithRole(user) });
+  }));
+
+  // Update user (role assignment / rename)
+  router.patch('/users/:id', ...adminOnly, wrap(async (req, res) => {
+    const body = req.body || {};
+    const { findById } = require('./store');
+    const target = await findById(dataDir, req.params.id);
+    if (!target) {
       return res.status(404).json({ error: 'User not found', code: 'not_found' });
     }
+
+    const updates = {};
+    if (body.role !== undefined) {
+      const targetRole = String(body.role).trim().toLowerCase();
+      if (!ROLE_LIST.includes(targetRole)) {
+        return res.status(422).json({ error: 'Unknown role.', code: 'validation' });
+      }
+      if (!canAssignRole(req.user.role, targetRole)) {
+        return res.status(403).json({
+          error: `Your role cannot assign the ${ROLES[targetRole].label} role.`,
+          code: 'forbidden',
+        });
+      }
+      if (!canManageTarget(req.user.role, target.role)) {
+        return res.status(403).json({ error: 'You cannot modify a user above your role.', code: 'forbidden' });
+      }
+      updates.role = targetRole;
+    }
+    if (body.name !== undefined) updates.name = body.name;
+    if (body.permissions !== undefined) updates.permissions = normalizePermissions(body.permissions);
+
+    const user = await updateUser(dataDir, req.params.id, updates);
     res.json({ user });
   }));
 
-  // Delete user
-  router.delete('/users/:id', requireUser, requireRole(['admin', 'founder']), wrap(async (req, res) => {
+  // Read a user's raw permission overrides + resolved pages.
+  router.get('/users/:id/permissions', ...adminOnly, wrap(async (req, res) => {
+    const { findById } = require('./store');
+    const user = await findById(dataDir, req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found', code: 'not_found' });
+    }
+    const role = user.role || 'employee';
+    const permissions = normalizePermissions(user.permissions);
+    res.json({ role, permissions, pages: effectivePages(role, permissions) });
+  }));
+
+  // Replace a user's permission overrides (full matrix save).
+  router.put('/users/:id/permissions', ...adminOnly, wrap(async (req, res) => {
+    const body = req.body || {};
+    const { findById } = require('./store');
+    const target = await findById(dataDir, req.params.id);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found', code: 'not_found' });
+    }
+    if (!canManageTarget(req.user.role, target.role)) {
+      return res.status(403).json({ error: 'You cannot modify a user above your role.', code: 'forbidden' });
+    }
+    const permissions = normalizePermissions(body.permissions);
+    const user = await updateUser(dataDir, req.params.id, { permissions });
+    const role = (user && user.role) || 'employee';
+    res.json({ user, permissions: normalizePermissions(user && user.permissions), pages: effectivePages(role, permissions) });
+  }));
+
+  // Delete user — never yourself, never someone above your own role.
+  router.delete('/users/:id', ...adminOnly, wrap(async (req, res) => {
+    if (req.params.id === req.authUid) {
+      return res.status(400).json({ error: 'You cannot delete your own account.', code: 'validation' });
+    }
+    const { findById } = require('./store');
+    const target = await findById(dataDir, req.params.id);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found', code: 'not_found' });
+    }
+    if (!canManageTarget(req.user.role, target.role)) {
+      return res.status(403).json({ error: 'You cannot delete a user above your role.', code: 'forbidden' });
+    }
     const deleted = await deleteUser(dataDir, req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'User not found', code: 'not_found' });

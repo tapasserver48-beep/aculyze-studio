@@ -24,6 +24,7 @@ const { createComputerRouter } = require('./src/computer/routes');
 const { createOrchestratorRouter } = require('./src/orchestrator/routes');
 const { createAuthRouter } = require('./src/auth/routes');
 const { attachAuth } = require('./src/auth/session');
+const { requirePage } = require('./src/auth/authorize');
 const { createInboxRouter } = require('./src/inbox/routes');
 const { createChatRouter } = require('./src/chat/routes');
 const { attachChatRealtime } = require('./src/chat/realtime');
@@ -792,7 +793,7 @@ app.get('/api/lms/status', async (req, res) => {
  * Returns { provider, data, endpoint } — data is JSON (pretty-printed) or
  * raw text, capped so a small model can still read it. Key stays server-side.
  */
-app.post('/api/sales/query', async (req, res) => {
+app.post('/api/sales/query', requirePage('sales'), async (req, res) => {
   const { question } = req.body || {};
   if (!question || typeof question !== 'string') {
     return res.status(400).json({ error: 'Missing question.' });
@@ -825,7 +826,7 @@ app.post('/api/sales/query', async (req, res) => {
  * server-side, extracts structured facts, and answers from real data only.
  * Never exposes the API key. Completely separate from Zara.
  */
-app.post('/api/sales/chat', async (req, res) => {
+app.post('/api/sales/chat', requirePage('sales'), async (req, res) => {
   const { model, temperature, max_tokens, stream } = req.body || {};
   // Same hardening as /api/chat: content must be a plain string or validated
   // OpenAI parts. Previously the raw body was forwarded to the model untouched.
@@ -1033,11 +1034,11 @@ app.post('/api/sales/chat', async (req, res) => {
 // ============ COMMAND CENTRE — today's AI token usage ============
 // Powers the Zara / Sales token cards on the Command Centre page.
 // → { day, zara: { prompt, completion, tokens, calls }, sales: {…}, total: {…} }
-app.get('/api/usage/today', (req, res) => {
+app.get('/api/usage/today', requirePage('command'), (req, res) => {
   res.json(aiUsage.today());
 });
 
-app.get('/api/employees', async (req, res) => {
+app.get('/api/employees', requirePage('command'), async (req, res) => {
   const { key, baseUrl } = lmsCredentials(req, res);
   if (!key) {
     return res.json({ employees: [], status: 'Not configured', provider: 'Aculyze LMS', count: 0 });
@@ -1082,7 +1083,7 @@ app.get('/api/employees', async (req, res) => {
  * Response: { period, summary, byMonth, byEmployee, byStatus, currency }.
  * Includes a cached fallback when LMS is unreachable (e.g. Render egress blocked).
  */
-app.get('/api/sales/summary', async (req, res) => {
+app.get('/api/sales/summary', requirePage('sales'), async (req, res) => {
   const { key, baseUrl } = lmsCredentials(req, res);
   if (!key) {
     return res.status(409).json({ error: 'Aculyze LMS is not connected.', category: 'not_connected', label: 'Not connected' });
@@ -1129,7 +1130,7 @@ app.get('/api/sales/summary', async (req, res) => {
  * Response: { resource, rows, pagination, period }.
  */
 const DASHBOARD_RESOURCES = new Set(['sales', 'leads', 'customers', 'employees']);
-app.get('/api/sales/records', async (req, res) => {
+app.get('/api/sales/records', requirePage('sales'), async (req, res) => {
   const resource = String(req.query.resource || '');
   if (!DASHBOARD_RESOURCES.has(resource)) {
     return res.status(400).json({ error: 'Unknown LMS resource.', category: 'validation', label: 'Validation error' });

@@ -679,6 +679,48 @@ export async function authLogout() {
   return authRequest('/api/auth/logout', { method: 'POST', body: {} });
 }
 
+// ============ ADMIN (users, roles, per-page permissions) ============
+// All admin endpoints are server-gated to admin/founder — a non-admin
+// session gets a 403 with { error, code: 'forbidden' }.
+
+/** GET /api/auth/users ? { users: [...] }. */
+export async function adminListUsers() {
+  return authRequest('/api/auth/users');
+}
+
+/** GET /api/auth/pages ? { pages, roles } — matrix catalogue. */
+export async function adminPages() {
+  return authRequest('/api/auth/pages');
+}
+
+/** POST /api/auth/users ? { user } (201). */
+export async function adminCreateUser({ name, email, password, role }) {
+  return authRequest('/api/auth/users', { method: 'POST', body: { name, email, password, role } });
+}
+
+/** PATCH /api/auth/users/:id ? { user }. */
+export async function adminUpdateUser(id, updates) {
+  return authRequest(`/api/auth/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: updates });
+}
+
+/** DELETE /api/auth/users/:id ? { deleted, ok }. */
+export async function adminDeleteUser(id) {
+  return authRequest(`/api/auth/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** GET /api/auth/users/:id/permissions ? { role, permissions, pages }. */
+export async function adminGetPermissions(id) {
+  return authRequest(`/api/auth/users/${encodeURIComponent(id)}/permissions`);
+}
+
+/** PUT /api/auth/users/:id/permissions ? { user, permissions, pages }. */
+export async function adminSetPermissions(id, permissions) {
+  return authRequest(`/api/auth/users/${encodeURIComponent(id)}/permissions`, {
+    method: 'PUT',
+    body: { permissions },
+  });
+}
+
 // ============ INBOX (server-persisted messages, signed-in only) ============
 
 /** Conversation summaries with unread counts. ? { threads, me }. */

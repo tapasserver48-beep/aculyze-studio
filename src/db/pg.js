@@ -73,12 +73,15 @@ async function ensureSchema() {
       email       TEXT NOT NULL,
       role        TEXT NOT NULL DEFAULT 'employee',
       manager_id  TEXT,
+      permissions JSONB NOT NULL DEFAULT '{}',
       pw_algo     TEXT NOT NULL DEFAULT '',
       pw_salt     TEXT NOT NULL DEFAULT '',
       pw_hash     TEXT NOT NULL DEFAULT '',
       created_at  BIGINT NOT NULL DEFAULT 0
     )
   `);
+  // Existing databases predate the permissions column — add it in place.
+  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'`);
   // Emails are stored lower-cased by the auth store, so a plain unique index
   // matches the application-level duplicate check.
   await query('CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (email)');

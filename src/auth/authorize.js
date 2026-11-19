@@ -60,6 +60,28 @@ function requireCreateRole(allowedCreator) {
 }
 
 /**
+ * Require a resolved page permission (defense-in-depth for the client's nav
+ * gating). `req.user.pages` is computed by publicUser() — role defaults with
+ * per-user overrides already applied. Fails open only when the map is absent
+ * (an auth shape we don't recognise); an explicit deny is always a 403.
+ */
+function requirePage(page) {
+  return (req, res, next) => {
+    if (!req.user || !req.authUid) {
+      return res.status(401).json({ error: 'Please sign in to continue.', code: 'unauthenticated' });
+    }
+    const pages = req.user.pages;
+    if (pages && typeof pages === 'object' && pages[page] === false) {
+      return res.status(403).json({
+        error: 'Access denied. You do not have permission to access this page.',
+        code: 'forbidden',
+      });
+    }
+    next();
+  };
+}
+
+/**
  * Check if route is accessible (for frontend navigation).
  */
 function isRouteAccessible(role, route) {
@@ -70,5 +92,6 @@ module.exports = {
   requireUser,
   requireRole,
   requireCreateRole,
+  requirePage,
   isRouteAccessible
 };

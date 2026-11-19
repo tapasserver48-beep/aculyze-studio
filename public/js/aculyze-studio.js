@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -278,6 +278,7 @@ const els = {
   navStore: document.getElementById('navStore'),
   navCommand: document.getElementById('navCommand'),
   navSettings: document.getElementById('navSettings'),
+  navAdmin: document.getElementById('navAdmin'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
   viewHome: document.getElementById('view-home'),
@@ -288,6 +289,7 @@ const els = {
   viewCommand: document.getElementById('view-command'),
   viewSettings: document.getElementById('view-settings'),
   viewInbox: document.getElementById('view-inbox'),
+  viewAdmin: document.getElementById('view-admin'),
   copilot: document.getElementById('copilot'),
   zaraConversations: document.getElementById('zaraConversations'),
   zaraEmptyState: document.getElementById('zaraEmptyState'),
@@ -454,6 +456,7 @@ els.navCommand?.addEventListener('click', () => setView('command'));
 els.navSettings?.addEventListener('click', () => {
   openSettings('account');
 });
+els.navAdmin?.addEventListener('click', () => setView('admin'));
 
 /* ---------- Aculyze Store — contact / free-trial dialog ---------- */
 const storeContactOverlay = document.getElementById('storeContactOverlay');
@@ -807,12 +810,22 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
 }
 function setView(view) {
+  // Permission choke point: any entry (sidebar, copilot menu, home cards)
+  // lands here, so a denied page can never open. `home` is exempt — it is
+  // the shell's landing view and must always be reachable. No map → allow
+  // (signed out or an old session shape — the server still enforces its gates).
+  const pages = authState.user && authState.user.pages;
+  if (view !== 'home' && pages && VIEW_META[view] && pages[view] === false) {
+    if (state.activeView !== view) toast('You do not have access to this page', 'error');
+    if (state.activeView !== 'home') setView('home'); // home is exempt → no loop
+    return;
+  }
   const next = VIEW_META[view] ? view : 'home';
 
   // Clear agent-specific state when switching away from an agent view
@@ -824,7 +837,7 @@ function setView(view) {
       state.activeAgent = 'zara';
     } else if (next === 'sales') {
       state.activeAgent = 'sales';
-    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store' || next === 'command') {
+    } else if (next === 'apps' || next === 'settings' || next === 'inbox' || next === 'store' || next === 'command' || next === 'admin') {
       state.activeAgent = null;
       state.selectedConversationId = null;
     }
@@ -833,7 +846,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -850,6 +863,7 @@ function setView(view) {
   els.viewCommand.classList.toggle('active', next === 'command');
   els.viewSettings.classList.toggle('active', next === 'settings');
   els.viewInbox.classList.toggle('active', next === 'inbox');
+  els.viewAdmin?.classList.toggle('active', next === 'admin');
 
   // On compact viewports the Zara panel is an overlay: close it on navigation.
   // On desktop the persisted open/closed state is left untouched.
@@ -981,6 +995,21 @@ function setView(view) {
       els.workspaceTitle.textContent = 'Command Centre';
     }
     refreshCommandCentre();
+  }
+  // --- Admin view ---
+  else if (next === 'admin') {
+    if (els.zaraConversations) els.zaraConversations.hidden = true;
+    if (els.conversationDetail) els.conversationDetail.hidden = true;
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.conversationEmpty) els.conversationEmpty.style.display = 'none';
+    const copilotAgent = document.getElementById('copilotAgent');
+    const copilotSubtitle = document.getElementById('copilotSubtitle');
+    if (copilotAgent) copilotAgent.textContent = 'Zara';
+    if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
+    if (els.workspaceTitle) {
+      els.workspaceTitle.textContent = 'Admin';
+    }
+    adminOpen();
   }
   // --- Home view ---
   else {
@@ -3941,6 +3970,7 @@ function applyAuthUser(user) {
   if (authEls.menuAvatar) authEls.menuAvatar.textContent = initial;
   if (authEls.menuName) authEls.menuName.textContent = user ? user.name : 'Not signed in';
   if (authEls.menuEmail) authEls.menuEmail.textContent = user ? user.email : '';
+  applyNavGating();
   if (!user) { stopInboxPolling(); teardownChannels(); }
 }
 
@@ -4119,6 +4149,410 @@ authEls.logout?.addEventListener('click', async () => {
 });
 
 initAuth();
+
+/* ==========================================================================
+   ADMIN — users, roles and per-page permissions ===========================
+   Server is the source of truth (all /api/auth/users* routes are
+   admin/founder-gated); this block only renders what the API returns.
+   ========================================================================== */
+const adminState = {
+  users: [],
+  pages: [],        // ['home', 'inbox', …]
+  roles: [],        // [{ id, label, defaults }]
+  assignable: [],   // roles the signed-in actor may assign
+  matrixUserId: null,
+  draft: {},        // permission matrix edits before save
+};
+
+const adminEls = {
+  form: document.getElementById('adminCreateForm'),
+  name: document.getElementById('adminName'),
+  email: document.getElementById('adminEmail'),
+  password: document.getElementById('adminPassword'),
+  role: document.getElementById('adminRole'),
+  submit: document.getElementById('adminCreateBtn'),
+  error: document.getElementById('adminCreateError'),
+  rows: document.getElementById('adminUserRows'),
+  refresh: document.getElementById('adminRefresh'),
+  matrixCard: document.getElementById('adminMatrixCard'),
+  matrixWho: document.getElementById('adminMatrixWho'),
+  matrix: document.getElementById('adminMatrix'),
+  save: document.getElementById('adminSavePerms'),
+  cancel: document.getElementById('adminCancelPerms'),
+  matrixError: document.getElementById('adminMatrixError'),
+};
+
+const ADMIN_PAGE_LABELS = {
+  home: 'Home', inbox: 'Inbox', zara: 'Zara Gen AI', sales: 'Sales Agent',
+  apps: 'Apps', store: 'Store', command: 'Command Centre', settings: 'Settings', admin: 'Admin',
+};
+
+function adminShowError(el, msg) {
+  if (!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+}
+
+function adminFmtDate(ts) {
+  const n = Number(ts) || 0;
+  if (!n) return '—';
+  try {
+    return new Date(n).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch { return '—'; }
+}
+
+/** Role badge — text + colour, never colour alone (contrast + a11y). */
+function adminRoleBadge(role) {
+  const span = document.createElement('span');
+  span.className = `admin-role-badge role-${role || 'employee'}`;
+  span.textContent = role || 'employee';
+  return span;
+}
+
+/** Load catalogue + user list, then render. Called every time Admin opens. */
+async function adminLoad() {
+  try {
+    const [cat, list] = await Promise.all([adminPages(), adminListUsers()]);
+    adminState.pages = Array.isArray(cat.pages) ? cat.pages : [];
+    adminState.roles = Array.isArray(cat.roles) ? cat.roles : [];
+    adminState.assignable = Array.isArray(cat.assignable) ? cat.assignable : [];
+    adminState.users = Array.isArray(list.users) ? list.users : [];
+  } catch (err) {
+    if (adminEls.rows) {
+      adminEls.rows.innerHTML = '';
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.className = 'admin-note';
+      td.textContent = err && err.status === 403
+        ? 'You do not have permission to manage users.'
+        : (err && err.message) || 'Could not load users.';
+      tr.appendChild(td);
+      adminEls.rows.appendChild(tr);
+    }
+    return;
+  }
+  adminFillRoleSelect();
+  adminRenderUsers();
+}
+
+/** Only roles the actor can actually assign appear in the dropdown. */
+function adminFillRoleSelect() {
+  const sel = adminEls.role;
+  if (!sel) return;
+  sel.innerHTML = '';
+  const allowed = adminState.assignable.length
+    ? adminState.assignable
+    : ['employee'];
+  for (const id of allowed) {
+    const def = adminState.roles.find((r) => r.id === id);
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = (def && def.label) || id;
+    if (id === 'employee') opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function adminRenderUsers() {
+  const body = adminEls.rows;
+  if (!body) return;
+  body.innerHTML = '';
+  const meId = (authState.user && authState.user.id) || '';
+
+  if (!adminState.users.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.className = 'admin-note';
+    td.textContent = 'No users yet.';
+    tr.appendChild(td);
+    body.appendChild(tr);
+    return;
+  }
+
+  for (const u of adminState.users) {
+    const tr = document.createElement('tr');
+    if (u.id === meId) tr.classList.add('is-self');
+
+    const tdName = document.createElement('td');
+    const strong = document.createElement('strong');
+    strong.textContent = u.name || '—';
+    tdName.appendChild(strong);
+    if (u.id === meId) {
+      const you = document.createElement('small');
+      you.className = 'admin-you';
+      you.textContent = 'You';
+      tdName.appendChild(you);
+    }
+
+    const tdEmail = document.createElement('td');
+    tdEmail.className = 'admin-email';
+    tdEmail.textContent = u.email || '—';
+
+    const tdRole = document.createElement('td');
+    // Role change: a select limited to assignable roles (server re-validates).
+    const roleSel = document.createElement('select');
+    roleSel.className = 'admin-role-select';
+    roleSel.setAttribute('aria-label', `Role for ${u.name || u.email}`);
+    const allowed = adminState.assignable.length ? adminState.assignable : ['employee'];
+    const options = [...new Set([...allowed, u.role || 'employee'])];
+    for (const id of options) {
+      const def = adminState.roles.find((r) => r.id === id);
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = (def && def.label) || id;
+      if (id === (u.role || 'employee')) opt.selected = true;
+      roleSel.appendChild(opt);
+    }
+    roleSel.addEventListener('change', () => adminChangeRole(u, roleSel.value, roleSel));
+    tdRole.appendChild(roleSel);
+
+    const tdCreated = document.createElement('td');
+    tdCreated.className = 'admin-created';
+    tdCreated.textContent = adminFmtDate(u.createdAt);
+
+    const tdActions = document.createElement('td');
+    tdActions.className = 'admin-actions';
+
+    const permBtn = document.createElement('button');
+    permBtn.type = 'button';
+    permBtn.className = 'admin-mini';
+    permBtn.textContent = 'Access';
+    permBtn.setAttribute('aria-label', `Edit page access for ${u.name || u.email}`);
+    permBtn.addEventListener('click', () => adminOpenMatrix(u));
+    tdActions.appendChild(permBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'admin-mini danger';
+    delBtn.textContent = 'Delete';
+    delBtn.setAttribute('aria-label', `Delete ${u.name || u.email}`);
+    if (u.id === meId) {
+      delBtn.disabled = true;
+      delBtn.title = 'You cannot delete your own account.';
+    }
+    delBtn.addEventListener('click', () => adminDeleteUserFlow(u));
+    tdActions.appendChild(delBtn);
+
+    tr.append(tdName, tdEmail, tdRole, tdCreated, tdActions);
+    body.appendChild(tr);
+  }
+}
+
+async function adminChangeRole(user, role, sel) {
+  const prev = user.role || 'employee';
+  if (role === prev) return;
+  try {
+    const res = await adminUpdateUser(user.id, { role });
+    user.role = (res.user && res.user.role) || role;
+    user.pages = (res.user && res.user.pages) || user.pages;
+    toast(`Role updated — ${user.name || user.email} is now ${role}`, 'info');
+    // If an admin demoted themselves, re-gate the nav immediately.
+    if (authState.user && user.id === authState.user.id) applyAuthUser(res.user);
+  } catch (err) {
+    sel.value = prev;
+    toast((err && err.message) || 'Could not update role', 'error');
+  }
+}
+
+async function adminDeleteUserFlow(user) {
+  const confirmed = await showAppConfirm({
+    title: `Delete ${user.name || user.email}?`,
+    detail: 'This removes the account and its sign-in access. Conversations they already sent stay in other people’s inboxes.',
+    okLabel: 'Delete user',
+    cancelLabel: 'Cancel',
+  });
+  if (!confirmed) return;
+  try {
+    await adminDeleteUser(user.id);
+    toast(`Deleted ${user.name || user.email}`, 'info');
+    await adminLoad();
+  } catch (err) {
+    toast((err && err.message) || 'Could not delete user', 'error');
+  }
+}
+
+/* ---- Permission matrix (Allow / Deny / Default per page) ---- */
+
+function adminOpenMatrix(user) {
+  if (!adminEls.matrixCard) return;
+  adminState.matrixUserId = user.id;
+  // Draft starts from the raw overrides; absence = role default.
+  adminState.draft = { ...(user.permissions || {}) };
+  if (adminEls.matrixWho) {
+    adminEls.matrixWho.textContent = `— ${user.name || user.email}`;
+  }
+  adminShowError(adminEls.matrixError, '');
+  adminRenderMatrix(user);
+  adminEls.matrixCard.hidden = false;
+  const smooth = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  adminEls.matrixCard.scrollIntoView({ block: 'nearest', behavior: smooth });
+}
+
+function adminRenderMatrix(user) {
+  const wrap = adminEls.matrix;
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const role = user.role || 'employee';
+  const roleDef = adminState.roles.find((r) => r.id === role);
+  const defaults = (roleDef && roleDef.defaults) || [];
+
+  for (const page of adminState.pages) {
+    const locked = page === 'admin'; // never grantable by override
+    const row = document.createElement('div');
+    row.className = 'admin-matrix-row' + (locked ? ' locked' : '');
+
+    const label = document.createElement('span');
+    label.className = 'admin-matrix-label';
+    label.textContent = ADMIN_PAGE_LABELS[page] || page;
+
+    const state_ = page in adminState.draft
+      ? (adminState.draft[page] ? 'allow' : 'deny')
+      : 'default';
+    const effective = state_ === 'default' ? defaults.includes(page) : state_ === 'allow';
+
+    const seg = document.createElement('div');
+    seg.className = 'seg-group admin-matrix-seg';
+    seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', `${ADMIN_PAGE_LABELS[page] || page} access`);
+
+    for (const [value, text] of [['default', 'Default'], ['allow', 'Allow'], ['deny', 'Deny']]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.value = value;
+      b.textContent = text;
+      b.classList.toggle('active', state_ === value);
+      b.setAttribute('aria-checked', String(state_ === value));
+      b.setAttribute('role', 'radio');
+      if (locked) b.disabled = true;
+      b.addEventListener('click', () => {
+        if (locked) return;
+        if (value === 'default') delete adminState.draft[page];
+        else adminState.draft[page] = value === 'allow';
+        adminRenderMatrix(user);
+      });
+      seg.appendChild(b);
+    }
+
+    const eff = document.createElement('span');
+    eff.className = 'admin-matrix-eff ' + (effective ? 'on' : 'off');
+    eff.textContent = effective ? 'On' : 'Off';
+    eff.title = locked
+      ? 'Admin page is limited to admin and founder roles.'
+      : `Currently ${effective ? 'allowed' : 'blocked'} for this user`;
+
+    row.append(label, seg, eff);
+    wrap.appendChild(row);
+  }
+}
+
+async function adminSavePerms() {
+  const user = adminState.users.find((u) => u.id === adminState.matrixUserId);
+  if (!user) return;
+  adminShowError(adminEls.matrixError, '');
+  if (adminEls.save) adminEls.save.disabled = true;
+  try {
+    const res = await adminSetPermissions(user.id, adminState.draft);
+    user.permissions = res.permissions || {};
+    user.pages = res.pages || user.pages;
+    if (authState.user && user.id === authState.user.id) applyAuthUser(res.user);
+    toast('Page access saved', 'info');
+    adminOpenMatrix(user); // re-render against the saved state
+  } catch (err) {
+    adminShowError(adminEls.matrixError, (err && err.message) || 'Could not save access.');
+  } finally {
+    if (adminEls.save) adminEls.save.disabled = false;
+  }
+}
+
+function adminCloseMatrix() {
+  if (adminEls.matrixCard) adminEls.matrixCard.hidden = true;
+  adminState.matrixUserId = null;
+  adminState.draft = {};
+}
+
+/** Create-user submit. */
+adminEls.form?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  adminShowError(adminEls.error, '');
+  const name = (adminEls.name && adminEls.name.value || '').trim();
+  const email = (adminEls.email && adminEls.email.value || '').trim();
+  const password = adminEls.password && adminEls.password.value || '';
+  const role = adminEls.role && adminEls.role.value || 'employee';
+
+  if (!name) return adminShowError(adminEls.error, 'Please enter a name.');
+  if (!email) return adminShowError(adminEls.error, 'Please enter an email address.');
+  if (password.length < 6) return adminShowError(adminEls.error, 'Password must be at least 6 characters.');
+
+  if (adminEls.submit) adminEls.submit.disabled = true;
+  try {
+    const res = await adminCreateUser({ name, email, password, role });
+    toast(`Created ${res.user && res.user.name ? res.user.name : email}`, 'info');
+    adminEls.form.reset();
+    adminFillRoleSelect();
+    await adminLoad();
+  } catch (err) {
+    adminShowError(adminEls.error, (err && err.message) || 'Could not create user.');
+  } finally {
+    if (adminEls.submit) adminEls.submit.disabled = false;
+  }
+});
+
+adminEls.refresh?.addEventListener('click', () => adminLoad());
+adminEls.save?.addEventListener('click', adminSavePerms);
+adminEls.cancel?.addEventListener('click', adminCloseMatrix);
+
+/** Called from setView('admin'). */
+function adminOpen() {
+  adminCloseMatrix();
+  adminLoad();
+}
+
+/* ==========================================================================
+   NAV GATING — hide pages the signed-in user may not open ==================
+   The server enforces this too (requirePage on the data APIs + role-gated
+   admin routes); this only keeps the sidebar honest.
+   ========================================================================== */
+const NAV_PAGE_EL = {
+  home: () => els.navHome,
+  inbox: () => els.navInbox,
+  zara: null,              // reached via the copilot menu, not a nav row
+  sales: () => els.agentSales,
+  apps: () => els.navApps,
+  store: () => els.navStore,
+  command: () => els.navCommand,
+  settings: () => els.navSettings,
+  admin: () => els.navAdmin,
+};
+
+function applyNavGating() {
+  const pages = (authState.user && authState.user.pages) || null;
+  for (const [page, get] of Object.entries(NAV_PAGE_EL)) {
+    if (!get) continue;
+    const el = get();
+    if (!el) continue;
+    if (page === 'admin') {
+      // Admin nav is opt-in: hidden unless the resolved map grants it.
+      el.hidden = !(pages && pages.admin);
+      continue;
+    }
+    // No map (signed out / old session shape) → keep everything visible.
+    el.hidden = pages ? !pages[page] : false;
+  }
+
+  // Home quick-open cards target zara/sales — hide the denied ones so a
+  // click can't just bounce back with an error toast.
+  document.querySelectorAll('.home-card[data-open]').forEach((card) => {
+    const target = card.getAttribute('data-open');
+    card.hidden = pages ? pages[target] === false : false;
+  });
+
+  // If the view we're on just became forbidden, fall back to Home.
+  if (pages && state.activeView && VIEW_META[state.activeView] && pages[state.activeView] === false) {
+    setView('home');
+  }
+}
 
 /* ==========================================================================
    HOME GREETING — time-aware (was hardcoded "Good morning" 24/7)

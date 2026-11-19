@@ -49,6 +49,54 @@ const ROLES = {
 
 const ROLE_LIST = Object.keys(ROLES);
 
+// ---------- Per-page permissions ----------
+// Canonical list of app pages a permission can be granted against. This is
+// the single source of truth for the admin matrix, API validation and the
+// client's nav gating — keep it in sync with VIEW_META in the client.
+const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin'];
+
+// Role → default allowed pages BEFORE per-user overrides. founder/admin get
+// everything; manager/employee mirror the documented intent of ROLES above
+// ("manager: apps/inbox/settings", "employee: inbox only"), plus `home`
+// which is the landing page every role needs. The admin page is deliberately
+// absent here — it can never be granted by an override (see effectivePages).
+const ROLE_PAGES = {
+  founder: [...PAGE_LIST],
+  admin: [...PAGE_LIST],
+  manager: ['home', 'apps', 'inbox', 'settings'],
+  employee: ['home', 'inbox'],
+};
+
+/** Keep only known pages with boolean values — the stored override shape. */
+function normalizePermissions(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const page of PAGE_LIST) {
+    if (typeof raw[page] === 'boolean') out[page] = raw[page];
+  }
+  return out;
+}
+
+/**
+ * Resolve the pages a user can actually see.
+ * Precedence: hard rules (admin page = admin/founder only) → per-user
+ * override → role default. Never returns an unknown page.
+ */
+function effectivePages(role, permissions) {
+  const defaults = ROLE_PAGES[role] || ROLE_PAGES.employee;
+  const overrides = normalizePermissions(permissions);
+  const out = {};
+  for (const page of PAGE_LIST) {
+    if (page === 'admin') {
+      // The Admin page is locked to admin/founder; no override can grant it.
+      out[page] = role === 'admin' || role === 'founder';
+      continue;
+    }
+    out[page] = page in overrides ? overrides[page] : defaults.includes(page);
+  }
+  return out;
+}
+
 /**
  * Check if a role can be assigned by the actor role.
  */
@@ -84,16 +132,20 @@ function canAccessRoute(role, route) {
 }
 
 /**
- * Get public user data including role.
+ * Get public user data including role + resolved page access.
  */
 function publicUserWithRole(user) {
   if (!user) return null;
+  const role = user.role || 'employee';
+  const permissions = normalizePermissions(user.permissions);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role || 'employee',
+    role,
     managerId: user.managerId || null,
+    permissions,
+    pages: effectivePages(role, permissions),
     createdAt: user.createdAt
   };
 }
@@ -101,6 +153,10 @@ function publicUserWithRole(user) {
 module.exports = {
   ROLES,
   ROLE_LIST,
+  PAGE_LIST,
+  ROLE_PAGES,
+  normalizePermissions,
+  effectivePages,
   canAssignRole,
   assignableRoles,
   canAccessRoute,

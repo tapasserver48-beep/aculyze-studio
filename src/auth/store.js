@@ -31,6 +31,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const pg = require('../db/pg');
+const { normalizePermissions, effectivePages } = require('./roles');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 6;
@@ -135,12 +136,13 @@ function rowToUser(row) {
     email: row.email,
     role: row.role || 'employee',
     managerId: row.manager_id || undefined,
+    permissions: row.permissions && typeof row.permissions === 'object' ? row.permissions : {},
     pw: { algo: row.pw_algo, salt: row.pw_salt, hash: row.pw_hash },
     createdAt: Number(row.created_at) || 0,
   };
 }
 
-const USER_COLS = 'id, name, email, role, manager_id, pw_algo, pw_salt, pw_hash, created_at';
+const USER_COLS = 'id, name, email, role, manager_id, permissions, pw_algo, pw_salt, pw_hash, created_at';
 
 async function pgFindById(id) {
   const { rows } = await pg.query('SELECT * FROM users WHERE id = $1', [id]);
@@ -155,7 +157,7 @@ async function pgFindByEmail(email) {
 async function pgInsertUser(user) {
   await pg.query(
     `INSERT INTO users (${USER_COLS})
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (id) DO NOTHING`,
     [
       user.id,
@@ -163,6 +165,7 @@ async function pgInsertUser(user) {
       user.email,
       user.role || 'employee',
       user.managerId || null,
+      JSON.stringify(user.permissions || {}),
       user.pw.algo,
       user.pw.salt,
       user.pw.hash,
@@ -201,8 +204,10 @@ async function countUsers(dataDir) {
  * `uid` (optional) pins the account to this browser's existing `zara_uid`,
  * so integrations/data already collected on this machine stay attached to
  * the new account instead of being orphaned.
+ * `role` (optional) is for admin-created accounts; self-registration always
+ * falls back to the 'employee' default inside.
  */
-async function createUser(dataDir, { name, email, password, uid }) {
+async function createUser(dataDir, { name, email, password, uid, role, permissions }) {
   const nameN = String(name || '').trim().slice(0, 80);
   const emailN = normalizeEmail(email);
 
@@ -223,7 +228,7 @@ async function createUser(dataDir, { name, email, password, uid }) {
   const id = /^[a-zA-Z0-9_-]{8,80}$/.test(String(uid || '')) ? String(uid) : crypto.randomUUID();
   if (await findById(dataDir, id)) {
     // The browser uid is already taken by another account → mint a fresh one.
-    return createUser(dataDir, { name: nameN, email: emailN, password, uid: crypto.randomUUID() });
+    return createUser(dataDir, { name: nameN, email: emailN, password, uid: crypto.randomUUID(), role, permissions });
   }
 
   const { salt, hash } = hashPassword(pw);
@@ -231,6 +236,8 @@ async function createUser(dataDir, { name, email, password, uid }) {
     id,
     name: nameN,
     email: emailN,
+    role: role || 'employee',
+    permissions: normalizePermissions(permissions),
     pw: { algo: 'scrypt', salt, hash },
     createdAt: Date.now(),
   };
@@ -264,12 +271,19 @@ async function authenticate(dataDir, email, password) {
 /** The only account shape that may leave the server. */
 function publicUser(user) {
   if (!user) return null;
+  const role = user.role || 'employee';
+  const permissions = normalizePermissions(user.permissions);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     createdAt: user.createdAt,
-    role: user.role || 'employee',
+    role,
+    // Raw per-user overrides (admin UI needs them to render the matrix).
+    permissions,
+    // Resolved page access — the client gates its nav from this map, so it
+    // never has to reimplement the role-default/override precedence.
+    pages: effectivePages(role, permissions),
   };
 }
 
@@ -282,9 +296,9 @@ async function listUsers(dataDir) {
   return readJsonDoc(dataDir).users.map((u) => publicUser(u));
 }
 
-/** Update a user's role (admin use). */
+/** Update a user's role/permissions/name (admin use). */
 async function updateUser(dataDir, userId, updates) {
-  const updatesAllowed = ['role', 'managerId', 'name'];
+  const updatesAllowed = ['role', 'managerId', 'name', 'permissions'];
 
   if (pg.enabled()) {
     const current = await pgFindById(userId);
@@ -294,9 +308,16 @@ async function updateUser(dataDir, userId, updates) {
       if (updates[key] !== undefined) next[key] = updates[key];
     }
     const { rows } = await pg.query(
-      `UPDATE users SET name = $2, email = $3, role = $4, manager_id = $5
+      `UPDATE users SET name = $2, email = $3, role = $4, manager_id = $5, permissions = $6
        WHERE id = $1 RETURNING ${USER_COLS}`,
-      [userId, next.name, next.email, next.role || 'employee', next.managerId || null]
+      [
+        userId,
+        next.name,
+        next.email,
+        next.role || 'employee',
+        next.managerId || null,
+        JSON.stringify(normalizePermissions(next.permissions)),
+      ]
     );
     await reloadDirectory();
     return publicUser(rowToUser(rows[0]));
@@ -308,7 +329,9 @@ async function updateUser(dataDir, userId, updates) {
 
   const user = doc.users[idx];
   for (const key of updatesAllowed) {
-    if (updates[key] !== undefined) user[key] = updates[key];
+    if (updates[key] !== undefined) {
+      user[key] = key === 'permissions' ? normalizePermissions(updates[key]) : updates[key];
+    }
   }
   doc.users[idx] = user;
   writeDoc(dataDir, doc);
@@ -356,6 +379,7 @@ async function migrateToPostgres(dataDir) {
           email: normalizeEmail(u.email),
           role: u.role || 'employee',
           managerId: u.managerId,
+          permissions: normalizePermissions(u.permissions),
           pw: u.pw,
           createdAt: u.createdAt || Date.now(),
         });
