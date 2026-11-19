@@ -2581,6 +2581,8 @@ function renderAttachmentHtml(attachments) {
     if (a.kind === 'image') {
       return `<img class="msg-img" src="${a.data}" alt="${a.name ? esc(a.name) : 'Photo'}" loading="lazy" decoding="async">`;
     }
+    if (a.kind !== 'audio') return '';
+    const durSec = Number(a.dur) || 0;
     return `
       <div class="msg-audio" data-att="${i}">
         <button class="audio-play" type="button" aria-label="Play voice message">
@@ -2590,7 +2592,7 @@ function renderAttachmentHtml(attachments) {
              aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="audio-fill"></div>
         </div>
-        <span class="audio-time">${a.dur ? fmtClock(a.dur) : '0:00'}</span>
+        <span class="audio-time">${fmtClock(durSec)}</span>
       </div>`;
   }).join('');
 }

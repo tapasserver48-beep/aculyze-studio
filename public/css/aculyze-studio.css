@@ -5082,10 +5082,9 @@ body.copilot-collapsed .copilot-rail {
   justify-content: flex-end; /* card floats over the banner's open right side */
   padding: 24px clamp(24px, 8vw, 140px);
   /* Mascot banner: logo + mascot sit on the left, clear space on the right.
-     `cover` keeps the full height and the left-hand artwork visible; the
-     flat fallback colour only shows before the image decodes. */
+     `cover` keeps the full height and the left-hand artwork visible. */
   background:
-    url("../Aculyze Studio AI Mascot Banner.png") left center / cover no-repeat,
+    url("../aculyze login bg.png") left center / cover no-repeat,
     #cfe7f8;
   animation: authFade 0.24s ease both;
 }
