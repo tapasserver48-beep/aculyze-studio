@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -3850,7 +3850,7 @@ aiEls.edit?.addEventListener('click', () => {
 /* ==========================================================================
    AUTH — local login (scrypt accounts + signed httpOnly session cookie)
    ========================================================================== */
-const authState = { user: null, mode: 'login' };
+const authState = { user: null, mode: 'login', setupOpen: false };
 
 /** Server-side codes from src/auth/google.js, mirrored for the UI. */
 const GOOGLE_SIGNIN_ERRORS = {
@@ -3875,10 +3875,16 @@ const authEls = {
   email: document.getElementById('authEmail'),
   password: document.getElementById('authPassword'),
   pwToggle: document.getElementById('authPwToggle'),
+  codeField: document.getElementById('authCodeField'),
+  code: document.getElementById('authCode'),
+  codeHint: document.getElementById('authCodeHint'),
   error: document.getElementById('authError'),
   submit: document.getElementById('authSubmit'),
   switchText: document.getElementById('authSwitchText'),
   switchBtn: document.getElementById('authSwitch'),
+  setupRow: document.getElementById('authSetupRow'),
+  setupText: document.getElementById('authSetupText'),
+  setupBtn: document.getElementById('authSetupBtn'),
   google: document.getElementById('authGoogle'),
   avatar: document.getElementById('btnUserMenu'),
   menu: document.getElementById('userMenu'),
@@ -3889,8 +3895,31 @@ const authEls = {
 };
 
 function authSubmitLabel() {
+  if (authState.mode === 'setup') return 'Create founder account';
   return authState.mode === 'register' ? 'Create account' : 'Sign in';
 }
+
+/** Copy for the three form shapes — one place so they never drift apart. */
+const AUTH_COPY = {
+  login: {
+    heading: 'Sign in',
+    subtitle: 'Sign in to open your workspace and inbox.',
+    switchText: 'Don’t have an account?',
+    switchBtn: 'Create one',
+  },
+  register: {
+    heading: 'Create your account',
+    subtitle: 'It takes a minute — then your workspace is ready.',
+    switchText: 'Already have an account?',
+    switchBtn: 'Sign in',
+  },
+  setup: {
+    heading: 'Set up first admin',
+    subtitle: 'This workspace has no administrator yet. Create the founder account.',
+    switchText: 'Already have an account?',
+    switchBtn: 'Sign in',
+  },
+};
 
 function showAuthError(msg) {
   if (!authEls.error) return;
@@ -3898,36 +3927,40 @@ function showAuthError(msg) {
   authEls.error.hidden = !msg;
   // Mark the fields invalid so assistive tech announces the problem too.
   const invalid = !!msg;
-  for (const el of [authEls.email, authEls.password, authEls.name]) {
+  for (const el of [authEls.email, authEls.password, authEls.name, authEls.code]) {
     if (el) el.setAttribute('aria-invalid', String(invalid));
   }
 }
 
 function setAuthMode(mode) {
-  authState.mode = mode === 'register' ? 'register' : 'login';
+  authState.mode = mode === 'register' || mode === 'setup' ? mode : 'login';
   const isReg = authState.mode === 'register';
-  authEls.tabLogin?.classList.toggle('active', !isReg);
+  const isSetup = authState.mode === 'setup';
+  const wantsName = isReg || isSetup;
+
+  authEls.tabLogin?.classList.toggle('active', !isReg && !isSetup);
   authEls.tabRegister?.classList.toggle('active', isReg);
-  authEls.tabLogin?.setAttribute('aria-selected', String(!isReg));
+  authEls.tabLogin?.setAttribute('aria-selected', String(!isReg && !isSetup));
   authEls.tabRegister?.setAttribute('aria-selected', String(isReg));
-  if (authEls.nameField) authEls.nameField.hidden = !isReg;
+
+  if (authEls.nameField) authEls.nameField.hidden = !wantsName;
+  if (authEls.codeField) authEls.codeField.hidden = !isSetup;
   if (authEls.password) {
-    authEls.password.autocomplete = isReg ? 'new-password' : 'current-password';
-    authEls.password.placeholder = isReg ? 'At least 6 characters' : '••••••••';
+    authEls.password.autocomplete = wantsName ? 'new-password' : 'current-password';
+    authEls.password.placeholder = wantsName ? 'At least 6 characters' : '••••••••';
   }
   if (authEls.submit) authEls.submit.textContent = authSubmitLabel();
 
-  // Headline + the "already have an account?" link follow the active tab.
-  if (authEls.heading) authEls.heading.textContent = isReg ? 'Create your account' : 'Sign in';
-  if (authEls.subtitle) {
-    authEls.subtitle.textContent = isReg
-      ? 'It takes a minute — then your workspace is ready.'
-      : 'Sign in to open your workspace and inbox.';
-  }
-  if (authEls.switchText) {
-    authEls.switchText.textContent = isReg ? 'Already have an account?' : 'Don’t have an account?';
-  }
-  if (authEls.switchBtn) authEls.switchBtn.textContent = isReg ? 'Sign in' : 'Create one';
+  // Headline + the "already have an account?" link follow the active mode.
+  const copy = AUTH_COPY[authState.mode];
+  if (authEls.heading) authEls.heading.textContent = copy.heading;
+  if (authEls.subtitle) authEls.subtitle.textContent = copy.subtitle;
+  if (authEls.switchText) authEls.switchText.textContent = copy.switchText;
+  if (authEls.switchBtn) authEls.switchBtn.textContent = copy.switchBtn;
+
+  // The setup offer only belongs on the plain sign-in form — never while the
+  // setup form itself is open, and never on Create account.
+  if (authEls.setupRow) authEls.setupRow.hidden = authState.mode !== 'login' || !authState.setupOpen;
 
   resetPasswordVisibility();
   showAuthError('');
@@ -3956,6 +3989,9 @@ function showAuthScreen(show) {
     setAuthMode('login');
     authEls.form?.reset();
     closeUserMenu();
+    // Re-check the first-admin window every time this screen appears — it can
+    // only ever close, so the offer may disappear but never reappear wrongly.
+    refreshSetupOffer().catch(() => {});
     setTimeout(() => authEls.email?.focus(), 60);
   }
 }
@@ -4014,6 +4050,7 @@ async function initAuth() {
   try {
     const data = await authMe();
     applyAuthUser(data.user || null);
+    // showAuthScreen(true) also re-checks the first-admin window.
     showAuthScreen(!data.user);
     if (data.user && state.activeView === 'inbox') refreshInbox();
   } catch {
@@ -4024,15 +4061,51 @@ async function initAuth() {
   consumeAuthRedirect();
 }
 
+/**
+ * Ask the server whether the first-admin window is still open, and render
+ * (or remove) the "Set up first admin" offer to match. The endpoint answers
+ * `needed: false` forever once an admin exists, so this can only ever hide
+ * the offer — never resurrect it.
+ */
+async function refreshSetupOffer() {
+  let state = null;
+  try {
+    state = await authSetupStatus();
+  } catch {
+    state = null; // unreachable/offline → treat as closed, never offer it
+  }
+  authState.setupOpen = !!(state && state.needed);
+  if (authState.mode === 'login' && authEls.setupRow) {
+    authEls.setupRow.hidden = !authState.setupOpen;
+  }
+  if (authEls.setupText) {
+    authEls.setupText.textContent = 'No administrator yet?';
+  }
+  if (authEls.codeHint) {
+    authEls.codeHint.textContent = state && state.codeSource === 'env'
+      ? 'Use the SETUP_CODE configured for this server.'
+      : 'Find the code in the server log (look for "first-admin code").';
+  }
+  return authState.setupOpen;
+}
+
 authEls.tabLogin?.addEventListener('click', () => setAuthMode('login'));
 authEls.tabRegister?.addEventListener('click', () => setAuthMode('register'));
 
 /* The link under the form is the same switch as the tabs, worded for the
-   mode you are NOT in — so "already have an account?" is one click away. */
+   mode you are NOT in — so "already have an account?" is one click away.
+   From the setup form it always returns to Sign in. */
 authEls.switchBtn?.addEventListener('click', () => {
-  const next = authState.mode === 'register' ? 'login' : 'register';
+  const next = authState.mode === 'login' ? 'register' : 'login';
   setAuthMode(next);
   (next === 'register' ? authEls.name : authEls.email)?.focus();
+});
+
+/* First-admin offer → the setup form. Rendered only while the server says
+   zero admins exist; see refreshSetupOffer(). */
+authEls.setupBtn?.addEventListener('click', () => {
+  setAuthMode('setup');
+  authEls.code?.focus();
 });
 
 /* Password view / hide — the button keeps focus so it can be toggled back. */
@@ -4059,35 +4132,54 @@ authEls.google?.addEventListener('click', () => {
 
 authEls.form?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const isSetup = authState.mode === 'setup';
+  const isReg = authState.mode === 'register';
+  const wantsName = isReg || isSetup;
   const payload = {
     name: (authEls.name?.value || '').trim(),
     email: (authEls.email?.value || '').trim(),
     password: authEls.password?.value || '',
+    code: (authEls.code?.value || '').trim(),
   };
   if (!payload.email || !payload.password) {
     showAuthError('Enter your email and password.');
     return;
   }
-  if (authState.mode === 'register' && !payload.name) {
+  if (wantsName && !payload.name) {
     showAuthError('Enter your name.');
+    return;
+  }
+  if (isSetup && !payload.code) {
+    showAuthError('Enter the setup code from the server log.');
+    authEls.code?.focus();
     return;
   }
 
   showAuthError('');
-  const isReg = authState.mode === 'register';
   if (authEls.submit) {
     authEls.submit.disabled = true;
-    authEls.submit.textContent = isReg ? 'Creating…' : 'Signing in…';
+    authEls.submit.textContent = isSetup ? 'Setting up…' : isReg ? 'Creating…' : 'Signing in…';
   }
 
   try {
-    const data = isReg ? await authRegister(payload) : await authLogin(payload);
+    const data = isSetup
+      ? await authSetup(payload)
+      : isReg ? await authRegister(payload) : await authLogin(payload);
+    // The window is closed for good — never offer it again this session.
+    authState.setupOpen = false;
     applyAuthUser(data.user);
     showAuthScreen(false);
     authEls.form?.reset();
-    toast(`Welcome, ${data.user.name}`, 'info');
+    toast(isSetup ? 'Workspace ready — you are the founder' : `Welcome, ${data.user.name}`, 'info');
     if (state.activeView === 'inbox') refreshInbox();
   } catch (err) {
+    // Someone else completed setup first → the window is shut for good.
+    // Switch mode BEFORE showing the error: setAuthMode() clears the error
+    // slot, so doing it the other way round swallowed the reason entirely.
+    if (isSetup && err?.code === 'setup_complete') {
+      authState.setupOpen = false;
+      setAuthMode('login');
+    }
     showAuthError(err?.message || 'Could not sign in.');
   } finally {
     if (authEls.submit) {

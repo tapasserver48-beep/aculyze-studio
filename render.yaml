@@ -45,3 +45,26 @@ services:
       - key: HOSTING_ENV
         value: render
     plan: starter  # $7/month, 0.5 CPU, 512MB
+
+# ---------------------------------------------------------------------------
+# First-admin bootstrap (optional) — for when the database has accounts but
+# no admin/founder, so the Admin page is unreachable. Every bootstrap path
+# works ONLY while zero admin/founder accounts exist, then disables itself
+# permanently (src/auth/setup.js). Once one exists, these do nothing.
+#
+# Fastest path, no code needed — promote an existing account at boot:
+#   BOOTSTRAP_ADMIN_EMAIL = barathi@aculyze.in
+#
+# Or create the account at boot instead (only used when the email is unknown):
+#   BOOTSTRAP_ADMIN_PASSWORD = <its password>
+#   BOOTSTRAP_ADMIN_NAME     = optional, defaults to the email's local part
+#   BOOTSTRAP_ADMIN_ROLE     = founder (default) | admin
+#
+# Alternative: set a stable setup code for the in-app form (otherwise a random
+# one is printed to the log at boot, and the login screen offers
+# "Set up first admin" while the window is open):
+#   SETUP_CODE = <your code>
+#
+# Pushing this file never changes Render's env vars by itself — add them in
+# the dashboard (or Sync Blueprint), then Save + Rebuild + Deploy.
+# ---------------------------------------------------------------------------

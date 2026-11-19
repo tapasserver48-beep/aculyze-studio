@@ -5200,6 +5200,33 @@ body.copilot-collapsed .copilot-rail {
 .auth-link:hover { text-decoration: underline; }
 .auth-link:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
 
+/* One-line hint under the setup-code field: says exactly where the code is. */
+.auth-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* First-admin offer — only ever rendered while the server reports that zero
+   admin/founder accounts exist (see /api/auth/setup). */
+.auth-setup {
+  margin: 10px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-setup[hidden] { display: none; }
+/* Comfortable touch target without changing the line's optical spacing. */
+.auth-setup .auth-link {
+  display: inline-block;
+  min-height: 44px;
+  padding: 12px 8px;
+  margin: -12px -8px;
+  line-height: 20px;
+}
+
 /* ---- Responsive: card centres over the banner on small screens ---- */
 @media (max-width: 800px) {
   .auth-screen {

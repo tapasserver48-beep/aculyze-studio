@@ -197,6 +197,24 @@ async function countUsers(dataDir) {
   return readJsonDoc(dataDir).users.length;
 }
 
+/**
+ * How many admin/founder accounts exist.
+ * The first-admin bootstrap (./setup.js + GET/POST /api/auth/setup) runs only
+ * while this returns 0, and disables itself forever once it does not — see
+ * ./setup.js for why a permanently open "create admin" door is not an option.
+ */
+async function countAdmins(dataDir) {
+  if (pg.enabled()) {
+    const { rows } = await pg.query(
+      "SELECT count(*)::int AS n FROM users WHERE role IN ('admin', 'founder')"
+    );
+    return Number(rows[0].n) || 0;
+  }
+  return readJsonDoc(dataDir).users.filter(
+    (u) => u && (u.role === 'admin' || u.role === 'founder')
+  ).length;
+}
+
 // ---------- mutations ----------
 
 /**
@@ -404,6 +422,7 @@ module.exports = {
   findById,
   findByEmail,
   countUsers,
+  countAdmins,
   publicUser,
   publicUserWithRole: require('./roles').publicUserWithRole,
   verifyPassword,

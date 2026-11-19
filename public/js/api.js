@@ -679,6 +679,19 @@ export async function authLogout() {
   return authRequest('/api/auth/logout', { method: 'POST', body: {} });
 }
 
+/** GET /api/auth/setup ? { needed, codeSource } — first-admin window open? */
+export async function authSetupStatus() {
+  return authRequest('/api/auth/setup');
+}
+
+/** POST /api/auth/setup ? { user } (201) — only while zero admins exist. */
+export async function authSetup({ name, email, password, code }) {
+  return authRequest('/api/auth/setup', {
+    method: 'POST',
+    body: { name, email, password, code },
+  });
+}
+
 // ============ ADMIN (users, roles, per-page permissions) ============
 // All admin endpoints are server-gated to admin/founder — a non-admin
 // session gets a 403 with { error, code: 'forbidden' }.

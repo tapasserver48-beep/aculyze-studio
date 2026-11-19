@@ -1269,12 +1269,17 @@ app.get('*', (req, res) => {
 async function initStorage() {
   const pg = require('./src/db/pg');
   const db = await pg.init();
-  if (!db) return;
-  const authStore = require('./src/auth/store');
-  const inboxStore = require('./src/inbox/store');
-  const a = await authStore.migrateToPostgres(DATA_DIR);
-  const b = await inboxStore.migrateToPostgres(DATA_DIR);
-  console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
+  if (db) {
+    const authStore = require('./src/auth/store');
+    const inboxStore = require('./src/inbox/store');
+    const a = await authStore.migrateToPostgres(DATA_DIR);
+    const b = await inboxStore.migrateToPostgres(DATA_DIR);
+    console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
+  }
+  // First-admin bootstrap (BOOTSTRAP_ADMIN_* + the setup-code banner). Runs in
+  // BOTH storage modes and never throws — see src/auth/setup.js.
+  const { firstAdminBootstrap } = require('./src/auth/setup');
+  await firstAdminBootstrap(DATA_DIR);
 }
 
 initStorage()

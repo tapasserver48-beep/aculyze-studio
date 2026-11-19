@@ -5,8 +5,15 @@
  *   POST /api/auth/login     { email, password }       → 200 { user }
  *   POST /api/auth/logout                             → 200 { ok }
  *   GET  /api/auth/me                                 → 200 { user: {…}|null }
+ *   GET  /api/auth/setup                              → 200 { needed, codeSource }
+ *   POST /api/auth/setup     { name, email, password, code }
+ *                                                        → 201 { user } | 403/401
  *   GET  /api/auth/google                             → 302 → Google consent
  *   GET  /api/auth/google/callback                    → 302 → /?auth=google
+ *
+ * `/setup` is the first-admin bootstrap and is self-disabling: it only works
+ * while the database has ZERO admin/founder accounts, and only with the
+ * one-time setup code. See ./setup.js.
  *
  * Success issues the signed httpOnly `zara_session` cookie (7 days).
  * `GET /me` always answers 200 — the login screen just reads `user: null`.
@@ -121,6 +128,73 @@ function createAuthRouter(options = {}) {
   router.get('/session', requireUser, (req, res) => {
     res.json({ user: req.user });
   });
+
+  // -------- First-admin bootstrap (self-disabling) --------
+  // A fresh deployment has no admin/founder, so the Admin page would be
+  // unreachable. These two routes exist ONLY while that is true: the moment
+  // one admin/founder exists they answer 403/`needed:false` forever.
+  // POST additionally demands the one-time setup code, so an open window is
+  // still not an open door. Full rules: ./setup.js.
+  const {
+    checkSetupCode,
+    delayWrongCode,
+    setupState,
+    withSetupLock,
+  } = require('./setup');
+
+  // Public on purpose — the login screen asks before it offers the form.
+  // Reveals nothing beyond "this install has no admin yet".
+  router.get('/setup', wrap(async (req, res) => {
+    res.json(await setupState(dataDir));
+  }));
+
+  router.post('/setup', wrap(async (req, res) => {
+    const body = req.body || {};
+
+    // Closure is checked first, OUTSIDE the serialisation lock: once an admin
+    // exists the door is shut for good, so a late POST must not reach the code
+    // check or sit behind a lock it no longer needs.
+    const state = await setupState(dataDir);
+    if (!state.needed) {
+      return res.status(403).json({
+        error: 'This workspace already has an administrator.',
+        code: 'setup_complete',
+      });
+    }
+
+    if (!checkSetupCode(body.code)) {
+      // Also outside the lock — a wrong guess must never stall a legitimate
+      // attempt that is waiting on it.
+      await delayWrongCode();
+      return res.status(401).json({ error: 'That setup code is not correct.', code: 'bad_setup_code' });
+    }
+
+    // Serialised: two concurrent posts carrying the right code must not both
+    // pass the zero-admin check and both mint a founder. Re-check inside the
+    // lock, because the state read above happened before it.
+    const user = await withSetupLock(async () => {
+      const again = await setupState(dataDir);
+      if (!again.needed) return null;
+      // 'founder' is the only sensible first account: an admin cannot assign
+      // the founder role, so a first admin could never be upgraded later.
+      return createUser(dataDir, {
+        name: body.name,
+        email: body.email,
+        password: body.password,
+        role: 'founder',
+      });
+    });
+
+    if (!user) {
+      return res.status(403).json({
+        error: 'This workspace already has an administrator.',
+        code: 'setup_complete',
+      });
+    }
+
+    setSessionCookie(dataDir, req, res, user.id);
+    res.status(201).json({ user: publicUser(user) });
+  }));
 
   // -------- User Management (Admin routes) --------
   const adminOnly = [requireUser, requireRole(['admin', 'founder'])];
