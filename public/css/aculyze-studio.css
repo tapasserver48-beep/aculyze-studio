@@ -602,26 +602,152 @@ body.sidebar-collapsed .sidebar .agent-item.active,
 }
 .copilot-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  /* A soft accent wash fading downward so the bar reads as the panel's crown
+     instead of a plain strip. --accent-soft is defined per theme, so this
+     stays subtle in both (near-white in light, violet at 14% in dark). */
+  background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%);
 }
 .copilot-identity {
   display: flex; align-items: center; gap: 10px;
+  min-width: 0;
 }
+.copilot-id-text { min-width: 0; }
 .copilot-agent {
   background: transparent; border: 0; color: var(--text);
   font-size: 15px; font-weight: 700; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
+  /* 44px minimum touch target. No negative-margin trick here: the header
+     simply carries the taller button, so the hit area stays clean and never
+     overlaps the subtitle below it. */
+  min-height: 44px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  transition: color 0.14s ease;
 }
-.copilot-caret { font-size: 10px; }
-.copilot-head-actions { display: flex; gap: 6px; }
+.copilot-agent:hover { color: var(--accent); }
+.copilot-agent:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.copilot-caret {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: inline-flex;
+  transition: transform 0.16s ease;
+}
+/* Open menu flips the caret so its state is not carried by colour alone. */
+.copilot-agent[aria-expanded="true"] .copilot-caret { transform: rotate(180deg); }
+
+/* Subtitle — had no rule at all anywhere, so it inherited body size and
+   colour. --text-body clears 4.5:1 in both themes (7.5:1 light, ~10:1 dark). */
+#copilotSubtitle {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copilot-head-actions {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+/* Scoped override: .icon-btn.sm is 28px everywhere else — too small here.
+   Both header buttons get a full 44px target and a softer corner. */
+.copilot-head-actions .icon-btn.sm {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
+}
+.copilot-head-actions .icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.copilot-head-actions .icon-btn.ghost:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+/* ---- "New" button (was a bare + icon) ---------------------------------
+   CSS-only: the add_box glyph is hidden and the label is injected with
+   content, so the markup and its aria-label ("Start a new chat") are
+   untouched. The ID selector outranks the theme ghost-button colour rules. */
+#copilotNewChat .material-symbols-outlined { display: none; }
+#copilotNewChat::after {
+  content: "+ New";
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+#copilotNewChat {
+  width: auto;            /* a pill, not a square icon slot */
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;         /* 7.1:1 on the light accent */
+  box-shadow: var(--shadow-sm);
+  transition: background 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+}
+#copilotNewChat:hover {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+/* Dark theme's accent is a LIGHT violet (#a78bfa) meant for dark backgrounds,
+   so white text there would only reach 2.7:1 — flip to a deep violet ink. */
+[data-theme="dark"] #copilotNewChat { color: #160b34; }
+[data-theme="dark"] #copilotNewChat:hover { color: #160b34; }
+#copilotNewChat:active { transform: translateY(0); }
+#copilotNewChat:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .copilot-status {
-  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
   font-size: 11px; color: var(--text-muted); font-family: var(--font);
+  letter-spacing: 0.02em;
   display: flex; align-items: center; gap: 8px;
 }
 .copilot-status .dot {
   width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+  /* A soft halo keeps the dot visible on the translucent glass surface. */
+  box-shadow: 0 0 0 3px var(--success-soft);
 }
+@keyframes copilot-dot-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+/* Motion is opt-in: it only exists when the user has not asked for less. */
+@media (prefers-reduced-motion: no-preference) {
+  .copilot-status .dot { animation: copilot-dot-breathe 2.4s ease-in-out infinite; }
+}
+/* Same restraint for the app's own "animations off" preference. */
+@media (prefers-reduced-motion: reduce) {
+  .copilot-agent,
+  .copilot-caret,
+  .copilot-head-actions .icon-btn,
+  #copilotNewChat,
+  .copilot-status .dot { transition: none; animation: none; }
+  #copilotNewChat:hover { transform: none; }
+}
+body.no-animations .copilot-agent,
+body.no-animations .copilot-caret,
+body.no-animations .copilot-head-actions .icon-btn,
+body.no-animations #copilotNewChat,
+body.no-animations .copilot-status .dot { transition: none; animation: none; }
+body.no-animations #copilotNewChat:hover { transform: none; }
 .copilot-resizer {
   position: absolute; top: 0; right: 0; bottom: 0; width: 6px;
   cursor: col-resize; background: transparent;
