@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -96,13 +96,17 @@ const inboxState = {
   selectedUserId: null,
   activeRequest: null,
   users: [], // { id, name, role, status, avatar, lastMessage, updatedAt, unread }
-  messages: {}, // { [peerId]: [{ id, role, content, timestamp, generated }] }
+  messages: {}, // { [peerId]: [{ id, role, content, timestamp, generated, attachments, deleted }] }
   threads: {}, // { [peerId]: { preview, lastTs, unread, readTs } } from /api/inbox/threads
   meId: null, // 'usr-<uid>' — this account's peer id
   pollTimer: null, // ms-interval for new messages
   threadTimer: null, // ms-interval for previews + unread badges
   polling: false,
   threadsBusy: false,
+  // Photos/voice notes chosen but not sent yet (see renderPendingAttachments).
+  pending: [],
+  // Top-bar notification feed: { id, peerId, name, preview, ts, read }.
+  notifications: [],
 };
 
 // Channels — Slack-style group messaging (departments + channels, SQLite).
@@ -327,6 +331,13 @@ const els = {
   inboxInput: document.getElementById('inboxInput'),
   inboxSend: document.getElementById('inboxSend'),
   inboxBack: document.getElementById('inboxBack'),
+  inboxPending: document.getElementById('inboxPending'),
+  inboxFile: document.getElementById('inboxFile'),
+  inboxMic: document.getElementById('inboxMic'),
+  notifyBadge: document.getElementById('notifyBadge'),
+  notifyPanel: document.getElementById('notifyPanel'),
+  notifyList: document.getElementById('notifyList'),
+  notifyClear: document.getElementById('notifyClear'),
   zaraNewMessage: document.getElementById('zaraNewMessage'),
   zaraInboxOpen: document.getElementById('zaraInboxOpen'),
   zaraAttachments: document.getElementById('zaraAttachments'),
@@ -2461,6 +2472,9 @@ function showInboxUserDetail(userId) {
 function renderInboxMessages(userId) {
   if (!els.inboxMessages) return;
   if (inboxState.selectedUserId !== userId) return;
+  // 1:1 threads get the WhatsApp-style bubbles (time inside, tails, grouping);
+  // the channels renderer drops this class and keeps its original layout.
+  els.inboxMessages.classList.add('dm-thread');
 
   const messages = inboxState.messages[userId] || [];
   els.inboxMessages.innerHTML = '';
@@ -2473,43 +2487,274 @@ function renderInboxMessages(userId) {
     return;
   }
 
-  // Group messages by sender for better display
+  // Group messages by sender AND day so a run of one person's messages reads
+  // as a single block: tight gaps, one visible timestamp, WhatsApp-style
+  // corner radii (first bubble of a run keeps its top corner, the last one
+  // gets the tail).
+  let lastDate = messages.length ? new Date(messages[0].timestamp).toLocaleDateString() : null;
   let lastSender = null;
-  let lastDate = null;
 
-  for (const msg of messages) {
+  stopActiveVoice(); // a re-render tears the old <audio> elements down
+
+  for (let i = 0; i < messages.length; i += 1) {
+    const msg = messages[i];
     const msgDate = new Date(msg.timestamp);
     const dateStr = msgDate.toLocaleDateString();
+    const role = msg.role === 'assistant' ? 'agent' : 'user';
 
-    // Add date separator if this is a new day and not the first message
-    if (dateStr !== lastDate && messages.indexOf(msg) > 0) {
+    if (dateStr !== lastDate && i > 0) {
       const dateDiv = document.createElement('div');
       dateDiv.className = 'msg-date';
       dateDiv.textContent = dateStr;
       els.inboxMessages.appendChild(dateDiv);
       lastDate = dateStr;
+      lastSender = null; // a new day restarts the run
     }
 
+    const next = messages[i + 1];
+    const nextRole = next ? (next.role === 'assistant' ? 'agent' : 'user') : null;
+    const nextDay = next ? new Date(next.timestamp).toLocaleDateString() : null;
+    const runStart = lastSender !== role;
+    const runEnd = !next || nextRole !== role || nextDay !== dateStr;
+
     const msgEl = document.createElement('div');
-    const role = msg.role === 'assistant' ? 'agent' : 'user';
-    const isGenerated = msg.generated || false;
-    const isUser = role === 'user';
-    msgEl.className = `msg ${role}${isGenerated ? ' generated' : ''}${lastSender === role ? ' msg-grouped' : ''}`;
+    const isGenerated = !!msg.generated;
+    const atts = Array.isArray(msg.attachments) ? msg.attachments : [];
+    const deleted = !!msg.deleted;
+    const hasImage = atts.some((a) => a && a.kind === 'image');
+    msgEl.className = `msg ${role}`
+      + (isGenerated && !deleted ? ' generated' : '')
+      + (runStart ? ' msg-first' : ' msg-grouped')
+      + (runEnd ? ' msg-last' : '')
+      + (deleted ? ' deleted' : '');
     msgEl.dataset.timestamp = msg.timestamp;
+    if (msg.id) msgEl.dataset.messageId = msg.id;
 
     const timeStr = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const mediaHtml = deleted ? '' : renderAttachmentHtml(atts);
+    const textHtml = deleted || !msg.content ? '' : renderMarkdown(msg.content);
+    const inner = deleted
+      ? `<div class="msg-content msg-deleted"><span class="material-symbols-outlined" aria-hidden="true">block</span><span>Message deleted</span></div>`
+      : `<div class="msg-content">${mediaHtml}${textHtml}</div>`;
 
     msgEl.innerHTML = `
-      <div class="msg-body">
-        ${isGenerated ? `<span class="msg-ai-tag">AI drafted</span>` : ''}
-        <div class="msg-content">${renderMarkdown(msg.content)}</div>
+      <div class="msg-body${atts.length ? ' has-media' : ''}${deleted ? ' deleted' : ''}">
+        ${isGenerated && !deleted ? '<span class="msg-ai-tag">AI drafted</span>' : ''}
+        ${inner}
+        ${!deleted ? `<span class="msg-time">${timeStr}</span>` : ''}
+        <button class="msg-act" type="button" aria-label="Message options" title="Message options" aria-haspopup="menu">
+          <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
+        </button>
       </div>
-      <span class="msg-time">${timeStr}</span>
     `;
+    msgEl._attachments = atts;
     els.inboxMessages.appendChild(msgEl);
+    wireAudioPlayers(msgEl, atts);
+    wireMessageActions(msgEl, msg);
     lastSender = role;
   }
   els.inboxMessages.scrollTop = els.inboxMessages.scrollHeight;
+}
+
+/* ---------- Message attachments: photos + voice notes ---------- */
+
+/** Conversation-list preview for an attachment-only send — mirrors the
+ *  server's previewOf() so the row and the thread agree. */
+function attachmentPreview(attachments) {
+  const atts = attachments || [];
+  if (atts.some((a) => a && a.kind === 'image')) return 'Photo';
+  if (atts.length) return 'Voice message';
+  return '';
+}
+
+function fmtClock(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** HTML for a message's attachments. Audio keeps only an index here — the
+ *  data URL is handed to the <audio> element in wireAudioPlayers() instead of
+ *  being re-parsed out of a megabyte-scale attribute. */
+function renderAttachmentHtml(attachments) {
+  return (attachments || []).map((a, i) => {
+    if (!a || !a.data) return '';
+    if (a.kind === 'image') {
+      return `<img class="msg-img" src="${a.data}" alt="${a.name ? esc(a.name) : 'Photo'}" loading="lazy" decoding="async">`;
+    }
+    return `
+      <div class="msg-audio" data-att="${i}">
+        <button class="audio-play" type="button" aria-label="Play voice message">
+          <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+        </button>
+        <div class="audio-track" role="slider" tabindex="0" aria-label="Seek voice message"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="audio-fill"></div>
+        </div>
+        <span class="audio-time">${a.dur ? fmtClock(a.dur) : '0:00'}</span>
+      </div>`;
+  }).join('');
+}
+
+/** Only one voice note plays at a time (and a re-render stops it). */
+let activeVoice = null;
+
+function stopActiveVoice() {
+  if (!activeVoice) return;
+  try { activeVoice.audio.pause(); } catch { /* already gone */ }
+  activeVoice = null;
+}
+
+function wireAudioPlayers(root, attachments) {
+  const atts = attachments || root._attachments || [];
+  root.querySelectorAll('.msg-audio').forEach((wrap) => {
+    const a = atts[Number(wrap.dataset.att) || 0];
+    if (!a || !a.data || a.kind !== 'audio') return;
+
+    const btn = wrap.querySelector('.audio-play');
+    const track = wrap.querySelector('.audio-track');
+    const fill = wrap.querySelector('.audio-fill');
+    const timeEl = wrap.querySelector('.audio-time');
+    const icon = btn && btn.querySelector('.material-symbols-outlined');
+    const recorded = Number(a.dur) || 0;
+
+    // `audio/webm;codecs=opus` would break the data URL's own parameter
+    // parsing — the stored blob type is already parameter-free.
+    const audio = new Audio(a.data);
+    audio.preload = 'metadata';
+
+    const total = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : recorded);
+    const paint = () => {
+      const d = total();
+      const pct = d ? Math.min(100, (audio.currentTime / d) * 100) : 0;
+      if (fill) fill.style.width = `${pct}%`;
+      if (track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
+      if (timeEl) timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : d);
+    };
+    const setIcon = (name) => { if (icon) icon.textContent = name; };
+
+    audio.addEventListener('timeupdate', paint);
+    audio.addEventListener('loadedmetadata', paint);
+    audio.addEventListener('play', () => {
+      if (activeVoice && activeVoice.audio !== audio) stopActiveVoice();
+      activeVoice = { audio, wrap };
+      setIcon('pause');
+      wrap.classList.add('playing');
+      if (btn) btn.setAttribute('aria-label', 'Pause voice message');
+    });
+    audio.addEventListener('pause', () => {
+      setIcon('play');
+      wrap.classList.remove('playing');
+      if (btn) btn.setAttribute('aria-label', 'Play voice message');
+      if (activeVoice && activeVoice.audio === audio) activeVoice = null;
+    });
+    audio.addEventListener('ended', () => { audio.currentTime = 0; paint(); });
+
+    btn?.addEventListener('click', () => {
+      if (audio.paused) {
+        audio.play().catch(() => toast('Could not play this voice note', 'error'));
+      } else {
+        audio.pause();
+      }
+    });
+    track?.addEventListener('click', (e) => {
+      const d = total();
+      if (!d) return;
+      const r = track.getBoundingClientRect();
+      audio.currentTime = Math.max(0, Math.min(d, ((e.clientX - r.left) / r.width) * d));
+      paint();
+    });
+    track?.addEventListener('keydown', (e) => {
+      const d = total();
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); btn?.click(); return; }
+      if (!d) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); audio.currentTime = Math.min(d, audio.currentTime + 5); paint(); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); audio.currentTime = Math.max(0, audio.currentTime - 5); paint(); }
+    });
+  });
+}
+
+/* ---------- Per-message actions (⋯ → delete) ---------- */
+
+function closeMessageMenus() {
+  document.querySelectorAll('.msg-menu').forEach((m) => m.remove());
+}
+
+function wireMessageActions(msgEl, msg) {
+  const act = msgEl.querySelector('.msg-act');
+  if (!act) return;
+  act.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = !!msgEl.querySelector('.msg-menu');
+    closeMessageMenus();
+    if (wasOpen) return; // second click closes it again
+    openMessageMenu(msgEl, msg);
+  });
+}
+
+function openMessageMenu(msgEl, msg) {
+  const menu = document.createElement('div');
+  menu.className = 'msg-menu';
+  menu.setAttribute('role', 'menu');
+  const mine = msg.role === 'user';
+  const items = [{ act: 'me', label: 'Delete for me' }];
+  if (mine && !msg.deleted) items.push({ act: 'all', label: 'Delete for everyone' });
+  menu.innerHTML = items
+    .map((it) => `<button type="button" role="menuitem" data-act="${it.act}">${it.label}</button>`)
+    .join('');
+  menu.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const scope = b.dataset.act === 'all' ? 'everyone' : 'me';
+    closeMessageMenus();
+    deleteInboxMessage(msg, scope);
+  });
+  msgEl.appendChild(menu);
+  menu.querySelector('button')?.focus();
+}
+
+/** Delete locally + on the server. "Everyone" leaves a tombstone both sides
+ *  render as "Message deleted"; "me" only drops this account's copy. */
+async function deleteInboxMessage(msg, scope) {
+  const peerId = inboxState.selectedUserId;
+  if (!peerId) return;
+  if (!msg.id) { toast('That message cannot be deleted', 'error'); return; }
+
+  const ok = await showAppConfirm({
+    title: scope === 'everyone' ? 'Delete for everyone' : 'Delete for me',
+    detail: scope === 'everyone'
+      ? 'This message is removed for both of you. The other person will see "Message deleted".'
+      : 'This message is removed from your conversation only. The other person keeps it.',
+    okLabel: 'Delete',
+    cancelLabel: 'Cancel',
+  });
+  if (!ok) return;
+
+  try {
+    await inboxDelete({ id: msg.id, scope });
+  } catch (err) {
+    if (err && (err.status === 401 || err.code === 'unauthenticated')) {
+      toast('Your session ended — sign in again', 'error');
+    } else {
+      toast(err?.message || 'Could not delete that message', 'error');
+    }
+    return;
+  }
+
+  const list = inboxState.messages[peerId] || [];
+  if (scope === 'everyone') {
+    const target = list.find((m) => m.id === msg.id);
+    if (target) {
+      target.deleted = true;
+      target.content = '';
+      target.attachments = [];
+    }
+    applyThreadPreview(peerId, 'Message deleted', msg.timestamp || Date.now());
+  } else {
+    inboxState.messages[peerId] = list.filter((m) => m.id !== msg.id);
+  }
+  renderInboxMessages(peerId);
+  renderInboxList();
+  toast(scope === 'everyone' ? 'Message deleted for everyone' : 'Message deleted');
 }
 
 /* ---------- Select inbox user ---------- */
@@ -2530,20 +2775,33 @@ function toClientMessage(m) {
   return {
     id: m.id,
     role: m.from === inboxState.meId ? 'user' : 'assistant',
-    content: m.body,
+    content: m.body || '',
     timestamp: m.ts,
     generated: !!m.generated,
+    attachments: Array.isArray(m.attachments) ? m.attachments : [],
+    deleted: !!m.deleted || !!m.deletedAt,
   };
 }
 
-/** Merge server messages into the local cache (dedupe by id), oldest first. */
+/** Merge server messages into the local cache (dedupe by id), oldest first.
+ *  A message we already hold can still arrive again as a TOMBSTONE — the
+ *  `since` cursor only moves forward on ts, so a delete-for-everyone of an
+ *  older message is re-delivered with deleted_at > since. Refresh in place
+ *  instead of skipping, or the other side would never see "Message deleted". */
 function mergeMessages(peerId, incoming) {
   const list = inboxState.messages[peerId] || (inboxState.messages[peerId] = []);
   const seen = new Set(list.map((m) => m.id).filter(Boolean));
   let added = 0;
   for (const raw of incoming || []) {
     if (!raw || !raw.id) continue;
-    if (seen.has(raw.id)) continue;
+    if (seen.has(raw.id)) {
+      const idx = list.findIndex((m) => m.id === raw.id);
+      if (idx >= 0 && !list[idx].deleted && (raw.deleted || raw.deletedAt)) {
+        list[idx] = toClientMessage(raw);
+        added += 1;
+      }
+      continue;
+    }
     seen.add(raw.id);
     list.push(toClientMessage(raw));
     added += 1;
@@ -2583,9 +2841,123 @@ function markThreadRead(peerId) {
     t.readTs = Date.now();
   }
   if (user) user.unread = 0;
+  clearPeerNotifications(peerId); // it is on screen → the bell stops announcing it
   if (hadUnread) renderInboxList();
   if (authState.user) inboxRead(peerId).catch(() => { /* best-effort receipt */ });
 }
+
+/* ---------- Top-bar notifications (the header bell) ---------- */
+
+/** Badge = unread entries in the notification feed. */
+function updateNotifyBadge() {
+  const badge = els.notifyBadge;
+  if (!badge) return;
+  const n = inboxState.notifications.filter((x) => !x.read).length;
+  badge.hidden = n === 0;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  const btn = document.getElementById('btnNotify');
+  if (btn) btn.setAttribute('aria-label', n ? `Notifications, ${n} unread` : 'Notifications');
+}
+
+function renderNotifyPanel() {
+  const list = els.notifyList;
+  if (!list) return;
+  if (!inboxState.notifications.length) {
+    list.innerHTML = '<p class="notify-empty">No notifications.</p>';
+    updateNotifyBadge();
+    return;
+  }
+  list.innerHTML = inboxState.notifications.map((n) => `
+    <button type="button" class="notify-row${n.read ? '' : ' unread'}" data-peer="${esc(n.peerId)}">
+      <span class="notify-row-who">${esc(n.name)}</span>
+      <span class="notify-row-body">${esc(n.preview)}</span>
+      <span class="notify-row-time">${new Date(n.ts || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+    </button>`).join('');
+  list.querySelectorAll('.notify-row').forEach((row) => {
+    row.addEventListener('click', () => openPeerConversation(row.dataset.peer));
+  });
+  updateNotifyBadge();
+}
+
+/**
+ * Announce a new direct message. One entry per conversation — a newer message
+ * from the same person replaces (and re-lights) theirs instead of stacking.
+ */
+function pushNotification(peerId, name, preview, ts) {
+  if (!peerId) return;
+  const when = Number(ts) > 0 ? Number(ts) : Date.now();
+  const list = inboxState.notifications;
+  const i = list.findIndex((n) => n.peerId === peerId);
+  const entry = {
+    id: `${peerId}-${when}`,
+    peerId,
+    name: String(name || 'Someone'),
+    preview: String(preview || 'New message'),
+    ts: when,
+    read: false,
+  };
+  if (i >= 0) list[i] = entry; else list.unshift(entry);
+  list.sort((a, b) => b.ts - a.ts);
+  if (list.length > 30) list.length = 30;
+  renderNotifyPanel();
+}
+
+/** Reading a conversation removes its notification. Returns true if it did. */
+function clearPeerNotifications(peerId) {
+  const before = inboxState.notifications.length;
+  inboxState.notifications = inboxState.notifications.filter((n) => n.peerId !== peerId);
+  if (inboxState.notifications.length === before) return false;
+  renderNotifyPanel();
+  return true;
+}
+
+function openNotifyPanel(open) {
+  const panel = els.notifyPanel;
+  if (!panel) return;
+  panel.hidden = !open;
+  document.getElementById('btnNotify')?.setAttribute('aria-expanded', String(open));
+  if (open) renderNotifyPanel();
+}
+
+/** Bell → open that conversation, wherever I am in the app. */
+async function openPeerConversation(peerId) {
+  if (!peerId) return;
+  openNotifyPanel(false);
+  if (state.activeView !== 'inbox') setView('inbox');
+  if (chatState.mode === 'channels') setInboxMode('direct');
+  clearPeerNotifications(peerId);
+  try { await loadInboxUsers(); } catch { /* list refresh is best-effort */ }
+  if (inboxState.selectedUserId !== peerId) await selectInboxUser(peerId);
+}
+
+document.getElementById('btnNotify')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openNotifyPanel(!els.notifyPanel || els.notifyPanel.hidden);
+});
+els.notifyClear?.addEventListener('click', () => {
+  const peers = inboxState.notifications.filter((n) => !n.read).map((n) => n.peerId);
+  inboxState.notifications.forEach((n) => { n.read = true; });
+  renderNotifyPanel();
+  // "Mark all as read" is a real receipt, not just a local clear.
+  for (const peer of new Set(peers)) {
+    const t = inboxState.threads[peer];
+    if (t) t.unread = 0;
+    const u = inboxState.users.find((x) => x.id === peer);
+    if (u) u.unread = 0;
+    inboxRead(peer).catch(() => { /* best-effort receipt */ });
+  }
+  renderInboxList();
+});
+document.addEventListener('click', (e) => {
+  if (!els.notifyPanel || els.notifyPanel.hidden) return;
+  if (e.target && e.target.closest && e.target.closest('.notify-wrap')) return;
+  openNotifyPanel(false);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  closeMessageMenus();
+  openNotifyPanel(false);
+});
 
 /** Full history for one peer, then mark it read. */
 async function loadInboxHistory(peerId) {
@@ -2628,7 +3000,9 @@ function pollInboxMessages() {
 }
 
 function pollInboxThreads() {
-  if (!authState.user || state.activeView !== 'inbox' || inboxState.threadsBusy) return;
+  // No `activeView` guard on purpose: the header bell must learn about a new
+  // message even when the Inbox page is not the one on screen.
+  if (!authState.user || inboxState.threadsBusy) return;
   inboxState.threadsBusy = true;
   inboxThreads()
     .then((data) => {
@@ -2636,7 +3010,17 @@ function pollInboxThreads() {
       if (data.me) inboxState.meId = data.me;
       const map = {};
       for (const t of data.threads) map[t.peerId] = t;
+      const prev = inboxState.threads;
       inboxState.threads = map;
+
+      // A rising unread count is a message that arrived while I was elsewhere —
+      // exactly what the bell announces. (The first poll of the session also
+      // lights up for anything seeded and still unread.)
+      for (const t of data.threads) {
+        const before = prev[t.peerId] ? (prev[t.peerId].unread || 0) : 0;
+        const after = t.unread || 0;
+        if (after > before) pushNotification(t.peerId, t.peerName, t.preview, t.lastTs);
+      }
 
       // New conversation appeared — but LMS peers (`emp-*`) never render on
       // this page, so they must not trigger a reload loop.
@@ -2667,7 +3051,19 @@ function pollInboxThreads() {
 function startInboxPolling() {
   if (!authState.user) return;
   if (!inboxState.pollTimer) inboxState.pollTimer = setInterval(pollInboxMessages, 2500);
-  if (!inboxState.threadTimer) inboxState.threadTimer = setInterval(pollInboxThreads, 5000);
+  startThreadPolling();
+}
+
+/**
+ * Thread previews + the bell run whenever an account is signed in — not only
+ * while the Inbox view is open, so a new message is announced on any screen.
+ */
+function startThreadPolling() {
+  if (!authState.user) return;
+  if (!inboxState.threadTimer) {
+    inboxState.threadTimer = setInterval(pollInboxThreads, 5000);
+    pollInboxThreads(); // light the bell immediately for anything already unread
+  }
 }
 
 function stopInboxPolling() {
@@ -2693,6 +3089,13 @@ function setInboxMode(mode) {
   const next = mode === 'channels' ? 'channels' : 'direct';
   if (chatState.mode === next) return;
   chatState.mode = next;
+
+  // Attachments belong to direct messages — never carry a half-composed photo
+  // or an armed recorder across the tab switch.
+  if (next === 'channels') {
+    if (voiceRecorder) stopVoiceRecording();
+    if (inboxState.pending.length) { inboxState.pending = []; renderPendingAttachments(); }
+  }
 
   const tabDirect = document.getElementById('inboxTabDirect');
   const tabChannels = document.getElementById('inboxTabChannels');
@@ -3010,6 +3413,7 @@ function mergeChannelMessages(channelId, incoming) {
 function renderChannelMessages(id) {
   if (!els.inboxMessages) return;
   if (chatState.selectedChannelId !== id) return;
+  els.inboxMessages.classList.remove('dm-thread');
   const messages = chatState.messages[id] || [];
   els.inboxMessages.innerHTML = '';
 
@@ -3685,13 +4089,215 @@ function wireChannelComposer() {
   });
 }
 
+/* ---------- Photos + voice notes: choose, preview, record ---------- */
+
+/** Client-side caps (the server enforces its own, stricter copies). */
+const MAX_PENDING_FILES = 6;
+const PHOTO_CAP_BYTES = 2 * 1024 * 1024; // 2 MB per photo
+const VOICE_CAP_MS = 120000; // 2 minutes, then the recording stops itself
+const VOICE_MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+
+/** Live recorder state (null when not recording). */
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceStartedAt = 0;
+let voiceTicker = null;
+
+/** Send is enabled when there is text OR at least one pending attachment. */
+function updateSendEnabled() {
+  if (!els.inboxSend) return;
+  const text = (els.inboxInput?.value || '').trim();
+  els.inboxSend.disabled = !!inboxState.activeRequest || (!text && !inboxState.pending.length);
+}
+
+function readFileDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('Could not read that file.'));
+    fr.readAsDataURL(file);
+  });
+}
+
+/** Thumbnails / voice chips for files chosen but not sent yet. */
+function renderPendingAttachments() {
+  const wrap = els.inboxPending;
+  if (!wrap) return;
+  if (!inboxState.pending.length) {
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+    updateSendEnabled();
+    return;
+  }
+  wrap.hidden = false;
+  wrap.innerHTML = inboxState.pending.map((p, i) => {
+    const remove = `<button type="button" class="pending-remove" data-i="${i}" aria-label="Remove attachment"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>`;
+    if (p.kind === 'image') {
+      return `<div class="pending-chip"><img src="${p.data}" alt="${esc(p.name || 'Photo')}">${remove}</div>`;
+    }
+    return `<div class="pending-chip voice"><span class="material-symbols-outlined" aria-hidden="true">mic</span><span class="pending-dur">${fmtClock(p.dur)}</span>${remove}</div>`;
+  }).join('');
+  wrap.querySelectorAll('button.pending-remove').forEach((b) => {
+    b.addEventListener('click', () => {
+      inboxState.pending.splice(Number(b.dataset.i) || 0, 1);
+      renderPendingAttachments();
+    });
+  });
+  updateSendEnabled();
+}
+
+els.inboxAttach?.addEventListener('click', () => {
+  if (chatState.mode === 'channels') { toast('Photos can be sent in direct messages', 'info'); return; }
+  els.inboxFile?.click();
+});
+
+els.inboxFile?.addEventListener('change', async () => {
+  const files = Array.from(els.inboxFile.files || []);
+  els.inboxFile.value = ''; // allow re-picking the same file later
+  if (chatState.mode === 'channels') return; // channels do not carry attachments
+  for (const file of files) {
+    if (inboxState.pending.length >= MAX_PENDING_FILES) {
+      toast(`You can attach up to ${MAX_PENDING_FILES} files per message`, 'error');
+      break;
+    }
+    if (!String(file.type).startsWith('image/')) {
+      toast('Photos only — use the microphone button for voice notes', 'error');
+      continue;
+    }
+    if (file.size > PHOTO_CAP_BYTES) {
+      toast('That photo is over 2 MB', 'error');
+      continue;
+    }
+    try {
+      const data = await readFileDataUrl(file);
+      inboxState.pending.push({ kind: 'image', mime: file.type, data, name: file.name || 'Photo', dur: 0 });
+    } catch {
+      toast('Could not read that photo', 'error');
+    }
+  }
+  renderPendingAttachments();
+});
+
+/* ---- recording ---- */
+
+function setMicRecording(on) {
+  const btn = els.inboxMic;
+  if (!btn) return;
+  btn.classList.toggle('recording', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Stop recording' : 'Voice message — tap to record, tap again to stop';
+}
+
+/** The red "Recording 0:12" strip above the composer while the mic runs. */
+function showRecordingChip(on) {
+  let chip = document.getElementById('inboxRec');
+  if (!on) { chip?.remove(); return; }
+  if (chip) return;
+  chip = document.createElement('div');
+  chip.id = 'inboxRec';
+  chip.className = 'inbox-rec';
+  chip.setAttribute('role', 'status');
+  chip.innerHTML = `
+    <span class="rec-dot" aria-hidden="true"></span>
+    <span class="rec-label">Recording</span>
+    <span class="rec-time" id="inboxRecTime">0:00</span>
+    <button type="button" class="rec-stop" aria-label="Stop recording">
+      <span class="material-symbols-outlined" aria-hidden="true">stop</span>
+    </button>`;
+  chip.querySelector('.rec-stop')?.addEventListener('click', stopVoiceRecording);
+  els.inboxPending?.parentNode?.insertBefore(chip, els.inboxPending);
+}
+
+function stopVoiceTicker() {
+  if (voiceTicker) { clearInterval(voiceTicker); voiceTicker = null; }
+}
+
+function startVoiceTicker() {
+  stopVoiceTicker();
+  voiceTicker = setInterval(() => {
+    const el = document.getElementById('inboxRecTime');
+    const secs = Math.floor((Date.now() - voiceStartedAt) / 1000);
+    if (el) el.textContent = fmtClock(secs);
+    if (Date.now() - voiceStartedAt >= VOICE_CAP_MS) stopVoiceRecording();
+  }, 500);
+}
+
+/** Mic button: tap to record, tap again to stop (WhatsApp behaviour). */
+async function toggleVoiceRecording() {
+  if (voiceRecorder) { stopVoiceRecording(); return; }
+  if (chatState.mode === 'channels') { toast('Voice notes can be sent in direct messages', 'info'); return; }
+  if (!authState.user) { toast('Sign in to send voice notes', 'error'); return; }
+  if (!inboxState.selectedUserId) { toast('Select a conversation first', 'error'); return; }
+  if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('Voice notes are not supported in this browser', 'error');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = VOICE_MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    voiceChunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) voiceChunks.push(e.data); };
+    rec.onstop = () => finishVoiceRecording(rec, stream);
+    rec.start();
+    voiceRecorder = rec;
+    voiceStartedAt = Date.now();
+    setMicRecording(true);
+    showRecordingChip(true);
+    startVoiceTicker();
+  } catch {
+    toast('Microphone unavailable — check browser permissions', 'error');
+    setMicRecording(false);
+    showRecordingChip(false);
+  }
+}
+
+function stopVoiceRecording() {
+  if (!voiceRecorder) return;
+  try { voiceRecorder.stop(); } catch { /* already stopped */ }
+}
+
+/** Turn the finished recording into a pending voice-note attachment. */
+function finishVoiceRecording(rec, stream) {
+  const durSec = Math.max(1, Math.round(Math.min(VOICE_CAP_MS, Date.now() - voiceStartedAt) / 1000));
+  try { stream.getTracks().forEach((t) => t.stop()); } catch { /* stream gone */ }
+  if (voiceRecorder === rec) voiceRecorder = null;
+  voiceChunks = voiceChunks || [];
+  setMicRecording(false);
+  showRecordingChip(false);
+  stopVoiceTicker();
+
+  const mime = String((rec && rec.mimeType) || voiceChunks[0] && voiceChunks[0].type || 'audio/webm').split(';')[0];
+  const blob = new Blob(voiceChunks, { type: mime });
+  voiceChunks = [];
+  if (!blob.size) { toast('Nothing was recorded', 'error'); return; }
+
+  const fr = new FileReader();
+  fr.onload = () => {
+    inboxState.pending.push({
+      kind: 'audio',
+      mime: blob.type || 'audio/webm',
+      data: String(fr.result || ''),
+      name: 'Voice message',
+      dur: durSec,
+    });
+    renderPendingAttachments();
+  };
+  fr.onerror = () => toast('Could not read the recording', 'error');
+  fr.readAsDataURL(blob);
+}
+
+els.inboxMic?.addEventListener('click', () => { toggleVoiceRecording(); });
+
 /* ---------- Send inbox message (delivered + persisted server-side) ---------- */
 async function sendInboxMessage() {
   // Channels mode posts to the open channel instead of a 1:1 peer.
   if (chatState.mode === 'channels') { await sendChannelMessage(); return; }
   if (!els.inboxInput) return;
   const text = els.inboxInput.value.trim();
-  if (!text || inboxState.activeRequest) return;
+  const attachments = inboxState.pending.slice();
+  // Attachment-only sends (a photo with no caption, or a voice note) are valid.
+  if ((!text && !attachments.length) || inboxState.activeRequest) return;
 
   if (!authState.user) {
     toast('Sign in to send messages', 'error');
@@ -3703,24 +4309,28 @@ async function sendInboxMessage() {
 
   els.inboxInput.value = '';
   els.inboxInput.style.height = 'auto';
-  if (els.inboxSend) els.inboxSend.disabled = true;
+  inboxState.pending = [];
+  renderPendingAttachments(); // clears the chips and disables Send
 
   inboxState.activeRequest = true;
   try {
     const { message } = await inboxSend({
       to: userId,
       body: text,
+      attachments,
       toName: user ? user.name : '',
       toRole: user ? user.role : '',
     });
     mergeMessages(userId, [message]);
-    applyThreadPreview(userId, text, message.ts);
+    applyThreadPreview(userId, text || attachmentPreview(attachments), message.ts);
     markThreadRead(userId); // sending counts as reading that thread
     renderInboxMessages(userId);
     renderInboxList();
   } catch (err) {
-    // Put the text back so nothing the user typed is lost.
+    // Put the text AND the attachments back so nothing the user made is lost.
     if (els.inboxInput) { els.inboxInput.value = text; els.inboxInput.style.height = 'auto'; }
+    inboxState.pending = attachments;
+    renderPendingAttachments();
     if (err && (err.status === 401 || err.code === 'unauthenticated')) {
       toast('Your session ended — sign in again', 'error');
     } else {
@@ -3728,7 +4338,7 @@ async function sendInboxMessage() {
     }
   } finally {
     inboxState.activeRequest = null;
-    if (els.inboxSend) els.inboxSend.disabled = !els.inboxInput.value.trim();
+    updateSendEnabled();
     autoGrowTextarea();
   }
 }
@@ -3869,7 +4479,7 @@ async function startAiDraft() {
   }
 
   if (els.inboxInput) { els.inboxInput.value = ''; els.inboxInput.style.height = 'auto'; }
-  if (els.inboxSend) els.inboxSend.disabled = true;
+  updateSendEnabled(); // pending attachments may still be waiting to go out
 
   if (aiDraft.peer !== inboxState.selectedUserId) closeAiDraft();
   aiDraft.peer = inboxState.selectedUserId;
@@ -4092,7 +4702,16 @@ function applyAuthUser(user) {
   if (authEls.menuName) authEls.menuName.textContent = user ? user.name : 'Not signed in';
   if (authEls.menuEmail) authEls.menuEmail.textContent = user ? user.email : '';
   applyNavGating();
-  if (!user) { stopInboxPolling(); teardownChannels(); }
+  if (user) {
+    startThreadPolling(); // the bell follows the signed-in account
+  } else {
+    stopInboxPolling();
+    inboxState.pending = [];
+    inboxState.notifications = [];
+    renderPendingAttachments();
+    renderNotifyPanel();
+    teardownChannels();
+  }
 }
 
 function closeUserMenu() {
@@ -5616,6 +6235,7 @@ els.inboxInput?.addEventListener('keydown', (e) => {
 });
 els.inboxInput?.addEventListener('input', () => {
   autoGrowTextarea();
+  updateSendEnabled();
   // Live "is typing…" heartbeat (throttled inside) while composing in a channel.
   if (chatState.mode === 'channels' && chatState.selectedChannelId) sendTyping(true);
 });

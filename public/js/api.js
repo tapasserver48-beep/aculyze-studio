@@ -756,11 +756,26 @@ export async function inboxMessages({ peer, since = 0 } = {}) {
   return authRequest(`/api/inbox/messages?${q}`);
 }
 
-/** Deliver a message. ? { message: { id, from, to, body, ts, generated } }. */
-export async function inboxSend({ to, body, generated = false, toName = '', toRole = '' }) {
+/**
+ * Deliver a message. `attachments` is an optional list of inline files
+ * ({ kind: 'image'|'audio', mime, data, name, dur }) for photos and voice
+ * notes. ? { message: { id, from, to, body, ts, generated, attachments } }.
+ */
+export async function inboxSend({ to, body, generated = false, toName = '', toRole = '', attachments = [] }) {
   return authRequest('/api/inbox/messages', {
     method: 'POST',
-    body: { to, body, generated, toName, toRole },
+    body: { to, body, generated, toName, toRole, attachments },
+  });
+}
+
+/**
+ * Delete a message. `scope` 'everyone' (sender only — both sides get the
+ * tombstone) or 'me'. ? { id, scope }.
+ */
+export async function inboxDelete({ id, scope = 'everyone' }) {
+  return authRequest('/api/inbox/messages/delete', {
+    method: 'POST',
+    body: { id, scope },
   });
 }
 

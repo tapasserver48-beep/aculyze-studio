@@ -5745,7 +5745,504 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   .admin-matrix-seg { width: 100%; }
   .admin-matrix-seg button { flex: 1 1 0; }
   .admin-table th:nth-child(4),
-  .admin-table td:nth-child(4) { display: none; } /* created date — least important */
+  .admin-table td:nth-child(4) { display: none; } /* created date - least important */
+}
+
+/* ==========================================================================
+   INBOX DIRECT MESSAGES — WhatsApp-style bubbles, media, actions, notifications
+   Everything here is scoped to `.dm-thread` (the 1:1 thread container), so the
+   Channels tab keeps its existing layout untouched.
+   ========================================================================== */
+
+/* Bubble colour pairs. Every foreground/background pair used below clears
+   4.5:1 — light: out 7.1:1, in 16.9:1 · dark: out 6.5:1, in 16.8:1. */
+:root {
+  --dm-out-bg: #6d28d9;    /* sent bubble — white on deep violet */
+  --dm-out-fg: #ffffff;
+  --dm-out-meta: #efeaff;  /* timestamp + ticks inside a sent bubble — 6.1:1 */
+  --dm-in-bg: #ffffff;     /* received bubble */
+  --dm-in-fg: #111827;
+  --dm-in-meta: #475569;   /* 7.5:1 on white */
+  --dm-btn-bg: #5b21b6;    /* play button — 9.0:1 */
+  --dm-btn-fg: #ffffff;
+  --dm-danger-fg: #ffffff; /* 4.8:1 on --danger (light) */
+}
+[data-theme="dark"] {
+  --dm-out-bg: #a78bfa;    /* light violet → DARK ink, 6.5:1 */
+  --dm-out-fg: #14103a;
+  --dm-out-meta: #241a5e;  /* 5.6:1 */
+  --dm-in-bg: #171240;
+  --dm-in-fg: #f8fafc;
+  --dm-in-meta: #b9c2d4;   /* 9.7:1 */
+  --dm-btn-bg: #a78bfa;
+  --dm-btn-fg: #14103a;
+  --dm-danger-fg: #17070b; /* 7.1:1 on --danger (dark) */
+}
+
+/* ---- thread + rows ---- */
+.inbox-messages.dm-thread { gap: 8px; }
+.dm-thread .msg {
+  position: relative;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0;
+}
+.dm-thread .msg.user { justify-content: flex-end; }
+.dm-thread .msg.agent { justify-content: flex-start; }
+/* Grouped runs read as one block: 3px between bubbles, 8px between people. */
+.dm-thread .msg.msg-grouped { margin-top: -5px; }
+
+/* ---- bubbles ---- */
+/* These two restate the older `.inbox-messages .msg.*` bubble rules (same
+   specificity, later in the file) so the token pair below is what actually
+   paints — including the corner resets the tail rules then override. */
+.dm-thread .msg.agent .msg-body {
+  background: var(--dm-in-bg);
+  color: var(--dm-in-fg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+.dm-thread .msg.user .msg-body {
+  background: var(--dm-out-bg);
+  color: var(--dm-out-fg);
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}
+.dm-thread .msg-body {
+  max-width: 78%;
+  padding: 9px 12px;
+  word-break: break-word;
+}
+/* Corner shaping: first bubble of a run keeps the top corner, mid-run bubbles
+   have a straight right edge (left edge for received), last one gets the tail. */
+.dm-thread .msg.msg-first .msg-body { border-top-left-radius: 18px; border-top-right-radius: 18px; }
+.dm-thread .msg.agent.msg-grouped .msg-body {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+.dm-thread .msg.user.msg-grouped .msg-body {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+.dm-thread .msg.agent.msg-last .msg-body { border-bottom-left-radius: 4px; }  /* the tail */
+.dm-thread .msg.user.msg-last .msg-body { border-bottom-right-radius: 4px; }
+
+/* ---- content + timestamp ---- */
+.dm-thread .msg-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.dm-thread .msg-content > p { margin: 0; }
+.dm-thread .msg-content a { color: inherit; text-decoration: underline; }
+.dm-thread .msg.user .msg-content a { color: var(--dm-out-fg); }
+.dm-thread .msg-time {
+  display: block;
+  margin-top: 3px;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 1;
+  color: var(--dm-in-meta);
+}
+.dm-thread .msg.user .msg-time { color: var(--dm-out-meta); }
+/* Only the last bubble of a run carries the time. */
+.dm-thread .msg:not(.msg-last) .msg-time { display: none; }
+
+/* ---- AI-draft provenance tag (inherits the bubble's ink) ---- */
+.dm-thread .msg.user .msg-ai-tag {
+  color: var(--dm-out-fg);
+  background: transparent;
+  opacity: 0.85;
+}
+.dm-thread .msg.agent .msg-ai-tag { color: var(--dm-in-meta); background: transparent; }
+
+/* ---- deleted-for-everyone tombstone ---- */
+.dm-thread .msg.deleted .msg-body {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-body);
+  box-shadow: none;
+}
+.dm-thread .msg-deleted {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--text-body);
+}
+.dm-thread .msg-deleted .material-symbols-outlined { font-size: 16px; line-height: 1; }
+
+/* ---- photos ---- */
+.dm-thread .msg-body.has-image { padding: 6px 6px 6px; }
+.dm-thread .msg-img {
+  display: block;
+  width: auto;
+  max-width: min(320px, 62vw);
+  max-height: 340px;
+  object-fit: cover;
+  border-radius: 13px;
+  background: var(--surface-2);
+}
+.dm-thread .msg-body.has-image .msg-content { gap: 7px; }
+.dm-thread .msg-body.has-image .msg-time { margin: 4px 6px 0; }
+
+/* ---- voice notes ---- */
+.dm-thread .msg-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 208px;
+  max-width: 300px;
+}
+.audio-play {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dm-btn-bg);
+  color: var(--dm-btn-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.14s ease;
+}
+.audio-play:hover { transform: scale(1.04); }
+.audio-play:active { transform: scale(0.96); }
+.audio-play .material-symbols-outlined { font-size: 24px; line-height: 1; }
+.audio-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 90px;
+  height: 44px;           /* 44px touch target; the rail is drawn inside */
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+.audio-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+.audio-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  max-width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.audio-time {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dm-in-meta);
+}
+.dm-thread .msg.user .audio-time { color: var(--dm-out-meta); }
+
+/* ---- per-message actions (⋯ → delete) ---- */
+.dm-thread .msg-act {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  margin: -4px -6px 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+.dm-thread .msg.user .msg-act { order: -1; margin: -4px 0 -4px -6px; }
+.dm-thread .msg:hover .msg-act,
+.dm-thread .msg-act:focus-visible { opacity: 1; }
+.dm-thread .msg-act:hover { background: var(--surface-2); color: var(--text); }
+.dm-thread .msg-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* No hover on touch screens → always show it. */
+@media (hover: none) {
+  .dm-thread .msg-act { opacity: 1; }
+}
+
+.msg-menu {
+  position: absolute;
+  top: 42px;
+  right: 2px;
+  z-index: 45;
+  min-width: 196px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.dm-thread .msg.agent .msg-menu { right: auto; left: 2px; }
+.msg-menu button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.msg-menu button:hover { background: var(--surface-2); }
+.msg-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.msg-menu button[data-act="all"] { color: var(--danger); }
+[data-theme="dark"] .msg-menu button[data-act="all"] { color: var(--danger); }
+
+/* ---- composer: pending photos / voice notes ---- */
+.inbox-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+.pending-chip {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.pending-chip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pending-chip.voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-width: 148px;
+  padding: 0 4px 0 12px;
+  color: var(--text);
+}
+.pending-chip.voice .material-symbols-outlined { font-size: 20px; color: var(--accent); }
+.pending-dur { font-family: var(--mono); font-size: 12px; }
+.pending-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  padding: 4px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  cursor: pointer;
+  border-radius: 0 11px 0 12px;
+}
+.pending-remove .material-symbols-outlined { font-size: 18px; line-height: 1; }
+.pending-remove:focus-visible { outline: 2px solid #ffffff; outline-offset: -4px; }
+.pending-chip.voice .pending-remove {
+  position: static;
+  margin-left: auto;
+  background: transparent;
+  color: var(--danger);
+  border-radius: 8px;
+}
+[data-theme="dark"] .pending-chip.voice .pending-remove { color: var(--danger); }
+
+/* ---- composer: recording strip + mic state ---- */
+.inbox-rec {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+  background: var(--danger-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+.rec-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: recPulse 1.4s ease-in-out infinite;
+}
+.rec-label { font-weight: 600; }
+.rec-time {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+.rec-stop {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.rec-stop .material-symbols-outlined { font-size: 20px; line-height: 1; }
+.rec-stop:hover { background: var(--danger); color: var(--dm-danger-fg); }
+@keyframes recPulse { 50% { opacity: 0.25; } }
+
+/* Composer tool buttons need a 44px touch target (the global rule is 36px). */
+.inbox-composer .composer-tool {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+.inbox-composer .composer-tool.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--dm-danger-fg);
+}
+.inbox-composer .composer-tool.recording:hover { background: var(--danger); color: var(--dm-danger-fg); }
+
+/* ---- header bell: badge + panel ---- */
+.topbar-right .icon-btn { width: 44px; height: 44px; } /* 44px touch target */
+.notify-wrap { position: relative; display: inline-flex; }
+.notify-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: var(--dm-danger-fg);
+  border: 2px solid var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+.notify-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: min(348px, calc(100vw - 24px));
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+.notify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.notify-head h3 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text); }
+.notify-clear {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-ink);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.notify-clear:hover { background: var(--surface-2); }
+.notify-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.notify-list { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.notify-empty {
+  margin: 0;
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-body);
+}
+.notify-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.notify-row:hover { background: var(--surface-2); }
+.notify-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.notify-row.unread { background: var(--accent-soft); }
+.notify-row.unread:hover { background: var(--accent-soft); }
+.notify-row-who { font-size: 13px; font-weight: 700; color: var(--text); }
+.notify-row-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-body);
+}
+.notify-row-body {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+  color: var(--text-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .dm-thread .msg-act,
+  .audio-play,
+  .notify-clear,
+  .notify-row { transition: none; }
+  .audio-play:hover,
+  .audio-play:active { transform: none; }
+  .rec-dot { animation: none; opacity: 0.9; }
 }
 
 

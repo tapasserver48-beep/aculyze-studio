@@ -4,7 +4,8 @@
  *   GET  /api/inbox/threads              → { threads: [...] }   (unread badges)
  *   GET  /api/inbox/contacts             → { contacts: [...] }  (local accounts)
  *   GET  /api/inbox/messages?peer=&since= → { messages, readTs } (poll cursor)
- *   POST /api/inbox/messages  { to, body, generated } → { message }
+ *   POST /api/inbox/messages  { to, body, generated, attachments } → { message }
+ *   POST /api/inbox/messages/delete { id, scope }  → { id, scope }
  *   POST /api/inbox/read      { peer }    → { readTs }
  *
  * Every route requires a signed-in account (401 otherwise) and is bound to
@@ -17,7 +18,7 @@
 const express = require('express');
 const { requireUser } = require('../auth/session');
 const { readDoc } = require('../auth/store');
-const { boxIdForAccount, sendMessage, listThreads, listMessages, markRead, MAX_BODY } = require('./store');
+const { boxIdForAccount, sendMessage, listThreads, listMessages, markRead, deleteMessage, MAX_BODY } = require('./store');
 
 function createInboxRouter(options = {}) {
   const dataDir = options.dataDir;
@@ -85,9 +86,25 @@ function createInboxRouter(options = {}) {
       peerRole: String(body.toRole || '').trim().slice(0, 80),
       body: body.body,
       generated: !!body.generated,
+      // Photos and voice notes ride along inline (data URLs); the store
+      // enforces the allow-list and per-file size caps.
+      attachments: body.attachments,
     });
 
     res.status(201).json({ message, maxBody: MAX_BODY });
+  }));
+
+  /**
+   * Delete a message from this conversation. `scope`:
+   *   'everyone' (default) — sender only; both copies become a tombstone the
+   *                          other side renders as "Message deleted".
+   *   'me'                 — this account's copy only.
+   */
+  router.post('/messages/delete', wrap(async (req, res) => {
+    const body = req.body || {};
+    const scope = body.scope === 'me' ? 'me' : 'everyone';
+    const out = await deleteMessage(dataDir, myId(req), body.id, scope);
+    res.json(out);
   }));
 
   router.post('/read', wrap(async (req, res) => {

@@ -18,8 +18,13 @@
  * per user — no cross-user scan.
  *
  * Message shape (wire + JSON disk):
- *   { id, from, to, body, ts, generated }
+ *   { id, from, to, body, ts, generated, attachments, deletedAt }
  * `generated: true` marks text the AI drafted and the user confirmed.
+ * `attachments` are inline data-URL files ({ kind, mime, data, name, dur })
+ * so both storage backends carry photos and voice notes with no file store.
+ * `deletedAt` is a tombstone timestamp: when set the body and attachments
+ * have been cleared by "delete for everyone" and both sides render a
+ * placeholder instead of the content.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -29,6 +34,19 @@ const pg = require('../db/pg');
 const PEER_ID_RE = /^[a-zA-Z0-9_.:@-]{1,120}$/;
 const MAX_MESSAGES_PER_THREAD = 500;
 const MAX_BODY = 4000;
+
+/* ---- attachments (photos + voice notes, sent inline as data URLs) ---- */
+const MAX_ATTACHMENTS = 6;
+/** Base64 characters per file (~2.6 MB of binary — matches the UI's 2 MB cap
+ *  with headroom for the encoding). */
+const MAX_ATTACHMENT_CHARS = 3500000;
+/** Base64 characters for everything in one message (express allows 32 MB). */
+const MAX_MESSAGE_CHARS = 6000000;
+const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp']);
+const AUDIO_MIME = new Set([
+  'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/x-wav', 'audio/aac',
+]);
+const DATA_URL_RE = /^data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i;
 
 function inboxDir(dataDir) {
   return path.join(dataDir, 'inbox');
@@ -114,12 +132,55 @@ function threadOf(box, peerId, peerName, peerRole) {
   return box.threads[peerId];
 }
 
-/** Validate + build the stored message (shared by both backends). */
-function buildMessage({ from, to, body, generated }) {
+/**
+ * Validate the inline attachments a message may carry. Anything not on the
+ * image/audio allow-list is rejected here rather than at render time, so a
+ * hostile client can never smuggle `text/html` data into another user's bubble.
+ */
+function sanitizeAttachments(raw) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) throw validationError('Attachments must be a list.');
+  if (raw.length > MAX_ATTACHMENTS) {
+    throw validationError(`You can attach up to ${MAX_ATTACHMENTS} files per message.`);
+  }
+  const out = [];
+  let total = 0;
+  for (const a of raw) {
+    if (!a || typeof a !== 'object') continue;
+    const kind = a.kind === 'image' || a.kind === 'audio' ? a.kind : null;
+    if (!kind) throw validationError('Each attachment needs a type (image or audio).');
+    const mime = String(a.mime || '').toLowerCase().split(';')[0].trim();
+    const allowed = kind === 'image' ? IMAGE_MIME : AUDIO_MIME;
+    if (!allowed.has(mime)) {
+      throw validationError(kind === 'image' ? 'That image type is not supported.' : 'That audio type is not supported.');
+    }
+    const data = String(a.data || '').replace(/\s+/g, '');
+    if (!DATA_URL_RE.test(data) || !data.startsWith(`data:${mime}`)) {
+      throw validationError('That attachment could not be read.');
+    }
+    if (data.length > MAX_ATTACHMENT_CHARS) throw validationError('That file is too large (max 2 MB).');
+    total += data.length;
+    if (total > MAX_MESSAGE_CHARS) throw validationError('This message is too large.');
+    out.push({
+      kind,
+      mime,
+      data,
+      name: String(a.name || '').slice(0, 120),
+      dur: Math.max(0, Math.min(600, Number(a.dur) || 0)),
+    });
+  }
+  return out;
+}
+
+/** Validate + build the stored message (shared by both backends).
+ *  `ts` is only ever supplied by internal callers (the seed script) — the
+ *  HTTP route always takes the server clock. */
+function buildMessage({ from, to, body, generated, attachments, ts }) {
   const senderId = assertPeerId(from);
   const recipientId = assertPeerId(to);
   const text = String(body || '').trim();
-  if (!text) throw validationError('Message cannot be empty.');
+  const atts = sanitizeAttachments(attachments);
+  if (!text && !atts.length) throw validationError('Message cannot be empty.');
   if (text.length > MAX_BODY) {
     throw validationError(`Message is too long (max ${MAX_BODY} characters).`);
   }
@@ -128,8 +189,9 @@ function buildMessage({ from, to, body, generated }) {
     from: senderId,
     to: recipientId,
     body: text.slice(0, MAX_BODY),
-    ts: Date.now(),
+    ts: Number(ts) > 0 ? Number(ts) : Date.now(),
     generated: !!generated,
+    attachments: atts,
   };
 }
 
@@ -137,8 +199,8 @@ function buildMessage({ from, to, body, generated }) {
  * Deliver one message to both participants.
  * Returns the stored message (with its server-assigned id + timestamp).
  */
-async function sendMessage(dataDir, { from, fromName, to, toName, peerRole, body, generated }) {
-  const message = buildMessage({ from, to, body, generated });
+async function sendMessage(dataDir, { from, fromName, to, toName, peerRole, body, generated, attachments, ts }) {
+  const message = buildMessage({ from, to, body, generated, attachments, ts });
 
   if (pg.enabled()) {
     const senderId = message.from;
@@ -170,9 +232,10 @@ async function sendMessage(dataDir, { from, fromName, to, toName, peerRole, body
 
     for (const [boxOwner, peerId] of [[senderId, recipientId], [recipientId, senderId]]) {
       await pg.query(
-        `INSERT INTO inbox_messages (id, box_owner, peer_id, from_id, to_id, body, ts, generated)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [message.id, boxOwner, peerId, message.from, message.to, message.body, message.ts, message.generated]
+        `INSERT INTO inbox_messages (id, box_owner, peer_id, from_id, to_id, body, ts, generated, attachments, deleted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 0)`,
+        [message.id, boxOwner, peerId, message.from, message.to, message.body, message.ts,
+         message.generated, JSON.stringify(message.attachments || [])]
       );
       // Trim to MAX_MESSAGES_PER_THREAD, same as the file backend's slice().
       await pg.query(
@@ -213,14 +276,27 @@ async function sendMessage(dataDir, { from, fromName, to, toName, peerRole, body
   return message;
 }
 
-function previewOf(thread) {
-  const last = thread.messages[thread.messages.length - 1];
-  return last ? last.body : '';
+/**
+ * Conversation-list preview for the newest message: real text when there is
+ * any, otherwise what the attachments are, otherwise the deletion tombstone.
+ */
+function previewOf(message) {
+  if (!message) return '';
+  if (message.deletedAt) return 'Message deleted';
+  const text = String(message.body || '').trim();
+  if (text) return text;
+  const atts = Array.isArray(message.attachments) ? message.attachments : [];
+  if (atts.some((a) => a && a.kind === 'image')) return 'Photo';
+  if (atts.length) return 'Voice message';
+  return '';
 }
 
 function unreadOf(thread, myId) {
   let n = 0;
   for (const m of thread.messages) {
+    // A message deleted for everyone is no longer content — it must not keep
+    // a badge lit on either side.
+    if (m.deletedAt) continue;
     if (m.from !== myId && m.ts > (thread.readTs || 0)) n += 1;
   }
   return n;
@@ -241,11 +317,11 @@ async function listThreads(dataDir, myId) {
       const readTs = Number(r.read_ts) || 0;
       const [last, unread] = await Promise.all([
         pg.query(
-          'SELECT body, ts FROM inbox_messages WHERE box_owner = $1 AND peer_id = $2 ORDER BY ts DESC LIMIT 1',
+          'SELECT body, ts, attachments, deleted_at FROM inbox_messages WHERE box_owner = $1 AND peer_id = $2 ORDER BY ts DESC LIMIT 1',
           [myId, peerId]
         ),
         pg.query(
-          'SELECT count(*)::int AS n FROM inbox_messages WHERE box_owner = $1 AND peer_id = $2 AND from_id <> $1 AND ts > $3',
+          'SELECT count(*)::int AS n FROM inbox_messages WHERE box_owner = $1 AND peer_id = $2 AND from_id <> $1 AND ts > $3 AND deleted_at = 0',
           [myId, peerId, readTs]
         ),
       ]);
@@ -254,7 +330,13 @@ async function listThreads(dataDir, myId) {
         peerId,
         peerName: r.peer_name || peerId, // display fallback when unknown
         peerRole: r.peer_role || '',
-        preview: lastRow ? lastRow.body : '',
+        preview: lastRow
+          ? previewOf({
+              body: lastRow.body,
+              attachments: lastRow.attachments || [],
+              deletedAt: Number(lastRow.deleted_at) || 0,
+            })
+          : '',
         lastTs: lastRow ? Number(lastRow.ts) || 0 : 0,
         unread: Number(unread.rows[0] && unread.rows[0].n) || 0,
         readTs,
@@ -272,7 +354,7 @@ async function listThreads(dataDir, myId) {
         peerId: t.peerId,
         peerName: t.peerName || t.peerId, // display fallback when unknown
         peerRole: t.peerRole || '',
-        preview: previewOf(t),
+        preview: previewOf(last),
         lastTs: last ? last.ts : 0,
         unread: unreadOf(t, myId),
         readTs: t.readTs || 0,
@@ -292,9 +374,9 @@ async function listMessages(dataDir, myId, peer, since) {
     const sinceTs = Number(since) || 0;
     const [msgs, threads] = await Promise.all([
       pg.query(
-        `SELECT id, from_id, to_id, body, ts, generated
+        `SELECT id, from_id, to_id, body, ts, generated, attachments, deleted_at
            FROM inbox_messages
-          WHERE box_owner = $1 AND peer_id = $2 AND ts > $3
+          WHERE box_owner = $1 AND peer_id = $2 AND (ts > $3 OR deleted_at > $3)
           ORDER BY ts`,
         [myId, peerId, sinceTs]
       ),
@@ -309,6 +391,9 @@ async function listMessages(dataDir, myId, peer, since) {
         body: m.body,
         ts: Number(m.ts) || 0,
         generated: !!m.generated,
+        attachments: m.attachments || [],
+        deletedAt: Number(m.deleted_at) || 0,
+        deleted: Number(m.deleted_at) > 0,
       })),
       readTs: threads.rows[0] ? Number(threads.rows[0].read_ts) || 0 : 0,
     };
@@ -318,36 +403,139 @@ async function listMessages(dataDir, myId, peer, since) {
   const thread = box.threads[peerId];
   if (!thread) return { peerId, messages: [], readTs: 0 };
   const sinceTs = Number(since) || 0;
-  return {
-    peerId,
-    messages: thread.messages.filter((m) => m.ts > sinceTs),
-    readTs: thread.readTs || 0,
-  };
+  // `since` is a message-ts cursor, but a tombstone must also be re-delivered
+  // after it happens: deletions of OLDER messages would otherwise never reach
+  // the other side until the thread is reopened.
+  const messages = thread.messages
+    .filter((m) => m.ts > sinceTs || (m.deletedAt || 0) > sinceTs)
+    .map((m) => ({
+      id: m.id,
+      from: m.from,
+      to: m.to,
+      body: m.body,
+      ts: m.ts,
+      generated: !!m.generated,
+      attachments: m.attachments || [],
+      deletedAt: m.deletedAt || 0,
+      deleted: !!m.deletedAt,
+    }));
+  return { peerId, messages, readTs: thread.readTs || 0 };
 }
 
-/** Mark a thread read up to now. Returns the new readTs. */
-async function markRead(dataDir, myId, peer) {
+/** Mark a thread read up to `at` (defaults to now). Returns the new readTs.
+ *  `at` exists for the inbox seed script, which needs a thread left with a
+ *  specific unread boundary; the HTTP route always uses the default. */
+async function markRead(dataDir, myId, peer, at) {
   const peerId = assertPeerId(peer);
+  const when = Number(at) > 0 ? Number(at) : Date.now();
 
   if (pg.enabled()) {
-    const now = Date.now();
     // Merely opening an empty conversation must not fabricate a thread (and
     // a placeholder display name) — there is nothing read yet.
     const { rows } = await pg.query(
       'UPDATE inbox_threads SET read_ts = $3 WHERE box_owner = $1 AND peer_id = $2 RETURNING read_ts',
-      [myId, peerId, now]
+      [myId, peerId, when]
     );
-    return rows[0] ? Number(rows[0].read_ts) || now : now;
+    return rows[0] ? Number(rows[0].read_ts) || when : when;
   }
 
   const box = loadBox(dataDir, myId);
   const thread = box.threads[peerId];
   // Merely opening an empty conversation must not fabricate a thread (and a
   // placeholder display name) on disk — there is nothing read yet.
-  if (!thread) return Date.now();
-  thread.readTs = Date.now();
+  if (!thread) return when;
+  thread.readTs = when;
   saveBox(dataDir, myId, box);
   return thread.readTs;
+}
+
+function notFoundError() {
+  const err = new Error('That message no longer exists.');
+  err.status = 404;
+  err.code = 'not_found';
+  return err;
+}
+
+function forbiddenError(message) {
+  const err = new Error(message);
+  err.status = 403;
+  err.code = 'forbidden';
+  return err;
+}
+
+/**
+ * Remove a message from a conversation.
+ *
+ *   scope 'everyone' — sender only. The body and attachments are cleared in
+ *                      BOTH copies of the thread and a `deletedAt` tombstone
+ *                      is left behind, so the other side sees "Message
+ *                      deleted" instead of the content ever again.
+ *   scope 'me'       — the caller's copy only; the other participant keeps
+ *                      what they received (WhatsApp's "delete for me").
+ */
+async function deleteMessage(dataDir, myId, id, scope = 'everyone') {
+  const msgId = String(id || '');
+  if (!msgId) throw validationError('Message id is required.');
+  const everywhere = scope !== 'me';
+
+  if (pg.enabled()) {
+    if (everywhere) {
+      const own = await pg.query(
+        'SELECT from_id FROM inbox_messages WHERE box_owner = $1 AND id = $2',
+        [myId, msgId]
+      );
+      if (!own.rows.length) throw notFoundError();
+      if (own.rows[0].from_id !== myId) {
+        throw forbiddenError('Only the sender can delete a message for everyone.');
+      }
+      // The same id exists in both boxes — one statement tombstones both.
+      await pg.query(
+        `UPDATE inbox_messages SET body = '', attachments = '[]'::jsonb, deleted_at = $2
+          WHERE id = $1 AND from_id = $3`,
+        [msgId, Date.now(), myId]
+      );
+    } else {
+      await pg.query('DELETE FROM inbox_messages WHERE box_owner = $1 AND id = $2', [myId, msgId]);
+    }
+    return { id: msgId, scope: everywhere ? 'everyone' : 'me' };
+  }
+
+  // ---- JSON backend ----
+  const box = loadBox(dataDir, myId);
+  let thread = null;
+  for (const t of Object.values(box.threads)) {
+    if (Array.isArray(t.messages) && t.messages.some((m) => m.id === msgId)) { thread = t; break; }
+  }
+  if (!thread) throw notFoundError();
+  const msg = thread.messages.find((m) => m.id === msgId);
+
+  if (!everywhere) {
+    thread.messages = thread.messages.filter((m) => m.id !== msgId);
+    saveBox(dataDir, myId, box);
+    return { id: msgId, scope: 'me' };
+  }
+
+  if (msg.from !== myId) throw forbiddenError('Only the sender can delete a message for everyone.');
+  const now = Date.now();
+  msg.body = '';
+  msg.attachments = [];
+  msg.deletedAt = now;
+  saveBox(dataDir, myId, box);
+
+  // Mirror the tombstone into the recipient's copy of the same thread.
+  const peerId = msg.to === myId ? msg.from : msg.to;
+  const peerBox = loadBox(dataDir, peerId);
+  const peerThread = peerBox.threads[myId];
+  const mirror = peerThread && Array.isArray(peerThread.messages)
+    ? peerThread.messages.find((m) => m.id === msgId)
+    : null;
+  if (mirror) {
+    mirror.body = '';
+    mirror.attachments = [];
+    mirror.deletedAt = now;
+    saveBox(dataDir, peerId, peerBox);
+  }
+  return { id: msgId, scope: 'everyone' };
 }
 
 /**
@@ -388,12 +576,13 @@ async function migrateToPostgres(dataDir) {
         [owner, peerId, thread.peerName || '', thread.peerRole || '', thread.readTs || 0]
       );
       for (const m of Array.isArray(thread.messages) ? thread.messages : []) {
-        if (!m || !m.id || !m.body) continue;
+        if (!m || !m.id) continue; // a tombstone (empty body) still migrates
         try {
           await pg.query(
-            `INSERT INTO inbox_messages (id, box_owner, peer_id, from_id, to_id, body, ts, generated)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (box_owner, id) DO NOTHING`,
-            [m.id, owner, peerId, m.from || '', m.to || '', m.body, m.ts || 0, !!m.generated]
+            `INSERT INTO inbox_messages (id, box_owner, peer_id, from_id, to_id, body, ts, generated, attachments, deleted_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) ON CONFLICT (box_owner, id) DO NOTHING`,
+            [m.id, owner, peerId, m.from || '', m.to || '', m.body || '', m.ts || 0, !!m.generated,
+             JSON.stringify(m.attachments || []), m.deletedAt || 0]
           );
           migrated += 1;
         } catch (err) {
@@ -413,5 +602,6 @@ module.exports = {
   listThreads,
   listMessages,
   markRead,
+  deleteMessage,
   migrateToPostgres,
 };

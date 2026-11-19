@@ -112,6 +112,10 @@ async function ensureSchema() {
   await query(
     'CREATE INDEX IF NOT EXISTS inbox_messages_thread_idx ON inbox_messages (box_owner, peer_id, ts)'
   );
+  // Existing databases predate these columns — photos, voice notes and the
+  // delete-for-everyone tombstone all live in them.
+  await query(`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'`);
+  await query(`ALTER TABLE inbox_messages ADD COLUMN IF NOT EXISTS deleted_at BIGINT NOT NULL DEFAULT 0`);
 }
 
 /** Release connections on shutdown. */
