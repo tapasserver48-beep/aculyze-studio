@@ -2534,18 +2534,23 @@ function renderInboxMessages(userId) {
     const mediaHtml = deleted ? '' : renderAttachmentHtml(atts);
     const textHtml = deleted || !msg.content ? '' : renderMarkdown(msg.content);
     const inner = deleted
-      ? `<div class="msg-content msg-deleted"><span class="material-symbols-outlined" aria-hidden="true">block</span><span>Message deleted</span></div>`
+      ? `<div class="msg-content msg-deleted"><svg class="tomb-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg><span>Message deleted</span></div>`
       : `<div class="msg-content">${mediaHtml}${textHtml}</div>`;
 
+    // The ⋯ button is a sibling of the bubble, not a child: inside .msg-body
+    // its 44px row inflated every bubble (the "misaligned" look). The CSS
+    // places it in the gutter beside the bubble via flex `order`.
+    // Inline SVG (not the Material ligature) so it renders even if the
+    // icon webfont never loads.
     msgEl.innerHTML = `
       <div class="msg-body${atts.length ? ' has-media' : ''}${deleted ? ' deleted' : ''}">
         ${isGenerated && !deleted ? '<span class="msg-ai-tag">AI drafted</span>' : ''}
         ${inner}
         ${!deleted ? `<span class="msg-time">${timeStr}</span>` : ''}
-        <button class="msg-act" type="button" aria-label="Message options" title="Message options" aria-haspopup="menu">
-          <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
-        </button>
       </div>
+      <button class="msg-act" type="button" aria-label="Message options" title="Message options" aria-haspopup="menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+      </button>
     `;
     msgEl._attachments = atts;
     els.inboxMessages.appendChild(msgEl);
@@ -2554,6 +2559,18 @@ function renderInboxMessages(userId) {
     lastSender = role;
   }
   els.inboxMessages.scrollTop = els.inboxMessages.scrollHeight;
+
+  // A lazy photo resolves after the scroll above and grows the list, which
+  // left the thread parked above the newest messages (hidden behind the
+  // composer). Re-pin to the bottom once each pending image has a size.
+  els.inboxMessages.querySelectorAll('.msg-img').forEach((img) => {
+    if (img.complete) return;
+    img.addEventListener('load', () => {
+      if (inboxState.selectedUserId === userId) {
+        els.inboxMessages.scrollTop = els.inboxMessages.scrollHeight;
+      }
+    }, { once: true });
+  });
 }
 
 /* ---------- Message attachments: photos + voice notes ---------- */
@@ -2583,10 +2600,14 @@ function renderAttachmentHtml(attachments) {
     }
     if (a.kind !== 'audio') return '';
     const durSec = Number(a.dur) || 0;
+    // Inline SVG icons instead of Material ligature text: a ligature renders
+    // as the literal word ("play"/"pause") whenever the icon webfont is slow
+    // or blocked. The .playing class on .msg-audio swaps which SVG shows.
     return `
       <div class="msg-audio" data-att="${i}">
         <button class="audio-play" type="button" aria-label="Play voice message">
-          <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+          <svg class="ico-play" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="ico-pause" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
         </button>
         <div class="audio-track" role="slider" tabindex="0" aria-label="Seek voice message"
              aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -2616,7 +2637,6 @@ function wireAudioPlayers(root, attachments) {
     const track = wrap.querySelector('.audio-track');
     const fill = wrap.querySelector('.audio-fill');
     const timeEl = wrap.querySelector('.audio-time');
-    const icon = btn && btn.querySelector('.material-symbols-outlined');
     const durSec = Number(a.dur) || 0;
 
     // `audio/webm;codecs=opus` would break the data URL's own parameter
@@ -2624,44 +2644,33 @@ function wireAudioPlayers(root, attachments) {
     const audio = new Audio(a.data);
     audio.preload = 'metadata';
 
-    // Initial state: hide the time (paused).
-    if (timeEl) timeEl.classList.add('paused');
-
     const total = () => (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : durSec);
     const paint = () => {
       const d = total();
       const pct = d ? Math.min(100, (audio.currentTime / d) * 100) : 0;
       if (fill) fill.style.width = `${pct}%`;
       if (track) track.setAttribute('aria-valuenow', String(Math.round(pct)));
-      if (timeEl && !timeEl.classList.contains('paused')) {
-        timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : d);
-      }
+      // Duration while idle, elapsed position once playback has started —
+      // the time is always visible (never collapsed).
+      if (timeEl) timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : d);
     };
-    const setIcon = (name) => { if (icon) icon.textContent = name; };
 
     audio.addEventListener('timeupdate', paint);
     audio.addEventListener('loadedmetadata', paint);
     audio.addEventListener('play', () => {
       if (activeVoice && activeVoice.audio !== audio) stopActiveVoice();
       activeVoice = { audio, wrap };
-      setIcon('pause');
-      wrap.classList.add('playing');
+      wrap.classList.add('playing'); // CSS swaps the play/pause SVG
       if (btn) btn.setAttribute('aria-label', 'Pause voice message');
-      // Show current time when playing.
-      if (timeEl) {
-        timeEl.textContent = fmtClock(audio.currentTime > 0 ? audio.currentTime : durSec);
-        timeEl.classList.remove('paused');
-      }
     });
-    audio.addEventListener('pause', () => {
-      setIcon('play');
+    // Pause AND natural end both settle back to the idle state.
+    const settle = () => {
       wrap.classList.remove('playing');
       if (btn) btn.setAttribute('aria-label', 'Play voice message');
       if (activeVoice && activeVoice.audio === audio) activeVoice = null;
-      // Hide time when paused - only the play icon should show.
-      if (timeEl) timeEl.classList.add('paused');
-    });
-    audio.addEventListener('ended', () => { audio.currentTime = 0; paint(); });
+    };
+    audio.addEventListener('pause', settle);
+    audio.addEventListener('ended', () => { audio.currentTime = 0; settle(); paint(); });
 
     btn?.addEventListener('click', () => {
       if (audio.paused) {

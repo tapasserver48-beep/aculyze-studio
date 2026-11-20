@@ -5773,8 +5773,10 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   --dm-in-bg: #171240;
   --dm-in-fg: #f8fafc;
   --dm-in-meta: #b9c2d4;   /* 9.7:1 */
-  --dm-btn-bg: #a78bfa;
-  --dm-btn-fg: #14103a;
+  --dm-btn-bg: #5b21b6;    /* must NOT equal --dm-out-bg: a #a78bfa circle
+                              vanished into the violet bubble. White icon on
+                              this = 9.0:1; circle vs bubble = 3.8:1. */
+  --dm-btn-fg: #ffffff;
   --dm-danger-fg: #17070b; /* 7.1:1 on --danger (dark) */
 }
 
@@ -5876,7 +5878,7 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   font-style: italic;
   color: var(--text-body);
 }
-.dm-thread .msg-deleted .material-symbols-outlined { font-size: 16px; line-height: 1; }
+.dm-thread .msg-deleted .tomb-ico { flex: 0 0 auto; width: 16px; height: 16px; }
 
 /* ---- photos ---- */
 .dm-thread .msg-body.has-image { padding: 6px 6px 6px; }
@@ -5908,6 +5910,8 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   border-radius: 50%;
   background: var(--dm-btn-bg);
   color: var(--dm-btn-fg);
+  /* Ring keeps the circle's edge readable where the bubble is a similar violet. */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.20);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5916,7 +5920,11 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
 }
 .audio-play:hover { transform: scale(1.04); }
 .audio-play:active { transform: scale(0.96); }
-.audio-play .material-symbols-outlined { font-size: 24px; line-height: 1; }
+/* Inline SVG play/pause — no icon font involved, so it can never render as text. */
+.audio-play svg { display: block; width: 24px; height: 24px; fill: currentColor; }
+.audio-play .ico-pause { display: none; }
+.msg-audio.playing .audio-play .ico-play { display: none; }
+.msg-audio.playing .audio-play .ico-pause { display: block; }
 .audio-track {
   position: relative;
   flex: 1 1 auto;
@@ -5936,7 +5944,10 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   transform: translateY(-50%);
   height: 6px;
   border-radius: 999px;
-  background: var(--border-strong);
+  /* currentColor = the bubble's ink, so the rail reads on both the light
+     violet and the dark navy bubble, in either theme. */
+  background: currentColor;
+  opacity: 0.25;
 }
 .audio-fill {
   position: absolute;
@@ -5947,25 +5958,27 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   max-width: 100%;
   height: 6px;
   border-radius: 999px;
-  background: var(--accent);
+  background: currentColor;   /* accent-on-accent was invisible on violet */
 }
 .audio-time {
   flex: 0 0 auto;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--dm-in-meta);
-  transition: opacity 0.14s ease;
-  /* When paused, this element is hidden entirely so the play icon is visible alone. */
 }
-.dm-thread .msg.audio-time.paused { display: none; }
 .dm-thread .msg.user .audio-time { color: var(--dm-out-meta); }
 
-/* ---- per-message actions (⋯ → delete) ---- */
+/* ---- per-message actions (⋯ → delete) ----
+   A flex sibling of the bubble in the full-width .msg row, so it lives in the
+   empty gutter and never inflates bubble height. `order` keeps it on the
+   middle-gutter side: right of a received bubble, left of a sent one. */
 .dm-thread .msg-act {
   flex: 0 0 auto;
+  align-self: flex-start;
   width: 44px;
   height: 44px;
-  margin: -4px -6px 0;
+  margin: 0 4px;
+  padding: 0;
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -5975,16 +5988,17 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   justify-content: center;
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.14s ease, background 0.14s ease, color 0.14s ease;
 }
-.dm-thread .msg.user .msg-act { order: -1; margin: -4px 0 -4px -6px; }
+.dm-thread .msg.user .msg-act { order: -1; }
 .dm-thread .msg:hover .msg-act,
-.dm-thread .msg-act:focus-visible { opacity: 1; }
+.dm-thread .msg-act:focus-visible { opacity: 1; pointer-events: auto; }
 .dm-thread .msg-act:hover { background: var(--surface-2); color: var(--text); }
 .dm-thread .msg-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* No hover on touch screens → always show it. */
 @media (hover: none) {
-  .dm-thread .msg-act { opacity: 1; }
+  .dm-thread .msg-act { opacity: 1; pointer-events: auto; }
 }
 
 .msg-menu {
