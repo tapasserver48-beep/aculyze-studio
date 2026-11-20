@@ -64,6 +64,10 @@
           <span class="material-symbols-outlined item-ico" aria-hidden="true">bolt</span>
           <span class="label">Command Centre</span>
         </button>
+        <button class="sidebar-item" id="navTasks" type="button">
+          <span class="material-symbols-outlined item-ico" aria-hidden="true">assignment</span>
+          <span class="label">Task Manager</span>
+        </button>
         <button class="sidebar-item" id="navSettings" type="button">
           <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
           <span class="label">Settings</span>
@@ -990,6 +994,207 @@
                 <p class="admin-form-error" id="adminEmployeesError" role="alert" hidden></p>
               </section>
             </div>
+          </section>
+<!-- ---------- TASK MANAGER ---------- -->
+          <section id="view-tasks" class="agent-view" data-agent="tasks">
+            <div class="tasks-page">
+              <header class="tasks-header">
+                <div>
+                  <small>ACULYZE AI STUDIO</small>
+                  <h2>Task Manager</h2>
+                  <p class="admin-sub">Dashboard, task tables, reports and exports</p>
+                </div>
+              </header>
+
+              <div class="tasks-content">
+                <!-- Dashboard Stats -->
+                <div class="tasks-dashboard" id="tasksDashboard">
+                  <div class="tasks-grid">
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatTotal">—</div>
+                      <div class="task-stat-label">Total Tasks</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatTodo">—</div>
+                      <div class="task-stat-label">To Do</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatInProgress">—</div>
+                      <div class="task-stat-label">In Progress</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatPending">—</div>
+                      <div class="task-stat-label">Pending</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatUnderReview">—</div>
+                      <div class="task-stat-label">Under Review</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatCompleted">—</div>
+                      <div class="task-stat-label">Completed</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatOverdue">—</div>
+                      <div class="task-stat-label">Overdue</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatCancelled">—</div>
+                      <div class="task-stat-label">Cancelled</div>
+                    </div>
+                    <div class="task-stat-card">
+                      <div class="task-stat-value" id="taskStatAvgComplete">—</div>
+                      <div class="task-stat-label">Completion Rate</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Task Table -->
+                <div class="tasks-table-section">
+                  <div class="page-header-inline">
+                    <div class="section-title">Employee-wise Tasks</div>
+                    <div class="tasks-filters">
+                      <div class="filter-group">
+                        <select id="taskFilterEmployee">
+                          <option value="">All Employees</option>
+                        </select>
+                      </div>
+                      <div class="filter-group">
+                        <input type="text" id="taskSearch" placeholder="Search tasks…" maxlength="80">
+                      </div>
+                      <div class="filter-group">
+                        <select id="taskFilterEmployeeType">
+                          <option value="">All Types</option>
+                          <option value="human">Human</option>
+                          <option value="ai">AI</option>
+                        </select>
+                      </div>
+                      <div class="filter-group">
+                        <select id="taskFilterStatus">
+                          <option value="">All Statuses</option>
+                          <option value="todo">To Do</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="pending">Pending</option>
+                          <option value="under_review">Under Review</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </div>
+                      <div class="filter-group">
+                        <select id="taskFilterPriority">
+                          <option value="">All Priorities</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
+                      </div>
+                      <div class="filter-group">
+                        <input type="month" id="taskFilterMonth">
+                      </div>
+                      <div class="filter-group">
+                        <input type="date" id="taskFilterDueDate">
+                      </div>
+                      <div class="filter-group">
+                        <button class="icon-btn ghost" id="exportExcel" type="button" title="Export to Excel" aria-label="Export to Excel">
+                          <span class="material-symbols-outlined">file_download</span>
+                        </button>
+                        <button class="icon-btn ghost" id="exportPdf" type="button" title="Export to PDF" aria-label="Export to PDF">
+                          <span class="material-symbols-outlined">picture_as_pdf</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="table-wrap">
+                    <table class="data-table" id="tasksTable">
+                      <thead>
+                        <tr>
+                          <th>Task ID</th>
+                          <th>Title</th>
+                          <th>Employee Type</th>
+                          <th>Assigned To</th>
+                          <th>Assigned By</th>
+                          <th>Priority</th>
+                          <th>Status</th>
+                          <th>Start Date</th>
+                          <th>Due Date</th>
+                          <th>Completed</th>
+                        </tr>
+                      </thead>
+                      <tbody id="taskTableBody">
+                        <tr><td colspan="11" class="data-empty" id="taskTableEmpty">Loading tasks...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Monthly Reports -->
+                <div class="tasks-reports-section">
+                  <div class="section-title">Monthly Reports</div>
+                  
+                  <div class="report-controls">
+                    <div class="filter-group">
+                      <select id="reportYear">
+                        <option value="2026">2026</option>
+                      </select>
+                      <select id="reportMonth">
+                        <option value="11">November</option>
+                      </select>
+                    </div>
+                    <div class="filter-group">
+                      <select id="reportType">
+                        <option value="company">Company-wide</option>
+                        <option value="human">All Human Employees</option>
+                        <option value="ai">All AI Employees</option>
+                        <option value="individual">Individual Employee</option>
+                      </select>
+                    </div>
+                    <div class="filter-group">
+                      <select id="reportEmployeeType">
+                        <option value="">Human</option>
+                        <option value="ai">AI</option>
+                      </select>
+                    </div>
+                    <div class="filter-group">
+                      <input type="text" id="reportEmployee" placeholder="Employee ID or name">
+                    </div>
+                    <button class="period-select" id="reportGenerate" type="button">Generate Report</button>
+                  </div>
+
+                  <div id="tasksReportTotals" class="report-totals"></div>
+                  
+                  <div class="table-wrap">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Period</th>
+                          <th>Total Assigned</th>
+                          <th>Completed</th>
+                          <th>Pending</th>
+                          <th>Overdue</th>
+                          <th>Completion Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody id="reportTable">
+                        <tr><td colspan="6" class="data-empty">Generate a report to see data</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- TASK MODAL ---------- -->
+          <div class="utility-overlay" id="taskModal" hidden>
+            <section class="utility-dialog" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+              <header>
+                <div><small>ACULYZE AI STUDIO</small><h2 id="taskModalTitle">Task</h2></div>
+                <button class="icon-btn ghost" id="taskModalClose" type="button" aria-label="Close">×</button>
+              </header>
+              <div class="utility-content" id="taskModalBody"></div>
+            </section>
           </section>
         </main>
 

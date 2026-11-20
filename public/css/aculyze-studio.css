@@ -6307,4 +6307,203 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   .rec-dot { animation: none; opacity: 0.9; }
 }
 
+/* ---- Task Manager page ---- */
+.tasks-page {
+  max-width: 940px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 32px;
+}
+.tasks-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.tasks-header > div { flex: 1 1 auto; min-width: 0; }
+.tasks-header small {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tasks-header h2 {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.tasks-header p {
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.tasks-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+/* ---- Dashboard Stats ---- */
+.tasks-dashboard .tasks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.task-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 10px;
+  text-align: center;
+}
+.task-stat-value { font-size: 24px; font-weight: bold; color: #6a47ff; }
+.task-stat-label { font-size: 11px; color: #666; margin-top: 4px; }
+
+/* ---- Task Table ---- */
+.tasks-table-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.tasks-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.tasks-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tasks-table th,
+.tasks-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+.tasks-table th {
+  background: #f5f5f7;
+  font-weight: 600;
+}
+.tasks-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* ---- Filter Controls ---- */
+.tasks-page .filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tasks-page .filter-group select,
+.tasks-page .filter-group input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+}
+.tasks-page .filter-group select { min-width: 140px; }
+.tasks-page .filter-group input { width: 120px; }
+
+/* ---- Reports Section ---- */
+.tasks-reports-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.report-controls .filter-group select { min-width: 160px; }
+.period-select {
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+.period-select:hover { background: var(--surface-2); }
+#reportGenerate.active { background: var(--accent); color: #fff; }
+#reportGenerate.active:hover { background: var(--accent-light); }
+
+.report-totals {
+  display: flex;
+  gap: 24px;
+  padding: 12px 0;
+  font-size: 14px;
+}
+.report-total-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.report-total-item strong { color: var(--text); }
+.report-total-item span { color: var(--text-muted); }
+
+/* ---- Data Table ---- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th,
+.data-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+.data-table th {
+  background: #f5f5f7;
+  font-weight: 600;
+}
+.data-table tbody tr:hover {
+  background: var(--surface-2);
+}
+.data-empty {
+  text-align: center;
+  color: var(--text-body);
+  font-size: 13px;
+}
+
+/* ---- Badges ---- */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge.human { background: rgba(22, 161, 74, 0.12); color: #15803d; }
+.badge.ai { background: rgba(106, 27, 154, 0.12); color: #7c3aed; }
+.badge.priority-low { background: rgba(228, 230, 236, 0.6); color: #475569; }
+.badge.priority-medium { background: rgba(249, 250, 244, 0.6); color: #334155; }
+.badge.priority-high { background: rgba(255, 234, 210, 0.6); color: #92400e; }
+.badge.priority-urgent { background: rgba(252, 165, 165, 0.6); color: #991b1b; }
+.badge.status-todo { background: rgba(186, 184, 201, 0.6); color: #555; }
+.badge.status-in_progress { background: rgba(217, 194, 102, 0.6); color: #a16205; }
+.badge.status-pending { background: rgba(155, 155, 155, 0.6); color: #666; }
+.badge.status-under_review { background: rgba(167, 141, 224, 0.6); color: #5b21b6; }
+.badge.status-completed { background: rgba(52, 199, 89, 0.6); color: #16a34a; }
+.badge.status-overdue { background: rgba(252, 165, 165, 0.6); color: #dc2626; }
+.badge.status-cancelled { background: rgba(156, 166, 173, 0.6); color: #64748b; }
+
 

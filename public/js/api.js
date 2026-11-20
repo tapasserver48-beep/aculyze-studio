@@ -938,3 +938,77 @@ export async function employeesDelete(id) {
     credentials: 'include'
   }).then(r => r.json());
 }
+
+// ============ TASK MANAGEMENT ============================
+
+/** List tasks (filters: assignedTo, status, priority, employeeType, limit, offset). */
+export async function tasksList(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.assignedTo) params.set('assignedTo', filters.assignedTo);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.priority) params.set('priority', filters.priority);
+  if (filters.employeeType) params.set('employeeType', filters.employeeType);
+  if (filters.limit) params.set('limit', String(filters.limit));
+  if (filters.offset) params.set('offset', String(filters.offset));
+  const qs = params.toString();
+  return authRequest(`/api/tasks${qs ? `?${qs}` : ''}`);
+}
+
+/** Get specific task. */
+export async function tasksGet(id) {
+  return authRequest(`/api/tasks/${id}`);
+}
+
+/** Create a task. */
+export async function tasksCreate({ title, description, assignedTo, assignedBy, priority, dueDate }) {
+  return authRequest('/api/tasks', {
+    method: 'POST',
+    body: { title, description, assignedTo, assignedBy, priority, dueDate }
+  });
+}
+
+/** Update task. */
+export async function tasksUpdate(id, updates) {
+  return authRequest(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    body: updates
+  });
+}
+
+/** Delete task. */
+export async function tasksDelete(id) {
+  return authRequest(`/api/tasks/${id}`, { method: 'DELETE' });
+}
+
+/** Get tasks for a specific employee. */
+export async function tasksForEmployee(employeeId) {
+  return authRequest(`/api/tasks/employee/${encodeURIComponent(employeeId)}`);
+}
+
+/** Get overall task summary. */
+export async function tasksSummary() {
+  return authRequest('/api/tasks/summary');
+}
+
+/** Get monthly report. */
+export async function tasksMonthlyReport({ year, month, employeeId, employeeType }) {
+  const params = new URLSearchParams();
+  if (year) params.set('year', String(year));
+  if (month) params.set('month', String(month));
+  if (employeeId) params.set('employeeId', employeeId);
+  if (employeeType) params.set('employeeType', employeeType);
+  return authRequest(`/api/tasks/reports/monthly?${params.toString()}`);
+}
+
+/** Add comment to task. */
+export async function tasksAddComment(taskId, content) {
+  return authRequest(`/api/tasks/${taskId}/comments`, {
+    method: 'POST',
+    body: { content }
+  });
+}
+
+/** Get task activity. */
+export async function tasksActivity(taskId) {
+  return authRequest(`/api/tasks/${taskId}/activity`);
+}

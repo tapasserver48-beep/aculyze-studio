@@ -53,18 +53,20 @@ const ROLE_LIST = Object.keys(ROLES);
 // Canonical list of app pages a permission can be granted against. This is
 // the single source of truth for the admin matrix, API validation and the
 // client's nav gating — keep it in sync with VIEW_META in the client.
-const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin'];
+const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks'];
 
 // Role → default allowed pages BEFORE per-user overrides. founder/admin get
 // everything; manager/employee mirror the documented intent of ROLES above
 // ("manager: apps/inbox/settings", "employee: inbox only"), plus `home`
 // which is the landing page every role needs. The admin page is deliberately
 // absent here — it can never be granted by an override (see effectivePages).
+// The tasks page is granted to all authenticated roles (employee, manager, admin, founder)
+// — task visibility is controlled by backend data permissions, not frontend nav visibility.
 const ROLE_PAGES = {
   founder: [...PAGE_LIST],
   admin: [...PAGE_LIST],
-  manager: ['home', 'apps', 'inbox', 'settings'],
-  employee: ['home', 'inbox'],
+  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command'],
+  employee: ['home', 'inbox', 'tasks'],
 };
 
 /** Keep only known pages with boolean values — the stored override shape. */
