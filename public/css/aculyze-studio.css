@@ -5747,6 +5747,52 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
   .admin-table td:nth-child(4) { display: none; } /* created date - least important */
 }
 
+/* ---- AI Employees section ---- */
+#adminEmployeesCard .admin-hint { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; }
+#adminEmployeesCard .admin-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+#adminEmployeesCard .admin-hint-sm {
+  font-size: 11px;
+  color: var(--text-muted);
+  whitespace: nowrap;
+}
+.admin-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-status-badge.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+.admin-status-badge.inactive {
+  background: rgba(156, 166, 173, 0.15);
+  color: var(--text-muted);
+}
+.admin-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.admin-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 /* ==========================================================================
    INBOX DIRECT MESSAGES — WhatsApp-style bubbles, media, actions, notifications
    Everything here is scoped to `.dm-thread` (the 1:1 thread container), so the

@@ -878,3 +878,63 @@ export async function chatFind(q) {
 export async function chatUnread() {
   return authRequest('/api/chat/unread');
 }
+
+// ============ AI EMPLOYEES REGISTRY ============================
+
+/** List all AI employees. ? { employees: [{id, employee_code, name, designation, status,...}] } */
+export async function employeesList() {
+  return fetch('/api/employees').then(r => r.json());
+}
+
+/** Get AI employee by ID. ? { employee } */
+export async function employeesGet(id) {
+  return fetch(`/api/employees/${id}`).then(r => r.json());
+}
+
+/** Get AI employee status. ? { id, employee_code, status } */
+export async function employeesStatus(id) {
+  return fetch(`/api/employees/${id}/status`).then(r => r.json());
+}
+
+/** Get AI employee profile. ? { employee } */
+export async function employeesProfile(id) {
+  return employeesGet(id);
+}
+
+/** Initialize AI employee from template. codes=['AI-CHIEF-001', ...]. ? { results } */
+export async function employeesInitialize(codes) {
+  return fetch('/api/employees/initialize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ codes: Array.isArray(codes) ? codes : [codes] })
+  }).then(r => r.json());
+}
+
+/** Update AI employee. ? { employee } */
+export async function employeesUpdate(id, updates) {
+  return fetch(`/api/employees/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(updates)
+  }).then(r => r.json());
+}
+
+/** Update AI employee permissions. ? { employee } */
+export async function employeesUpdatePermissions(id, permissions) {
+  return fetch(`/api/employees/${id}/permissions`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ permissions })
+  }).then(r => r.json());
+}
+
+/** Delete AI employee. ? { deleted } */
+export async function employeesDelete(id) {
+  return fetch(`/api/employees/${id}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  }).then(r => r.json());
+}

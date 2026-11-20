@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -4981,6 +4981,7 @@ const adminState = {
   assignable: [],   // roles the signed-in actor may assign
   matrixUserId: null,
   draft: {},        // permission matrix edits before save
+  employees: [],    // AI employees
 };
 
 const adminEls = {
@@ -4999,6 +5000,10 @@ const adminEls = {
   save: document.getElementById('adminSavePerms'),
   cancel: document.getElementById('adminCancelPerms'),
   matrixError: document.getElementById('adminMatrixError'),
+  // AI Employees
+  empRows: document.getElementById('adminEmployeeRows'),
+  empError: document.getElementById('adminEmployeesError'),
+  empInitBtn: document.getElementById('adminInitEmployees'),
 };
 
 const ADMIN_PAGE_LABELS = {
@@ -5031,11 +5036,14 @@ function adminRoleBadge(role) {
 /** Load catalogue + user list, then render. Called every time Admin opens. */
 async function adminLoad() {
   try {
-    const [cat, list] = await Promise.all([adminPages(), adminListUsers()]);
+    const [cat, list, employees] = await Promise.all([
+      adminPages(), adminListUsers(), employeesList()
+    ]);
     adminState.pages = Array.isArray(cat.pages) ? cat.pages : [];
     adminState.roles = Array.isArray(cat.roles) ? cat.roles : [];
     adminState.assignable = Array.isArray(cat.assignable) ? cat.assignable : [];
     adminState.users = Array.isArray(list.users) ? list.users : [];
+    adminState.employees = Array.isArray(employees.employees) ? employees.employees : [];
   } catch (err) {
     if (adminEls.rows) {
       adminEls.rows.innerHTML = '';
@@ -5053,6 +5061,7 @@ async function adminLoad() {
   }
   adminFillRoleSelect();
   adminRenderUsers();
+  adminRenderAiEmployees();
 }
 
 /** Only roles the actor can actually assign appear in the dropdown. */
@@ -5291,6 +5300,72 @@ function adminCloseMatrix() {
   adminState.draft = {};
 }
 
+/* ---- AI Employees ---- */
+
+function adminRenderAiEmployees() {
+  const body = adminEls.empRows;
+  if (!body) return;
+  body.innerHTML = '';
+  const employees = adminState.employees || [];
+
+  if (!employees.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'admin-note';
+    td.textContent = 'No AI employees initialized yet. Click "Initialize AI Employees" to create them.';
+    tr.appendChild(td);
+    body.appendChild(tr);
+    return;
+  }
+
+  for (const e of employees) {
+    const tr = document.createElement('tr');
+    const tdCode = document.createElement('td'); tdCode.textContent = e.employee_code || '—';
+    const tdName = document.createElement('td'); tdName.textContent = e.name || '—';
+    const tdDesignation = document.createElement('td'); tdDesignation.textContent = e.designation || '—';
+    const tdStatus = document.createElement('td');
+    const spanStatus = document.createElement('span');
+    spanStatus.className = 'admin-status-badge ' + (e.status === 'active' ? 'active' : 'inactive');
+    spanStatus.textContent = (e.status || 'unknown').toUpperCase();
+    tdStatus.appendChild(spanStatus);
+    const tdCreated = document.createElement('td'); tdCreated.textContent = adminFmtDate(e.created_at);
+    const tdActions = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'admin-icon-btn';
+    btn.type = 'button';
+    btn.title = 'View profile';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>';
+    tdActions.appendChild(btn);
+    tr.append(tdCode, tdName, tdDesignation, tdStatus, tdCreated, tdActions);
+    body.appendChild(tr);
+  }
+}
+
+async function adminInitAiEmployees() {
+  if (!adminEls.empInitBtn) return;
+  adminEls.empInitBtn.disabled = true;
+  adminShowError(adminEls.empError, '');
+  try {
+    const codes = ['AI-CHIEF-001', 'AI-CUSTOMER-001', 'AI-EXEC-001'];
+    const res = await employeesInitialize(codes);
+    if (res.results) {
+      for (const r of res.results) {
+        if (r.created) toast(`Created ${r.employee?.name || r.code}`, 'success');
+        else if (r.reason === 'already_exists') { /* skip */ }
+        else toast(r.reason, 'warning');
+      }
+    }
+    await adminLoad();
+  } catch (err) {
+    adminShowError(adminEls.empError, (err && err.message) || 'Could not initialize employees.');
+  } finally {
+    if (adminEls.empInitBtn) adminEls.empInitBtn.disabled = false;
+  }
+}
+
+adminEls.empInitBtn?.addEventListener('click', adminInitAiEmployees);
+
 /** Create-user submit. */
 adminEls.form?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -5326,6 +5401,37 @@ adminEls.cancel?.addEventListener('click', adminCloseMatrix);
 function adminOpen() {
   adminCloseMatrix();
   adminLoad();
+}
+
+/* ---- AI Employee Profile Modal ---- */
+
+function adminOpenEmployeeProfile(employee) {
+  // Reuse matrix card for employee profile view
+  if (!adminEls.matrixCard) return;
+  adminEls.matrixWho.textContent = `— ${employee.name || employee.employee_code}`;
+  adminEls.matrixCard.hidden = false;
+  // For now, just show basic info in matrix area
+  adminEls.matrix.innerHTML = '';
+  const info = document.createElement('div');
+  info.style.padding = '12px';
+  info.innerHTML = `
+    <div style="display: grid; gap: 8px; font-size: 13px;">
+      <div><strong>Code:</strong> ${employee.employee_code}</div>
+      <div><strong>Name:</strong> ${employee.name}</div>
+      <div><strong>Designation:</strong> ${employee.designation}</div>
+      <div><strong>Type:</strong> ${employee.employee_type}</div>
+      <div><strong>Status:</strong> <span class="admin-status-badge ${employee.status === 'active' ? 'active' : 'inactive'}">${employee.status}</span></div>
+      ${employee.description ? `<div><strong>Role:</strong> ${employee.description}</div>` : ''}
+    </div>
+  `;
+  adminEls.matrix.appendChild(info);
+  adminEls.save.hidden = true;
+  adminEls.cancel.textContent = 'Close';
+}
+
+function adminCloseEmployeeProfile() {
+  if (adminEls.matrixCard) adminEls.matrixCard.hidden = true;
+  adminEls.save.hidden = false;
 }
 
 /* ==========================================================================
