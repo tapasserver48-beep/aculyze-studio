@@ -1012,3 +1012,88 @@ export async function tasksAddComment(taskId, content) {
 export async function tasksActivity(taskId) {
   return authRequest(`/api/tasks/${taskId}/activity`);
 }
+
+// ============ AI TASK OPERATIONS ============
+
+/** List tasks assigned to an AI employee (requires X-AI-Employee-Id header via API call options). */
+export async function tasksListAi(filters = {}, aiEmployeeId) {
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.priority) params.set('priority', filters.priority);
+  if (filters.limit) params.set('limit', String(filters.limit));
+  if (filters.offset) params.set('offset', String(filters.offset));
+  const qs = params.toString();
+  const res = await fetch(`/api/tasks/ai${qs ? `?${qs}` : ''}`, {
+    headers: { 'X-AI-Employee-Id': aiEmployeeId }
+  });
+  return res.json();
+}
+
+/** Get AI employee's own task (requires X-AI-Employee-Id header). */
+export async function tasksGetAi(taskId, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/ai/${taskId}`, {
+    headers: { 'X-AI-Employee-Id': aiEmployeeId }
+  });
+  return res.json();
+}
+
+/** AI employee acknowledges a task (requires X-AI-Employee-Id header). */
+export async function tasksAcknowledge(taskId, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/${taskId}/acknowledge`, {
+    method: 'PATCH',
+    headers: { 'X-AI-Employee-Id': aiEmployeeId }
+  });
+  return res.json();
+}
+
+/** AI employee updates task progress (requires X-AI-Employee-Id header). */
+export async function tasksUpdateProgress(taskId, progress, description, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/${taskId}/progress`, {
+    method: 'PATCH',
+    headers: { 
+      'X-AI-Employee-Id': aiEmployeeId,
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ progress, description })
+  });
+  return res.json();
+}
+
+/** AI employee changes task status (requires X-AI-Employee-Id header). */
+export async function tasksChangeStatus(taskId, status, pendingReason, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/${taskId}/status`, {
+    method: 'PATCH',
+    headers: { 
+      'X-AI-Employee-Id': aiEmployeeId,
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ status, pendingReason })
+  });
+  return res.json();
+}
+
+/** AI employee reports a blocker (requires X-AI-Employee-Id header). */
+export async function tasksReportBlocker(taskId, reason, description, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/${taskId}/blocker`, {
+    method: 'PATCH',
+    headers: { 
+      'X-AI-Employee-Id': aiEmployeeId,
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ reason, description })
+  });
+  return res.json();
+}
+
+/** AI employee adds a comment to a task (requires X-AI-Employee-Id header). */
+export async function tasksAddAiComment(taskId, content, aiEmployeeId) {
+  const res = await fetch(`/api/tasks/${taskId}/comments/ai`, {
+    method: 'POST',
+    headers: { 
+      'X-AI-Employee-Id': aiEmployeeId,
+      'Content-Type': 'application/json' 
+    },
+    body: JSON.stringify({ content })
+  });
+  return res.json();
+}

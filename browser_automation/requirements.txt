@@ -1,0 +1,4 @@
+# Zara AI — browser automation (local Playwright, Windows)
+# Install:  pip install -r browser_automation/requirements.txt
+# Then:     python -m playwright install chromium
+playwright>=1.40

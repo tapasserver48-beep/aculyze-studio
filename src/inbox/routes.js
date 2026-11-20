@@ -52,12 +52,34 @@ function createInboxRouter(options = {}) {
   /**
    * Registered local accounts as contacts — these are the peers that can
    * actually sign in and receive. The Inbox page lists accounts only.
+   * Also includes AI employees as distinct contacts.
    */
-  router.get('/contacts', wrap((req, res) => {
-    const contacts = readDoc(dataDir).users
-      .map((u) => ({ id: `usr-${u.id}`, name: u.name, role: 'Local account', kind: 'account' }))
+  router.get('/contacts', wrap(async (req, res) => {
+    // Human users (local accounts)
+    const localContacts = readDoc(dataDir).users
+      .map((u) => ({ id: `usr-${u.id}`, name: u.name, role: 'Human employee', kind: 'account' }))
       .filter((c) => c.id !== myId(req));
-    res.json({ contacts });
+
+    // AI employees
+    const { listEmployees } = require('../employees/store');
+    let aiContacts = [];
+    try {
+      const employees = await listEmployees(dataDir);
+      aiContacts = employees
+        .filter(e => e.status === 'active')
+        .map((e) => ({ 
+          id: e.id, 
+          name: e.name, 
+          role: e.designation || 'AI Employee', 
+          kind: 'ai',
+          employee_code: e.employee_code,
+          capabilities: e.capabilities || []
+        }));
+    } catch {
+      // AI employee store not available, return only human contacts
+    }
+
+    res.json({ contacts: [...localContacts, ...aiContacts] });
   }));
 
   router.get('/messages', wrap(async (req, res) => {
@@ -73,9 +95,15 @@ function createInboxRouter(options = {}) {
     // Display name for the recipient's copy of the thread: prefer the real
     // registered name, fall back to whatever the client knows (employees).
     let toName = String(body.toName || '').trim().slice(0, 80);
+    
     if (to.startsWith('usr-')) {
       const peer = readDoc(dataDir).users.find((u) => `usr-${u.id}` === to);
       if (peer) toName = peer.name;
+    } else if (to.startsWith('emp-ai-')) {
+      // AI employee recipient
+      const { findById } = require('../employees/store');
+      const employee = await findById(dataDir, to);
+      if (employee) toName = employee.name || toName;
     }
 
     const message = await sendMessage(dataDir, {

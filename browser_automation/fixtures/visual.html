@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Zara Visual Test Fixture</title></head>
+<body>
+  <h1>Visual interaction fixture</h1>
+  <button id="targetBtn" aria-label="Open the widget">Open the widget</button>
+  <p id="status">idle</p>
+  <a id="resultLink" href="#done">First result</a>
+  <video id="player" width="320" height="180" preload="auto">
+    <source src="/sample.mp4" type="video/mp4" />
+  </video>
+  <script>
+    document.getElementById('targetBtn').addEventListener('click', function () {
+      document.getElementById('status').textContent = 'opened';
+    });
+  </script>
+</body>
+</html>

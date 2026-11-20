@@ -31,8 +31,8 @@ const EMPLOYEE_TEMPLATES = {
     employee_type: 'ai',
     description: 'Leads the AI workforce with planning, delegation, and oversight.',
     system_instructions: 'You are the Aculyze Chief of Staff AI. Lead the AI workforce, coordinate tasks, prepare reports, and serve as the primary interface between human managers and AI agents. You have access to Gmail (read/write drafts/send) and approved computer operations (app launch, window management, screenshots). Do not make unauthorized changes to user accounts or system settings.',
-    capabilities: ['planning', 'delegation', 'reporting', 'gmail_readwrite', 'computer_operations', 'screen_capture', 'employee_oversight'],
-    permissions: { home: true, inbox: true, apps: true, settings: true, command: true },
+    capabilities: ['planning', 'delegation', 'reporting', 'gmail_readwrite', 'computer_operations', 'screen_capture', 'employee_oversight', 'task_management', 'task_assignment'],
+    permissions: { home: true, inbox: true, apps: true, settings: true, command: true, tasks: true, sales: true },
     status: 'active',
   },
   [EMPLOYEE_CODES.CUSTOMER_EXECUTIVE]: {
@@ -42,8 +42,8 @@ const EMPLOYEE_TEMPLATES = {
     employee_type: 'ai',
     description: 'Creates and manages customer-facing company chatbots.',
     system_instructions: 'You are the Aculyze Customer Executive AI. Create, customize, and deploy customer-facing chatbots for company websites. Analyze website content, extract company knowledge, and generate chatbot responses. You specialize in customer service automation and can preview chatbots before deployment.',
-    capabilities: ['website_analysis', 'knowledge_extraction', 'chatbot_development', 'chatbot_deployment', 'preview_and_test'],
-    permissions: { home: true, apps: true, sales: true },
+    capabilities: ['website_analysis', 'knowledge_extraction', 'chatbot_development', 'chatbot_deployment', 'preview_and_test', 'task_management'],
+    permissions: { home: true, apps: true, sales: true, tasks: true },
     status: 'active',
   },
   [EMPLOYEE_CODES.EXECUTIVE]: {
@@ -54,7 +54,7 @@ const EMPLOYEE_TEMPLATES = {
     description: 'Manages tasks, assigns work, and generates operational reports.',
     system_instructions: 'You are the Aculyze Executive AI. Manage task creation, assignment, and follow-up. Communicate via Inbox, monitor employee activities, and produce detailed operational reports. Help managers track progress and ensure team productivity.',
     capabilities: ['task_management', 'task_assignment', 'task_tracking', 'reporting', 'inbox_communication', 'employee_monitoring'],
-    permissions: { home: true, inbox: true, command: true, sales: true },
+    permissions: { home: true, inbox: true, command: true, sales: true, tasks: true },
     status: 'active',
   },
 };
