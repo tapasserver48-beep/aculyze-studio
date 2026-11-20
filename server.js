@@ -28,6 +28,7 @@ const { requirePage } = require('./src/auth/authorize');
 const { createInboxRouter } = require('./src/inbox/routes');
 const { createChatRouter } = require('./src/chat/routes');
 const { createEmployeesRouter } = require('./src/employees/routes');
+const { createTasksRouter } = require('./src/tasks/routes');
 const { attachChatRealtime } = require('./src/chat/realtime');
 
 // Dual-stack hosts (e.g. Render) can hand an outbound fetch a broken IPv6
@@ -1184,6 +1185,7 @@ app.get('/api/sales/records', requirePage('sales'), async (req, res) => {
 app.use('/api/auth', createAuthRouter({ dataDir: DATA_DIR }));
 app.use('/api/inbox', createInboxRouter({ dataDir: DATA_DIR }));
 app.use('/api/employees', createEmployeesRouter({ dataDir: DATA_DIR }));
+app.use('/api/tasks', createTasksRouter({ dataDir: DATA_DIR }));
 // The broadcast hook is filled in once the HTTP server exists (see below).
 let chatBroadcast = null;
 app.use('/api/chat', createChatRouter({ dataDir: DATA_DIR, broadcast: (...a) => chatBroadcast && chatBroadcast(...a) }));
@@ -1275,7 +1277,9 @@ async function initStorage() {
     const authStore = require('./src/auth/store');
     const inboxStore = require('./src/inbox/store');
     const { ensureSchema: ensureEmployeesSchema } = require('./src/employees/store');
+    const { ensureSchema: ensureTasksSchema } = require('./src/tasks/store');
     await ensureEmployeesSchema();
+    await ensureTasksSchema();
     const a = await authStore.migrateToPostgres(DATA_DIR);
     const b = await inboxStore.migrateToPostgres(DATA_DIR);
     console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
