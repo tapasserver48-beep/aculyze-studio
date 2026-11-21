@@ -94,10 +94,21 @@ async function ensureSchema() {
       due_date              BIGINT,
       completed_at          BIGINT,
       pending_reason        TEXT,
+      parent_task_id        TEXT,
+      initiating_user_id    TEXT,
+      expected_deliverable  TEXT,
+      dependencies          JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at            BIGINT NOT NULL,
       updated_at            BIGINT NOT NULL
     )
   `);
+
+  // Phase 03.3 — delegation metadata on the existing tasks table (no new
+  // task system). ALTER ... IF NOT EXISTS keeps idempotent boot safe.
+  await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parent_task_id TEXT');
+  await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS initiating_user_id TEXT');
+  await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS expected_deliverable TEXT');
+  await pg.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dependencies JSONB NOT NULL DEFAULT '[]'::jsonb");
 
   // Indexes for efficient querying
   await pg.query('CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks (assigned_to_type, assigned_to_id)');
@@ -223,7 +234,7 @@ async function getTask(dataDir, id) {
   return doc.tasks.find(t => t.id === id) || null;
 }
 
-async function createTask(dataDir, { title, description, assignedTo, assignedBy, priority = 'medium', dueDate }) {
+async function createTask(dataDir, { title, description, assignedTo, assignedBy, priority = 'medium', dueDate, parentTaskId = null, initiatingUserId = null, expectedDeliverable = '', dependencies = [] }) {
   const ts = now();
   const id = generateTaskId();
   const assignedToObj = typeof assignedTo === 'object' ? assignedTo : { type: 'human', id: assignedTo };
@@ -243,6 +254,11 @@ async function createTask(dataDir, { title, description, assignedTo, assignedBy,
     start_date: null,
     due_date: dueDate ? Date.parse(dueDate) : null,
     completed_at: null,
+    // Phase 03.3 delegation metadata (§5)
+    parent_task_id: parentTaskId || null,
+    initiating_user_id: initiatingUserId || null,
+    expected_deliverable: expectedDeliverable || '',
+    dependencies: Array.isArray(dependencies) ? dependencies : [],
     created_at: ts,
     updated_at: ts,
   };
@@ -254,11 +270,13 @@ async function createTask(dataDir, { title, description, assignedTo, assignedBy,
     await pg.query(
       `INSERT INTO tasks (id, task_code, title, description, assigned_to_type, assigned_to_id,
         assigned_by_type, assigned_by_id, priority, status, start_date, due_date, completed_at,
-        pending_reason, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        pending_reason, parent_task_id, initiating_user_id, expected_deliverable, dependencies,
+        created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
       [task.id, task.task_code, task.title, task.description, task.assigned_to_type, task.assigned_to_id,
        task.assigned_by_type, task.assigned_by_id, task.priority, task.status, task.start_date, task.due_date,
-       task.completed_at, task.pending_reason, task.created_at, task.updated_at]
+       task.completed_at, task.pending_reason ?? null, task.parent_task_id, task.initiating_user_id,
+       task.expected_deliverable, JSON.stringify(task.dependencies), task.created_at, task.updated_at]
     );
     return task;
   }

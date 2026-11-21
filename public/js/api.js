@@ -1097,3 +1097,100 @@ export async function tasksAddAiComment(taskId, content, aiEmployeeId) {
   });
   return res.json();
 }
+
+// ============ AGENT EXECUTION (Secure Human-to-AI Request Flow) ============
+
+/**
+ * Execute a task with an AI employee.
+ * This is the secure entry point - human validates, employee identity resolved server-side.
+ * Returns { executionId, status, employee, task, provider, model, startTime }
+ */
+export async function agentExecute(employeeId, taskId) {
+  const res = await fetch(`/api/agents/${encodeURIComponent(employeeId)}/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ taskId })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || 'Agent execution failed.');
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+/** Get AI employee status. */
+export async function agentStatus(employeeId) {
+  const res = await fetch(`/api/agents/${encodeURIComponent(employeeId)}/status`);
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || 'Could not get agent status.');
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+/** Get tasks assigned to an AI employee (requires manager access). */
+export async function agentTasks(employeeId) {
+  const res = await fetch(`/api/agents/${encodeURIComponent(employeeId)}/tasks`);
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.error || 'Could not get agent tasks.');
+    err.code = data.code;
+    throw err;
+  }
+  return data;
+}
+
+// ============ CHIEF OF STAFF (planning & delegation) ============
+
+async function chiefFetch(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || 'The Chief of Staff could not complete that.');
+    err.code = data.code;
+    err.planId = data.planId;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Draft a plan. Creates NO tasks.
+ * Resolves to { status: 'draft', planId, plan } or
+ * { status: 'needs_clarification', missing: [...] } when information is short.
+ */
+export function chiefDraftPlan(payload) {
+  return chiefFetch('/api/chief/plans', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function chiefPlans(status) {
+  const q = status ? `?status=${encodeURIComponent(status)}` : '';
+  return chiefFetch(`/api/chief/plans${q}`);
+}
+
+export function chiefPlan(planId) {
+  return chiefFetch(`/api/chief/plans/${encodeURIComponent(planId)}`);
+}
+
+/** Approve the draft — this is the call that creates the subtasks. */
+export function chiefApprove(planId) {
+  return chiefFetch(`/api/chief/plans/${encodeURIComponent(planId)}/approve`, { method: 'POST', body: '{}' });
+}
+
+export function chiefReject(planId, reason) {
+  return chiefFetch(`/api/chief/plans/${encodeURIComponent(planId)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function chiefReport(planId) {
+  return chiefFetch(`/api/chief/plans/${encodeURIComponent(planId)}/report`);
+}

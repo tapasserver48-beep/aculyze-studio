@@ -36,7 +36,7 @@ async function main() {
   // ===== 1. Page catalogue =====
   assert.deepStrictEqual(
     PAGE_LIST.slice().sort(),
-    ['admin', 'apps', 'command', 'home', 'inbox', 'sales', 'settings', 'store', 'zara'].sort(),
+    ['admin', 'apps', 'chief', 'command', 'home', 'inbox', 'sales', 'settings', 'store', 'tasks', 'zara'].sort(),
     'PAGE_LIST matches the client views + admin'
   );
   for (const [role, pages] of Object.entries(ROLE_PAGES)) {
@@ -81,6 +81,13 @@ async function main() {
   // …and cannot be denied from an admin either
   const adminNoAdmin = effectivePages('admin', { admin: false });
   assert.strictEqual(adminNoAdmin.admin, true, 'admin/founder always keep the admin page');
+
+  // Hard rule: the Chief of Staff page is a delegation privilege
+  const empWantsChief = effectivePages('employee', { chief: true });
+  assert.strictEqual(empWantsChief.chief, false, 'override cannot grant the chief page to an employee');
+  assert.strictEqual(effectivePages('manager', {}).chief, true, 'manager gets chief by default');
+  assert.strictEqual(effectivePages('employee', {}).chief, false, 'employee never gets chief');
+  assert.strictEqual(effectivePages('admin', {}).chief, true, 'admin gets chief');
 
   // Unknown role falls back to employee defaults
   const ghost = effectivePages('ghost', {});

@@ -68,6 +68,10 @@
           <span class="material-symbols-outlined item-ico" aria-hidden="true">assignment</span>
           <span class="label">Task Manager</span>
         </button>
+        <button class="sidebar-item" id="navChief" type="button" hidden>
+          <span class="material-symbols-outlined item-ico" aria-hidden="true">account_tree</span>
+          <span class="label">Chief of Staff</span>
+        </button>
         <button class="sidebar-item" id="navSettings" type="button">
           <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
           <span class="label">Settings</span>
@@ -1181,6 +1185,174 @@
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- CHIEF OF STAFF (Phase 03.3) ---------- -->
+          <section id="view-chief" class="agent-view" data-agent="chief">
+            <div class="tasks-page chief-page">
+              <header class="tasks-header">
+                <div>
+                  <small>ACULYZE AI STUDIO</small>
+                  <h2>Chief of Staff</h2>
+                  <p class="admin-sub">Hand over an objective, approve the plan, track what happens.</p>
+                </div>
+              </header>
+
+              <!-- Stage spine: this workflow really is a sequence, so the
+                   numbered markers carry meaning rather than decorate. -->
+              <ol class="chief-steps" id="chiefSteps">
+                <li class="chief-step is-current" data-step="objective">
+                  <span class="chief-step-num">01</span><span class="chief-step-label">Objective</span>
+                </li>
+                <li class="chief-step" data-step="plan">
+                  <span class="chief-step-num">02</span><span class="chief-step-label">Plan</span>
+                </li>
+                <li class="chief-step" data-step="approval">
+                  <span class="chief-step-num">03</span><span class="chief-step-label">Approval</span>
+                </li>
+                <li class="chief-step" data-step="report">
+                  <span class="chief-step-num">04</span><span class="chief-step-label">Report</span>
+                </li>
+              </ol>
+
+              <!-- Clarification: the Chief asks instead of guessing (§3) -->
+              <div class="chief-notice" id="chiefClarify" hidden role="status">
+                <div class="chief-notice-title">A few details are missing before this can be planned</div>
+                <ul id="chiefMissing"></ul>
+              </div>
+
+              <div class="chief-error" id="chiefError" hidden role="alert"></div>
+
+              <div class="chief-layout">
+                <!-- 01 · Objective -->
+                <div class="chief-compose" id="chiefCompose">
+                  <label class="chief-field">
+                    <span class="chief-label">What do you want done?</span>
+                    <textarea id="chiefObjective" rows="4" maxlength="2000"
+                      placeholder="Launch the Q1 pricing page refresh for the marketing site"></textarea>
+                  </label>
+
+                  <label class="chief-field">
+                    <span class="chief-label">Detail and constraints</span>
+                    <textarea id="chiefDescription" rows="3" maxlength="4000"
+                      placeholder="Anything that limits the approach — scope, tone, systems to touch"></textarea>
+                  </label>
+
+                  <div class="chief-field-row">
+                    <label class="chief-field">
+                      <span class="chief-label">Wanted by</span>
+                      <input type="date" id="chiefDeadline">
+                    </label>
+                    <label class="chief-field">
+                      <span class="chief-label">Priority</span>
+                      <select id="chiefPriority">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label class="chief-field">
+                    <span class="chief-label">Stakeholders</span>
+                    <input type="text" id="chiefStakeholders" maxlength="300"
+                      placeholder="Marketing, design, sales">
+                  </label>
+
+                  <div class="chief-actions">
+                    <button class="utility-primary" id="chiefDraftBtn" type="button">Draft a plan</button>
+                    <span class="muted" id="chiefDraftHint">Nothing is assigned until you approve.</span>
+                  </div>
+                </div>
+
+                <!-- 02 · Plan summary -->
+                <aside class="chief-summary" id="chiefSummary" hidden aria-live="polite">
+                  <div class="chief-summary-head">
+                    <span class="chief-status" id="chiefStatus">Draft</span>
+                    <span class="chief-meta mono" id="chiefPlanId"></span>
+                  </div>
+
+                  <p class="chief-summary-text" id="chiefSummaryText"></p>
+
+                  <dl class="chief-stats">
+                    <div><dt>Subtasks</dt><dd class="mono" id="chiefStatTotal">0</dd></div>
+                    <div><dt>Complete</dt><dd class="mono" id="chiefStatDone">0</dd></div>
+                    <div><dt>Blocked</dt><dd class="mono" id="chiefStatBlocked">0</dd></div>
+                    <div><dt>Overdue</dt><dd class="mono" id="chiefStatOverdue">0</dd></div>
+                  </dl>
+
+                  <div class="chief-progress" role="progressbar" aria-label="Objective progress"
+                       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="chiefProgress">
+                    <div class="chief-progress-fill" id="chiefProgressFill" style="width:0%"></div>
+                  </div>
+                  <div class="chief-progress-text mono" id="chiefProgressText">0%</div>
+
+                  <div class="chief-provider muted mono" id="chiefProvider"></div>
+
+                  <div class="chief-actions chief-actions-stack" id="chiefApprovalActions" hidden>
+                    <button class="utility-primary" id="chiefApproveBtn" type="button">Approve and create tasks</button>
+                    <button class="utility-secondary" id="chiefRejectBtn" type="button">Reject plan</button>
+                  </div>
+                  <div class="chief-actions chief-actions-stack" id="chiefReportActions" hidden>
+                    <button class="utility-secondary" id="chiefReportBtn" type="button">View report</button>
+                  </div>
+                </aside>
+              </div>
+
+              <!-- 03 · Subtasks -->
+              <div class="tasks-table-section" id="chiefSubtasks" hidden>
+                <div class="section-title">Subtasks</div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Title</th>
+                        <th scope="col">Assignee</th>
+                        <th scope="col">Depends on</th>
+                        <th scope="col">Due</th>
+                        <th scope="col">Expected deliverable</th>
+                        <th scope="col">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="chiefSubtaskBody">
+                      <tr><td colspan="7" class="data-empty">No plan yet</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- 04 · Consolidated report -->
+              <div class="chief-report" id="chiefReport" hidden>
+                <div class="section-title">Consolidated report</div>
+                <pre class="chief-report-body" id="chiefReportBody"></pre>
+                <div class="chief-actions">
+                  <button class="utility-secondary" id="chiefReportClose" type="button">Back to plan</button>
+                </div>
+              </div>
+
+              <!-- Previous objectives -->
+              <div class="tasks-table-section" id="chiefHistory" hidden>
+                <div class="section-title">Your objectives</div>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Objective</th>
+                        <th scope="col">Subtasks</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Opened</th>
+                        <th scope="col"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="chiefHistoryBody">
+                      <tr><td colspan="5" class="data-empty">Nothing yet</td></tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

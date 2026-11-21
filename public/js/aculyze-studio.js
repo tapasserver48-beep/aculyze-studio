@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, tasksList, tasksGet, tasksCreate, tasksUpdate, tasksDelete, tasksSummary, tasksMonthlyReport, tasksAddComment, tasksActivity } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, tasksList, tasksGet, tasksCreate, tasksUpdate, tasksDelete, tasksSummary, tasksMonthlyReport, tasksAddComment, tasksActivity, chiefDraftPlan, chiefPlans, chiefPlan, chiefApprove, chiefReject, chiefReport } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
@@ -287,6 +287,7 @@ const els = {
   navSettings: document.getElementById('navSettings'),
   navAdmin: document.getElementById('navAdmin'),
   navTasks: document.getElementById('navTasks'),
+  navChief: document.getElementById('navChief'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
   viewHome: document.getElementById('view-home'),
@@ -299,6 +300,7 @@ const els = {
   viewInbox: document.getElementById('view-inbox'),
   viewAdmin: document.getElementById('view-admin'),
   viewTasks: document.getElementById('view-tasks'),
+  viewChief: document.getElementById('view-chief'),
   copilot: document.getElementById('copilot'),
   zaraConversations: document.getElementById('zaraConversations'),
   zaraEmptyState: document.getElementById('zaraEmptyState'),
@@ -495,6 +497,7 @@ els.navSettings?.addEventListener('click', () => {
 });
 els.navAdmin?.addEventListener('click', () => setView('admin'));
 els.navTasks?.addEventListener('click', () => setView('tasks'));
+els.navChief?.addEventListener('click', () => setView('chief'));
 
 /* ---------- Aculyze Store — contact / free-trial dialog ---------- */
 const storeContactOverlay = document.getElementById('storeContactOverlay');
@@ -848,7 +851,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -884,7 +887,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -903,6 +906,8 @@ function setView(view) {
   els.viewInbox.classList.toggle('active', next === 'inbox');
   els.viewAdmin?.classList.toggle('active', next === 'admin');
   els.viewTasks?.classList.toggle('active', next === 'tasks');
+  els.viewChief?.classList.toggle('active', next === 'chief');
+  if (next === 'chief' && typeof chiefOnOpen === 'function') chiefOnOpen();
 
   // On compact viewports the Zara panel is an overlay: close it on navigation.
   // On desktop the persisted open/closed state is left untouched.
@@ -5471,6 +5476,7 @@ const NAV_PAGE_EL = {
   settings: () => els.navSettings,
   admin: () => els.navAdmin,
   tasks: () => els.navTasks,
+  chief: () => els.navChief,
 };
 
 function applyNavGating() {
@@ -8095,5 +8101,293 @@ document.addEventListener('click', (e) => {
   if (taskMenuOpen && !taskMenuOpen.contains(e.target)) {
     taskMenuOpen.remove();
     taskMenuOpen = null;
+  }
+});
+
+/* ==========================================================================
+   CHIEF OF STAFF � planning & delegation UI (Phase 03.3)
+   Four stages: objective ? plan ? approval ? report. Nothing is assigned
+   until "Approve and create tasks" is pressed, so drafting can be repeated
+   freely without leaving work behind.
+   ========================================================================== */
+const CHIEF_STEPS = ['objective', 'plan', 'approval', 'report'];
+const CHIEF_STATUS_LABEL = {
+  draft: 'Awaiting approval',
+  approved: 'Approved � tasks created',
+  rejected: 'Rejected',
+  executing: 'In progress',
+  completed: 'Completed',
+  needs_clarification: 'Needs more detail',
+};
+
+let chiefPlanId = null;
+let chiefBusy = false;
+
+function chiefEl(id) { return document.getElementById(id); }
+
+function chiefSetStep(step) {
+  const idx = CHIEF_STEPS.indexOf(step);
+  document.querySelectorAll('#chiefSteps .chief-step').forEach((li, i) => {
+    li.classList.toggle('is-current', i === idx);
+    li.classList.toggle('is-done', i > -1 && i < idx);
+  });
+}
+
+function chiefError(msg) {
+  const el = chiefEl('chiefError');
+  if (!el) return;
+  if (!msg) { el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = msg;
+}
+
+function chiefClarify(missing) {
+  const box = chiefEl('chiefClarify');
+  const list = chiefEl('chiefMissing');
+  if (!box || !list) return;
+  if (!missing || !missing.length) { box.hidden = true; list.innerHTML = ''; return; }
+  list.innerHTML = missing.map((m) => `<li>${esc(m)}</li>`).join('');
+  box.hidden = false;
+}
+
+function chiefStatusChip(status) {
+  const chip = chiefEl('chiefStatus');
+  if (!chip) return;
+  chip.textContent = CHIEF_STATUS_LABEL[status] || status;
+  chip.dataset.state = status;
+}
+
+function chiefStepFor(status) {
+  if (status === 'draft' || status === 'needs_clarification') return 'plan';
+  if (status === 'completed' || status === 'rejected') return 'report';
+  return 'approval';
+}
+
+/** Paint the summary panel + subtask table from a plan status payload. */
+function chiefRender(plan) {
+  chiefPlanId = plan.planId;
+  chiefStatusChip(plan.status);
+
+  const summaryEl = chiefEl('chiefSummary');
+  if (summaryEl) summaryEl.hidden = false;
+
+  chiefEl('chiefPlanId').textContent = plan.planId || '';
+  chiefEl('chiefSummaryText').textContent =
+    plan.analysis?.summary || plan.objective?.title || '';
+
+  const s = plan.summary || { total: 0, completed: 0, blocked: 0, overdue: 0, progress: 0 };
+  chiefEl('chiefStatTotal').textContent = s.total;
+  chiefEl('chiefStatDone').textContent = s.completed;
+  chiefEl('chiefStatBlocked').textContent = s.blocked;
+  chiefEl('chiefStatOverdue').textContent = s.overdue;
+
+  const bar = chiefEl('chiefProgress');
+  const fill = chiefEl('chiefProgressFill');
+  const pct = Number(s.progress) || 0;
+  fill.style.width = `${pct}%`;
+  bar.setAttribute('aria-valuenow', String(pct));
+  chiefEl('chiefProgressText').textContent = `${pct}%`;
+
+  // Provider/model is audit metadata (� hybrid routing evidence), shown as such.
+  chiefEl('chiefProvider').textContent =
+    plan.provider && plan.model ? `${plan.provider} � ${plan.model} � ${plan.latency_ms || 0} ms` : '';
+
+  const canApprove = plan.status === 'draft';
+  chiefEl('chiefApprovalActions').hidden = !canApprove;
+  chiefEl('chiefReportActions').hidden = canApprove;
+
+  chiefRenderSubtasks(plan.subtasks || []);
+  chiefSetStep(chiefStepFor(plan.status));
+}
+
+function chiefRenderSubtasks(subtasks) {
+  const wrap = chiefEl('chiefSubtasks');
+  const body = chiefEl('chiefSubtaskBody');
+  if (!wrap || !body) return;
+
+  if (!subtasks.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  body.innerHTML = subtasks.map((t, i) => {
+    const deps = (t.depends_on || [])
+      .map((d) => `<span class="chief-dep">${esc(d)}</span>`)
+      .join('') || '<span class="muted">�</span>';
+    const due = t.due_date ? formatDate(t.due_date) : '�';
+    const late = t.overdue ? ' <span class="badge status-overdue">Overdue</span>' : '';
+    return `<tr>
+      <td class="mono">${esc(t.key || i + 1)}</td>
+      <td>${esc(t.title)}${late}</td>
+      <td>
+        <span class="chief-assignee">
+          <span class="chief-assignee-name">${esc(t.assignee_name)}</span>
+          <span class="chief-assignee-kind">${t.assignee_kind === 'human' ? 'Human' : 'AI employee'}</span>
+        </span>
+      </td>
+      <td>${deps}</td>
+      <td class="mono">${esc(due)}</td>
+      <td class="chief-deliverable">${esc(t.deliverable)}</td>
+      <td><span class="badge status-${esc(t.status)}">${esc(getStatusLabel(t.status))}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+async function chiefDraft() {
+  if (chiefBusy) return;
+  const title = chiefEl('chiefObjective').value.trim();
+  if (!title) {
+    chiefError('Describe the objective first � what do you want done?');
+    chiefEl('chiefObjective').focus();
+    return;
+  }
+
+  chiefBusy = true;
+  const btn = chiefEl('chiefDraftBtn');
+  btn.disabled = true;
+  btn.textContent = 'Drafting�';
+  chiefError('');
+  chiefClarify(null);
+
+  try {
+    const stakeholders = chiefEl('chiefStakeholders').value
+      .split(',').map((x) => x.trim()).filter(Boolean);
+    const deadline = chiefEl('chiefDeadline').value;
+
+    const result = await chiefDraftPlan({
+      objective: title,
+      description: chiefEl('chiefDescription').value.trim(),
+      priority: chiefEl('chiefPriority').value,
+      deadline: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null,
+      stakeholders,
+    });
+
+    if (result.status === 'needs_clarification') {
+      chiefClarify(result.missing);
+      chiefSetStep('objective');
+      chiefEl('chiefSummary').hidden = true;
+      chiefEl('chiefSubtasks').hidden = true;
+      toast('The Chief of Staff needs a few more details', 'info');
+      return;
+    }
+
+    toast('Plan drafted � review it before anything is assigned', 'success');
+    await chiefLoad(result.planId);
+  } catch (err) {
+    chiefError(err.message || 'The plan could not be created.');
+  } finally {
+    chiefBusy = false;
+    btn.disabled = false;
+    btn.textContent = 'Draft a plan';
+  }
+}
+
+async function chiefLoad(planId) {
+  const plan = await chiefPlan(planId);
+  chiefRender(plan);
+  return plan;
+}
+
+async function chiefRunApprove() {
+  if (chiefBusy || !chiefPlanId) return;
+  chiefBusy = true;
+  const btn = chiefEl('chiefApproveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating tasks�';
+  chiefError('');
+
+  try {
+    const result = await chiefApprove(chiefPlanId);
+    toast(`Approved � ${result.created.length} subtasks created`, 'success');
+    await chiefLoad(chiefPlanId);
+    await chiefHistory();
+  } catch (err) {
+    chiefError(err.message || 'The plan could not be approved.');
+  } finally {
+    chiefBusy = false;
+    btn.disabled = false;
+    btn.textContent = 'Approve and create tasks';
+  }
+}
+
+async function chiefRunReject() {
+  if (chiefBusy || !chiefPlanId) return;
+  const reason = window.prompt('Why are you rejecting this plan?', '');
+  if (reason === null) return;
+
+  chiefBusy = true;
+  const btn = chiefEl('chiefRejectBtn');
+  btn.disabled = true;
+  try {
+    await chiefReject(chiefPlanId, reason);
+    toast('Plan rejected', 'info');
+    await chiefLoad(chiefPlanId);
+    await chiefHistory();
+  } catch (err) {
+    chiefError(err.message || 'The plan could not be rejected.');
+  } finally {
+    chiefBusy = false;
+    btn.disabled = false;
+  }
+}
+
+async function chiefShowReport() {
+  if (!chiefPlanId) return;
+  try {
+    const data = await chiefReport(chiefPlanId);
+    chiefEl('chiefReportBody').textContent = data.report;
+    chiefEl('chiefReport').hidden = false;
+    chiefSetStep('report');
+    chiefEl('chiefReport').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    chiefError(err.message || 'The report could not be generated.');
+  }
+}
+
+async function chiefHistory() {
+  const body = chiefEl('chiefHistoryBody');
+  if (!body) return;
+  try {
+    const { plans } = await chiefPlans();
+    if (!plans.length) {
+      chiefEl('chiefHistory').hidden = true;
+      return;
+    }
+    chiefEl('chiefHistory').hidden = false;
+    body.innerHTML = plans.map((p) => `<tr>
+      <td>${esc(p.objective)}</td>
+      <td class="mono">${esc(p.subtasks)}</td>
+      <td><span class="badge status-${p.status === 'completed' ? 'completed' : p.status === 'rejected' ? 'cancelled' : p.status === 'draft' ? 'todo' : 'in_progress'}">${esc(CHIEF_STATUS_LABEL[p.status] || p.status)}</span></td>
+      <td class="mono">${esc(formatDateTime(p.created_at))}</td>
+      <td><button class="utility-secondary" type="button" data-chief-open="${esc(p.planId)}">Open</button></td>
+    </tr>`).join('');
+  } catch {
+    chiefEl('chiefHistory').hidden = true;
+  }
+}
+
+function chiefOnOpen() {
+  chiefHistory().catch(() => {});
+  if (!chiefPlanId) chiefSetStep('objective');
+}
+
+/* ---------- wiring ---------- */
+chiefEl('chiefDraftBtn')?.addEventListener('click', chiefDraft);
+chiefEl('chiefApproveBtn')?.addEventListener('click', chiefRunApprove);
+chiefEl('chiefRejectBtn')?.addEventListener('click', chiefRunReject);
+chiefEl('chiefReportBtn')?.addEventListener('click', chiefShowReport);
+chiefEl('chiefReportClose')?.addEventListener('click', () => {
+  chiefEl('chiefReport').hidden = true;
+  if (chiefPlanId) chiefSetStep('approval');
+});
+chiefEl('chiefHistoryBody')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-chief-open]');
+  if (!btn) return;
+  try {
+    await chiefLoad(btn.getAttribute('data-chief-open'));
+    chiefEl('chiefReport').hidden = true;
+  } catch (err) {
+    chiefError(err.message || 'That plan could not be opened.');
   }
 });

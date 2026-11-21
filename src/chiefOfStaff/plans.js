@@ -1,0 +1,90 @@
+/**
+ * Delegation plan store — Phase 03.3.
+ *
+ * A plan is NOT a task. It is the Chief of Staff's draft decomposition of an
+ * objective plus its approval state. Actual tasks are only ever created by the
+ * Central Task Engine, and only after a human approves the plan (brief §6).
+ *
+ * Storage: <dataDir>/delegation/plans.json. This file never holds task records,
+ * so it cannot become a duplicate task system (brief §5).
+ *
+ * Lifecycle: draft → approved → executing → completed
+ *                     ↘ rejected
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const PLAN_STATUSES = ['draft', 'approved', 'rejected', 'executing', 'completed'];
+
+function plansFile(dataDir) {
+  return path.join(dataDir, 'delegation', 'plans.json');
+}
+
+function readPlans(dataDir) {
+  const file = plansFile(dataDir);
+  try {
+    if (!fs.existsSync(file)) return { plans: [] };
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { plans: Array.isArray(doc.plans) ? doc.plans : [] };
+  } catch (err) {
+    console.warn('[ChiefOfStaff] plans.json unreadable, starting empty:', err.message);
+    return { plans: [] };
+  }
+}
+
+function writePlans(dataDir, doc) {
+  const file = plansFile(dataDir);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf8');
+  fs.renameSync(tmp, file); // atomic — never leave a half-written plan
+}
+
+function generatePlanId() {
+  return `plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function savePlan(dataDir, plan) {
+  const doc = readPlans(dataDir);
+  const idx = doc.plans.findIndex(p => p.id === plan.id);
+  plan.updated_at = Date.now();
+  if (idx === -1) doc.plans.unshift(plan);
+  else doc.plans[idx] = plan;
+  writePlans(dataDir, doc);
+  return plan;
+}
+
+async function getPlan(dataDir, id) {
+  if (!id) return null;
+  return readPlans(dataDir).plans.find(p => p.id === id) || null;
+}
+
+/** Newest first. `limit` keeps the payload bounded for the UI list. */
+async function listPlans(dataDir, { limit = 50, status = null } = {}) {
+  let plans = readPlans(dataDir).plans;
+  if (status) plans = plans.filter(p => p.status === status);
+  return plans.slice(0, limit);
+}
+
+/**
+ * Duplicate-objective guard (brief §5 "prevent duplicate task creation").
+ * Two open plans for the same objective would fork the same work.
+ */
+async function findOpenPlanForObjective(dataDir, objectiveTitle) {
+  const title = String(objectiveTitle || '').trim().toLowerCase();
+  if (!title) return null;
+  return readPlans(dataDir).plans.find(
+    p => p.status !== 'rejected' && p.status !== 'completed'
+      && String(p.objective?.title || '').trim().toLowerCase() === title
+  ) || null;
+}
+
+module.exports = {
+  PLAN_STATUSES,
+  generatePlanId,
+  savePlan,
+  getPlan,
+  listPlans,
+  findOpenPlanForObjective,
+};

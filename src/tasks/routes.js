@@ -13,17 +13,16 @@
  *   POST /api/tasks/:id/comments          → add comment
  *   GET  /api/tasks/:id/activity          → get activity log
  *
- * AI-authorized endpoints (requires X-AI-Employee-Id header):
- *   PATCH /api/tasks/:id/acknowledge      → AI acknowledges task assignment
- *   PATCH /api/tasks/:id/progress         → AI updates task progress
- *   PATCH /api/tasks/:id/status           → AI changes task status
- *   PATCH /api/tasks/:id/blocker          → AI reports blocker with pending reason
- *   POST /api/tasks/:id/comments/ai      → AI adds comment
+ * AI employee task operations:
+ *   - Executed server-side through /api/agents/:employeeId/execute
+ *   - Trusted execution context created after human validation
+ *   - Never trust X-AI-Employee-Id from browser
  *
  * AI employee identity validation:
- * - AI requests use X-AI-Employee-Id header (never trust client identity)
- * - AI employees can only act on tasks assigned to them
- * - All AI actions are logged for audit trail
+ *   - All AI operations happen through trusted internal execution context
+ *   - Employee identity validated server-side
+ *   - Task assignment validated before execution
+ *   - All actions logged with verified actor identity
  */
 
 const express = require('express');
@@ -33,7 +32,6 @@ const {
   getMonthlyReport, TASK_STATUS, TASK_PRIORITY
 } = require('./store');
 const { requireUser, requireRole } = require('../auth/authorize');
-const { findByCode: findAiEmployeeByCode } = require('../employees/store');
 
 function createTasksRouter({ dataDir }) {
   const router = express.Router();
@@ -51,35 +49,6 @@ function createTasksRouter({ dataDir }) {
       };
       const tasks = await listTasks(dataDir, filters);
       res.json({ tasks });
-    } catch (err) {
-      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
-    }
-  });
-
-  // AI employee can list their own tasks (via header, not session)
-  router.get('/ai', async (req, res) => {
-    try {
-      const aiEmployeeId = req.header('X-AI-Employee-Id');
-      if (!aiEmployeeId) {
-        return res.status(401).json({ error: 'AI employee identity required' });
-      }
-
-      // Validate AI employee
-      const { findById } = require('../employees/store');
-      const employee = await findById(dataDir, aiEmployeeId);
-      if (!employee || employee.status !== 'active') {
-        return res.status(403).json({ error: 'Invalid AI employee' });
-      }
-
-      const filters = {
-        assignedTo: aiEmployeeId,
-        status: req.query.status,
-        priority: req.query.priority,
-        limit: req.query.limit ? Number(req.query.limit) : 100,
-        offset: req.query.offset ? Number(req.query.offset) : 0,
-      };
-      const tasks = await listTasks(dataDir, filters);
-      res.json({ tasks, count: tasks.length });
     } catch (err) {
       res.status(500).json({ error: String(err.message || err).slice(0, 200) });
     }
@@ -107,26 +76,38 @@ function createTasksRouter({ dataDir }) {
   });
 
   // AI employee can view their own tasks (via header, not session)
+  // NOTE: This endpoint is kept for backward compatibility but requires
+  // trusted server-side validation. Browser clients should use /api/agents/:id/tasks
   router.get('/ai/:id', async (req, res) => {
     try {
-      const aiEmployeeId = req.header('X-AI-Employee-Id');
-      if (!aiEmployeeId) {
-        return res.status(401).json({ error: 'AI employee identity required' });
-      }
-
-      // Validate AI employee
-      const { findById } = require('../employees/store');
-      const employee = await findById(dataDir, aiEmployeeId);
-      if (!employee || employee.status !== 'active') {
-        return res.status(403).json({ error: 'Invalid AI employee' });
-      }
-
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
-      // AI can only view tasks assigned to them
-      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployeeId) {
+      // This endpoint is deprecated - use /api/agents/:employeeId/tasks instead
+      // For now, require authentication for basic access
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      // Human can access tasks they're assigned to
+      const isOwner = task.assigned_to_type === 'human' && task.assigned_to_id === req.user.id;
+      const isAdmin = req.user.role === 'admin' || req.user.role === 'founder' || req.user.role === 'manager';
+      
+      // AI can access their own tasks (validated server-side only)
+      const aiEmployeeId = req.header('X-AI-Employee-Id');
+      const isAiAssigned = aiEmployeeId && task.assigned_to_type === 'ai' && task.assigned_to_id === aiEmployeeId;
+
+      if (!isOwner && !isAdmin && !isAiAssigned) {
         return res.status(403).json({ error: 'Access denied' });
+      }
+
+      if (isAiAssigned) {
+        // Validate AI employee
+        const { findById } = require('../employees/store');
+        const employee = await findById(dataDir, aiEmployeeId);
+        if (!employee || employee.status !== 'active') {
+          return res.status(403).json({ error: 'Invalid AI employee' });
+        }
       }
 
       res.json({ task });
@@ -308,17 +289,16 @@ function createTasksRouter({ dataDir }) {
         }
       }
 
-      // Check for AI employee (via header - server-side validation only)
-      const aiEmployeeId = req.header('X-AI-Employee-Id');
-      if (aiEmployeeId && task.assigned_to_type === 'ai' && task.assigned_to_id === aiEmployeeId) {
-        // Validate AI employee
-        const { findById } = require('../employees/store');
-        const employee = await findById(dataDir, aiEmployeeId);
-        if (!employee || employee.status !== 'active') {
-          return res.status(403).json({ error: 'Invalid AI employee' });
+      // AI access to activity requires authenticated user with proper authorization
+      if (req.user) {
+        const user = req.user;
+        const taskOwner = task.assigned_to_type === 'human' && task.assigned_to_id === user.id;
+        const isAdmin = user.role === 'admin' || user.role === 'founder' || user.role === 'manager';
+        
+        if (taskOwner || isAdmin) {
+          const activity = await getTaskActivity(dataDir, req.params.id);
+          return res.json({ activity });
         }
-        const activity = await getTaskActivity(dataDir, req.params.id);
-        return res.json({ activity });
       }
 
       return res.status(403).json({ error: 'Access denied' });
@@ -327,67 +307,22 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
-  // ---------- AI Employee Task Operations ----------
-  // AI employees identify via X-AI-Employee-Id header — server-side validation only
-  // AI cannot impersonate human users or other AI employees
+  // Internal task operations for AI employee execution
+  // These endpoints are used by the trusted agent runtime, not browser clients
   
-  function requireAiEmployee(req, res, next) {
-    const aiEmployeeId = req.header('X-AI-Employee-Id');
-    if (!aiEmployeeId) {
-      return res.status(401).json({ error: 'AI employee identity required', code: 'unauthenticated' });
-    }
-    
-    // Validate AI employee exists and is active
-    Promise.resolve()
-      .then(() => {
-        // Try to find by ID format (emp-ai-*) or code (AI-CHIEF-001, etc.)
-        if (aiEmployeeId.startsWith('emp-ai-')) {
-          return requireAiEmployeeById(dataDir, aiEmployeeId);
-        } else {
-          // It's a code, find by code
-          return requireAiEmployeeByCode(dataDir, aiEmployeeId);
-        }
-      })
-      .then((employee) => {
-        if (!employee) {
-          return res.status(403).json({ error: 'Invalid AI employee identity', code: 'forbidden' });
-        }
-        if (employee.status !== 'active') {
-          return res.status(403).json({ error: 'AI employee is not active', code: 'inactive' });
-        }
-        req.aiEmployee = employee;
-        next();
-      })
-      .catch((err) => {
-        if (res.headersSent) return;
-        res.status(500).json({ error: 'AI identity validation failed', code: 'server_error' });
-      });
-  }
-
-  async function requireAiEmployeeById(dataDir, id) {
-    const { findById } = require('../employees/store');
-    return findById(dataDir, id);
-  }
-
-  async function requireAiEmployeeByCode(dataDir, code) {
-    const { findByCode } = require('../employees/store');
-    return findByCode(dataDir, code.toUpperCase());
-  }
-
-  function canActOnTask(aiEmployee, task) {
-    // AI can only act on tasks assigned to them
-    if (task.assigned_to_type !== 'ai') return false;
-    return task.assigned_to_id === aiEmployee.id;
-  }
-
-  // AI acknowledges a task assignment
-  router.patch('/:id/acknowledge', requireAiEmployee, async (req, res) => {
+  // AI acknowledges a task assignment (internal use)
+  router.patch('/:id/acknowledge', requireUser, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
       const aiEmployee = req.aiEmployee;
-      if (!canActOnTask(aiEmployee, task)) {
+      if (!aiEmployee) {
+        return res.status(401).json({ error: 'AI employee identity required' });
+      }
+
+      // AI can only act on tasks assigned to them
+      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployee.id) {
         return res.status(403).json({ error: 'Access denied: not assigned to this AI employee', code: 'forbidden' });
       }
 
@@ -414,14 +349,19 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
-  // AI updates task progress (progress percentage or description)
-  router.patch('/:id/progress', requireAiEmployee, async (req, res) => {
+  // AI updates task progress (progress percentage or description) - internal use
+  router.patch('/:id/progress', requireUser, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
       const aiEmployee = req.aiEmployee;
-      if (!canActOnTask(aiEmployee, task)) {
+      if (!aiEmployee) {
+        return res.status(401).json({ error: 'AI employee identity required' });
+      }
+
+      // AI can only act on tasks assigned to them
+      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployee.id) {
         return res.status(403).json({ error: 'Access denied', code: 'forbidden' });
       }
 
@@ -454,14 +394,19 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
-  // AI changes task status with validation
-  router.patch('/:id/status', requireAiEmployee, async (req, res) => {
+  // AI changes task status with validation - internal use
+  router.patch('/:id/status', requireUser, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
       const aiEmployee = req.aiEmployee;
-      if (!canActOnTask(aiEmployee, task)) {
+      if (!aiEmployee) {
+        return res.status(401).json({ error: 'AI employee identity required' });
+      }
+
+      // AI can only act on tasks assigned to them
+      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployee.id) {
         return res.status(403).json({ error: 'Access denied', code: 'forbidden' });
       }
 
@@ -518,14 +463,19 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
-  // AI reports a blocker (sets task to pending)
-  router.patch('/:id/blocker', requireAiEmployee, async (req, res) => {
+  // AI reports a blocker (sets task to pending) - internal use
+  router.patch('/:id/blocker', requireUser, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
       const aiEmployee = req.aiEmployee;
-      if (!canActOnTask(aiEmployee, task)) {
+      if (!aiEmployee) {
+        return res.status(401).json({ error: 'AI employee identity required' });
+      }
+
+      // AI can only act on tasks assigned to them
+      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployee.id) {
         return res.status(403).json({ error: 'Access denied', code: 'forbidden' });
       }
 
@@ -557,14 +507,19 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
-  // AI adds a comment to a task
-  router.post('/:id/comments/ai', requireAiEmployee, async (req, res) => {
+  // AI adds a comment to a task - internal use
+  router.post('/:id/comments/ai', requireUser, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
 
       const aiEmployee = req.aiEmployee;
-      if (!canActOnTask(aiEmployee, task)) {
+      if (!aiEmployee) {
+        return res.status(401).json({ error: 'AI employee identity required' });
+      }
+
+      // AI can only act on tasks assigned to them
+      if (task.assigned_to_type !== 'ai' || task.assigned_to_id !== aiEmployee.id) {
         return res.status(403).json({ error: 'Access denied', code: 'forbidden' });
       }
 

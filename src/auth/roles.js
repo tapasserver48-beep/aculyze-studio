@@ -53,7 +53,7 @@ const ROLE_LIST = Object.keys(ROLES);
 // Canonical list of app pages a permission can be granted against. This is
 // the single source of truth for the admin matrix, API validation and the
 // client's nav gating — keep it in sync with VIEW_META in the client.
-const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks'];
+const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks', 'chief'];
 
 // Role → default allowed pages BEFORE per-user overrides. founder/admin get
 // everything; manager/employee mirror the documented intent of ROLES above
@@ -65,7 +65,7 @@ const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command',
 const ROLE_PAGES = {
   founder: [...PAGE_LIST],
   admin: [...PAGE_LIST],
-  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command'],
+  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command', 'chief'],
   employee: ['home', 'inbox', 'tasks'],
 };
 
@@ -92,6 +92,12 @@ function effectivePages(role, permissions) {
     if (page === 'admin') {
       // The Admin page is locked to admin/founder; no override can grant it.
       out[page] = role === 'admin' || role === 'founder';
+      continue;
+    }
+    if (page === 'chief') {
+      // Delegation is a privilege, not a preference: an override can never
+      // grant the Chief of Staff page to an employee (brief §4).
+      out[page] = role === 'admin' || role === 'founder' || role === 'manager';
       continue;
     }
     out[page] = page in overrides ? overrides[page] : defaults.includes(page);

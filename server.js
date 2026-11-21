@@ -29,6 +29,8 @@ const { createInboxRouter } = require('./src/inbox/routes');
 const { createChatRouter } = require('./src/chat/routes');
 const { createEmployeesRouter } = require('./src/employees/routes');
 const { createTasksRouter } = require('./src/tasks/routes');
+const { createAgentsRouter } = require('./src/agents/routes');
+const { createChiefOfStaffRouter } = require('./src/chiefOfStaff/routes');
 const { attachChatRealtime } = require('./src/chat/realtime');
 
 // Dual-stack hosts (e.g. Render) can hand an outbound fetch a broken IPv6
@@ -1186,6 +1188,8 @@ app.use('/api/auth', createAuthRouter({ dataDir: DATA_DIR }));
 app.use('/api/inbox', createInboxRouter({ dataDir: DATA_DIR }));
 app.use('/api/employees', createEmployeesRouter({ dataDir: DATA_DIR }));
 app.use('/api/tasks', createTasksRouter({ dataDir: DATA_DIR }));
+app.use('/api/agents', createAgentsRouter({ dataDir: DATA_DIR }));
+app.use('/api/chief', createChiefOfStaffRouter({ dataDir: DATA_DIR }));
 // The broadcast hook is filled in once the HTTP server exists (see below).
 let chatBroadcast = null;
 app.use('/api/chat', createChatRouter({ dataDir: DATA_DIR, broadcast: (...a) => chatBroadcast && chatBroadcast(...a) }));
