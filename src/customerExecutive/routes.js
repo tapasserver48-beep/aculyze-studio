@@ -36,11 +36,19 @@ const {
   createCrawlJob, executeCrawlJob, getCrawlJob, listCrawlJobs
 } = require('./crawler');
 
+// Import conversations module for chat history tracking
+const {
+  ensureSchema: ensureConversationsSchema,
+  createConversation, getConversation, listConversations, updateConversation,
+  addMessage, listMessages
+} = require('./conversations');
+
 function createCustomerExecutiveRouter({ dataDir }) {
   const router = express.Router();
 
   // Ensure database schema on mount
   ensureSchema();
+  ensureConversationsSchema();
 
   // ---- Authenticated Management APIs ----
   router.use(requireUser);
@@ -586,7 +594,7 @@ function createCustomerExecutiveRouter({ dataDir }) {
       const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
       if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
 
-      const { message, history } = req.body;
+      const { message, history, conversationId } = req.body;
       if (!message) return res.status(400).json({ error: 'Message required' });
 
       // Update last_used_at
@@ -598,6 +606,24 @@ function createCustomerExecutiveRouter({ dataDir }) {
       const workspaceId = chatbot.workspace_id;
       let answer = "I don't have information to answer that question.";
       let sources = [];
+      let newConversationId = conversationId;
+
+      // Create or continue conversation
+      if (!conversationId) {
+        const conv = await createConversation(dataDir, {
+          chatbotId: chatbot.id,
+          publishKey: chatbot.publish_key,
+          visitorId: null
+        });
+        newConversationId = conv.id;
+      }
+
+      // Store user message
+      await addMessage(dataDir, {
+        conversationId: newConversationId,
+        role: 'user',
+        content: message
+      });
 
       if (chatbot.instructions) {
         // Process the question through the knowledge
@@ -608,10 +634,22 @@ function createCustomerExecutiveRouter({ dataDir }) {
         }
       }
 
+      // Store assistant response
+      await addMessage(dataDir, {
+        conversationId: newConversationId,
+        role: 'assistant',
+        content: answer,
+        sourceRefs: sources.map((url, i) => ({ knowledgeId: knowledge[i]?.id, url })),
+        tokens: answer.split(' ').length
+      });
+
+      // Update last activity
+      await updateConversation(dataDir, newConversationId, { last_activity: Date.now() });
+
       res.json({
         response: answer,
         sources,
-        conversationId: `conv-${crypto.randomUUID().substring(0, 8)}`
+        conversationId: newConversationId
       });
     } catch (e) {
       res.status(500).json({ error: e.message });
