@@ -53,7 +53,7 @@ const ROLE_LIST = Object.keys(ROLES);
 // Canonical list of app pages a permission can be granted against. This is
 // the single source of truth for the admin matrix, API validation and the
 // client's nav gating — keep it in sync with VIEW_META in the client.
-const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks', 'chief'];
+const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks', 'chief', 'customer'];
 
 // Role → default allowed pages BEFORE per-user overrides. founder/admin get
 // everything; manager/employee mirror the documented intent of ROLES above

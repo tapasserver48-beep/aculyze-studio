@@ -1190,6 +1190,7 @@ app.use('/api/employees', createEmployeesRouter({ dataDir: DATA_DIR }));
 app.use('/api/tasks', createTasksRouter({ dataDir: DATA_DIR }));
 app.use('/api/agents', createAgentsRouter({ dataDir: DATA_DIR }));
 app.use('/api/chief', createChiefOfStaffRouter({ dataDir: DATA_DIR }));
+app.use('/api/customer', require('./src/customerExecutive/routes').createCustomerExecutiveRouter({ dataDir: DATA_DIR }));
 // The broadcast hook is filled in once the HTTP server exists (see below).
 let chatBroadcast = null;
 app.use('/api/chat', createChatRouter({ dataDir: DATA_DIR, broadcast: (...a) => chatBroadcast && chatBroadcast(...a) }));

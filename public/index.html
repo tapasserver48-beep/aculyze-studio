@@ -72,6 +72,10 @@
           <span class="material-symbols-outlined item-ico" aria-hidden="true">account_tree</span>
           <span class="label">Chief of Staff</span>
         </button>
+        <button class="sidebar-item" id="navCustomer" type="button" hidden>
+          <span class="material-symbols-outlined item-ico" aria-hidden="true">support_agent</span>
+          <span class="label">Customer Executive</span>
+        </button>
         <button class="sidebar-item" id="navSettings" type="button">
           <svg class="item-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
           <span class="label">Settings</span>
@@ -1358,6 +1362,34 @@
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ---------- CUSTOMER EXECUTIVE (Phase 03.4) ---------- -->
+          <section id="view-customer" class="agent-view" data-agent="customer" hidden>
+            <div class="tasks-page customer-page">
+              <header class="tasks-header">
+                <div>
+                  <small>ACULYZE AI STUDIO</small>
+                  <h2>Customer Executive</h2>
+                  <p class="admin-sub">Create customer chatbots that work autonomously on your website.</p>
+                </div>
+              </header>
+              <div class="customer-welcome">
+                <h3>Welcome to Customer Executive</h3>
+                <p>Create a customer workspace to manage website crawling, chatbot configuration, and lead capture.</p>
+                <ul class="customer-steps">
+                  <li><strong>Create Workspace</strong> — Define your customer's identity</li>
+                  <li><strong>Onboard Website</strong> — Crawl and extract knowledge</li>
+                  <li><strong>Build Chatbot</strong> — Configure responses and FAQs</li>
+                  <li><strong>Preview & Test</strong> — Validate before publishing</li>
+                  <li><strong>Publish</strong> — Generate secure embed code</li>
+                </ul>
+              </div>
+              <div class="customer-cta">
+                <button class="utility-primary" id="customerCreateWorkspace" type="button">Create Customer Workspace</button>
+                <button class="utility-secondary" id="customerViewWorkspaces" type="button">View My Workspaces</button>
               </div>
             </div>
           </section>
