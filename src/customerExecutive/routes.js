@@ -184,6 +184,12 @@ function createCustomerExecutiveRouter({ dataDir }) {
   });
 
   // ---- Knowledge Endpoints ----
+  const {
+    searchKnowledge, getChatbotResponse,
+    addKnowledge, getKnowledge, getKnowledgeBySource,
+    updateKnowledge, deleteKnowledge
+  } = require('./knowledge');
+
   router.get('/workspaces/:id/knowledge', async (req, res) => {
     try {
       const workspace = await getWorkspace(dataDir, req.params.id);
@@ -193,9 +199,70 @@ function createCustomerExecutiveRouter({ dataDir }) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Return knowledge from completed crawl jobs for this workspace
-      // (Implementation will be in knowledge.js)
-      res.json({ knowledge: [], message: 'Knowledge retrieval endpoint' });
+      const knowledge = await getKnowledge(dataDir, req.params.id);
+      res.json({ knowledge });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/workspaces/:id/knowledge', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { sourceUrl, content, contentType } = req.body;
+      if (!sourceUrl) return res.status(400).json({ error: 'sourceUrl required' });
+
+      const item = await addKnowledge(dataDir, {
+        workspaceId: req.params.id,
+        sourceUrl,
+        content,
+        contentType
+      });
+      res.status(201).json({ knowledge: item });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/knowledge/search', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { q } = req.query;
+      if (!q) return res.status(400).json({ error: 'Query parameter q required' });
+
+      const results = await searchKnowledge(dataDir, req.params.id, q);
+      res.json({ results });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/knowledge/chat-response', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { q } = req.query;
+      if (!q) return res.status(400).json({ error: 'Query parameter q required' });
+
+      const response = await getChatbotResponse(dataDir, req.params.id, q);
+      res.json({ response });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

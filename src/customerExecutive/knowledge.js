@@ -23,8 +23,25 @@ async function ensureSchema() {
     return;
   }
 
-  // Created by store.js, but ensure for safety
-  await pg.query('CREATE TABLE IF NOT EXISTS customer_knowledge');
+  // Ensure the table exists with proper schema
+  await pg.query(`
+    CREATE TABLE IF NOT EXISTS customer_knowledge (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES customer_workspaces(id) ON DELETE CASCADE,
+      source_url TEXT NOT NULL,
+      content_content TEXT,        -- Title/meta/heading/paragraph text
+      content_headings JSONB,      -- Extracted headings as array
+      content_links JSONB,         -- Extracted links
+      contact_emails JSONB,        -- Contact emails
+      contact_phones JSONB,        -- Contact phones
+      content_type TEXT,
+      extracted_at BIGINT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+  await pg.query('CREATE INDEX IF NOT EXISTS customer_knowledge_workspace_idx ON customer_knowledge (workspace_id)');
+  await pg.query('CREATE INDEX IF NOT EXISTS customer_knowledge_source_idx ON customer_knowledge (workspace_id, source_url)');
+  await pg.query('CREATE INDEX IF NOT EXISTS customer_knowledge_search_idx ON customer_knowledge USING gin(to_tsvector(\'english\', content_content))');
 }
 
 // ---------- JSON File Backend ----------
@@ -53,11 +70,22 @@ async function addKnowledge(dataDir, { workspaceId, sourceUrl, content, contentT
   const now = Date.now();
   const id = generateKnowledgeId();
 
+  // Flatten content for storage
+  const contentText = extractTextFromContent(content);
+  const contentHeadings = content.headings || [];
+  const contentLinks = content.links || [];
+  const contactEmails = content.contact_emails || [];
+  const contactPhones = content.contact_phones || [];
+
   const knowledgeItem = {
     id,
     workspace_id: workspaceId,
     source_url: sourceUrl,
-    content,
+    content_content: contentText,
+    content_headings: contentHeadings,
+    content_links: contentLinks,
+    contact_emails: contactEmails,
+    contact_phones: contactPhones,
     content_type: contentType,
     extracted_at: now,
     version: 1
@@ -66,9 +94,11 @@ async function addKnowledge(dataDir, { workspaceId, sourceUrl, content, contentT
   if (pg.enabled()) {
     const { rows } = await pg.query(
       `INSERT INTO customer_knowledge 
-       (id, workspace_id, source_url, content, content_type, extracted_at, version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [id, workspaceId, sourceUrl, content, contentType, now, 1]
+       (id, workspace_id, source_url, content_content, content_headings, content_links,
+        contact_emails, contact_phones, content_type, extracted_at, version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [id, workspaceId, sourceUrl, contentText, JSON.stringify(contentHeadings), JSON.stringify(contentLinks),
+       JSON.stringify(contactEmails), JSON.stringify(contactPhones), contentType, now, 1]
     );
     return rows[0];
   }
@@ -79,10 +109,28 @@ async function addKnowledge(dataDir, { workspaceId, sourceUrl, content, contentT
   return knowledgeItem;
 }
 
+function extractTextFromContent(content) {
+  if (typeof content === 'string') return content;
+  if (!content) return '';
+
+  const parts = [];
+  if (content.title) parts.push(content.title);
+  if (content.metaDescription) parts.push(content.metaDescription);
+  if (content.headings) parts.push(...content.headings);
+  if (content.paragraphs) parts.push(...content.paragraphs);
+
+  return parts.join(' ');
+}
+
 async function getKnowledge(dataDir, workspaceId) {
   if (pg.enabled()) {
     const { rows } = await pg.query(
-      `SELECT * FROM customer_knowledge WHERE workspace_id = $1 ORDER BY extracted_at DESC`,
+      `SELECT 
+         id, workspace_id, source_url, content_content, content_headings, content_links,
+         contact_emails, contact_phones, content_type, extracted_at, version
+       FROM customer_knowledge 
+       WHERE workspace_id = $1 
+       ORDER BY extracted_at DESC`,
       [workspaceId]
     );
     return rows;
@@ -93,7 +141,12 @@ async function getKnowledge(dataDir, workspaceId) {
 async function getKnowledgeBySource(dataDir, workspaceId, sourceUrl) {
   if (pg.enabled()) {
     const { rows } = await pg.query(
-      `SELECT * FROM customer_knowledge WHERE workspace_id = $1 AND source_url = $2 ORDER BY version DESC`,
+      `SELECT 
+         id, workspace_id, source_url, content_content, content_headings, content_links,
+         contact_emails, contact_phones, content_type, extracted_at, version
+       FROM customer_knowledge 
+       WHERE workspace_id = $1 AND source_url = $2 
+       ORDER BY version DESC`,
       [workspaceId, sourceUrl]
     );
     return rows;
@@ -101,6 +154,53 @@ async function getKnowledgeBySource(dataDir, workspaceId, sourceUrl) {
   return readKnowledge(dataDir)
     .filter(k => k.workspace_id === workspaceId && k.source_url === sourceUrl)
     .sort((a, b) => b.extracted_at - a.extracted_at);
+}
+
+async function updateKnowledge(dataDir, workspaceId, knowledgeId, updates) {
+  if (pg.enabled()) {
+    const fields = [];
+    const params = [];
+    let idx = 1;
+
+    for (const [k, v] of Object.entries(updates)) {
+      if (k === 'version') continue; // Version is auto-incremented
+      fields.push(`${k} = $${idx++}`);
+      params.push(v);
+    }
+
+    params.push(knowledgeId, workspaceId);
+
+    const result = await pg.query(
+      `UPDATE customer_knowledge SET ${fields.join(', ')}, version = version + 1 WHERE id = $${idx} AND workspace_id = $${idx + 1} RETURNING *`,
+      [...params, knowledgeId, workspaceId]
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      workspace_id: row.workspace_id,
+      source_url: row.source_url,
+      content_content: row.content_content,
+      content_headings: JSON.parse(row.content_headings || '[]'),
+      content_links: JSON.parse(row.content_links || '[]'),
+      contact_emails: JSON.parse(row.contact_emails || '[]'),
+      contact_phones: JSON.parse(row.contact_phones || '[]'),
+      content_type: row.content_type,
+      extracted_at: Number(row.extracted_at),
+      version: row.version
+    };
+  }
+
+  // JSON backend
+  const items = readKnowledge(dataDir);
+  const found = items.find(k => k.id === knowledgeId && k.workspace_id === workspaceId);
+  if (!found) return null;
+
+  items[items.indexOf(found)] = { ...found, ...updates, version: (found.version || 0) + 1 };
+  writeKnowledge(dataDir, items);
+  return items[items.length - 1];
 }
 
 async function deleteKnowledge(dataDir, workspaceId, id) {
@@ -127,12 +227,13 @@ async function searchKnowledge(dataDir, workspaceId, query) {
   const knowledge = await getKnowledge(dataDir, workspaceId);
 
   // Simple keyword matching - can be enhanced with embeddings later
-  const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 3);
+  const queryTerms = String(query || '').toLowerCase().split(/\s+/).filter(t => t.length > 3);
   if (!queryTerms.length) return [];
 
   const results = knowledge
     .map(k => {
-      const matches = queryTerms.filter(t => k.content.toLowerCase().includes(t));
+      const contentToSearch = k.content_content || '';
+      const matches = queryTerms.filter(t => contentToSearch.toLowerCase().includes(t));
       return { ...k, matchScore: matches.length / queryTerms.length };
     })
     .filter(k => k.matchScore > 0)
@@ -142,12 +243,42 @@ async function searchKnowledge(dataDir, workspaceId, query) {
   return results;
 }
 
+/**
+ * Generate a structured response for the chatbot with source citations
+ */
+async function getChatbotResponse(dataDir, workspaceId, question) {
+  const knowledge = await searchKnowledge(dataDir, workspaceId, question);
+
+  if (knowledge.length === 0) {
+    return {
+      answer: "I don't have enough information in my knowledge base to answer that question. Please ask about topics covered in the crawled website content.",
+      sources: [],
+      confidence: 0
+    };
+  }
+
+  // Simple aggregation - can be enhanced with LLM summarization
+  const combinedContent = knowledge.map(k => k.content_content).join(' ');
+
+  return {
+    answer: combinedContent,
+    sources: knowledge.map(k => k.source_url).slice(0, 3),
+    knowledgeChunks: knowledge.map(k => ({
+      source: k.source_url,
+      content: k.content_content.slice(0, 500),
+      confidence: k.matchScore
+    }))
+  };
+}
+
 module.exports = {
   generateKnowledgeId,
   ensureSchema,
   addKnowledge,
   getKnowledge,
   getKnowledgeBySource,
+  updateKnowledge,
   deleteKnowledge,
-  searchKnowledge
+  searchKnowledge,
+  getChatbotResponse
 };
