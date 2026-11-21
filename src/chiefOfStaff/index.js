@@ -334,9 +334,36 @@ async function draftPlan({ dataDir, input, userId, modelCall = null }) {
   const parsed = parseModelJson(result.content);
 
   if (!parsed) {
-    const err = new Error('The Chief of Staff returned an unparseable plan. Try again.');
+    // Model output wasn't parseable JSON. Check if it's prose that essentially
+    // said "I need more info" (common with shorter prompts or team-based objectives).
+    const rawContent = typeof result.content === 'string' 
+      ? result.content.slice(0, 2000).toLowerCase() 
+      : String(result.content).slice(0, 2000).toLowerCase();
+    
+    const canPlan = !rawContent.includes('cannot') 
+      && !rawContent.includes('cant')
+      && !rawContent.includes('unable to')
+      && !rawContent.includes('not enough')
+      && !rawContent.includes('need more information')
+      && !rawContent.includes('insufficient')
+      && !rawContent.includes('do not have enough');
+    
+    if (!canPlan || rawContent.includes('please provide') || rawContent.includes('i need')) {
+      // Model is essentially asking for clarification in prose form.
+      // Extract a readable reason from the raw output.
+      const reasonMatch = rawContent.match(/(i need|please provide|cannot \w+|unable to \w+)[^.]*[\s\S]{0,200}/i);
+      const reason = reasonMatch ? reasonMatch[0].trim() : 'insufficient information to plan';
+      const err = new Error(`The Chief of Staff returned unparseable output, which appears to be a clarification request: "${reason}". Try again with more detail.`);
+      err.status = 422;
+      err.code = 'unparseable_clarification';
+      err.rawContent = result.content?.slice(0, 500);
+      throw err;
+    }
+    
+    const err = new Error(`The Chief of Staff returned an unparseable plan. Try again. Raw response (truncated): ${rawContent.slice(0, 200)}`);
     err.status = 502;
     err.code = 'bad_model_output';
+    err.rawContent = result.content?.slice(0, 500);
     throw err;
   }
 
