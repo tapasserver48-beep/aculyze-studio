@@ -23,7 +23,9 @@ const { createRouterFromEnv } = require('../services/ai/router');
 const { listEmployees, initializeEmployee, EMPLOYEE_CODES } = require('../employees/store');
 const authStore = require('../auth/store');
 const { canAssignRole } = require('../auth/roles');
-const { createTask, getTask, addActivity } = require('../tasks/store');
+const { createTask, getTask, addActivity, listTasks } = require('../tasks/store');
+
+const OPEN_TASK_STATUSES = ['todo', 'in_progress', 'pending', 'under_review'];
 const { generatePlanId, savePlan, getPlan, listPlans, findOpenPlanForObjective } = require('./plans');
 
 /** Roles that may submit or approve a delegation plan (brief §4, §6). */
@@ -125,6 +127,16 @@ async function buildRegistry(dataDir, chiefId, initiatorRole = 'founder') {
       skills: [],
     }));
 
+  // Current workload, so the plan spreads work instead of piling it on one
+  // person. Best-effort: a read failure must never block planning.
+  try {
+    const open = {};
+    for (const t of await listTasks(dataDir, { limit: 10000 })) {
+      if (OPEN_TASK_STATUSES.includes(t.status)) open[t.assigned_to_id] = (open[t.assigned_to_id] || 0) + 1;
+    }
+    for (const c of [...human, ...ai]) c.open_tasks = open[c.id] || 0;
+  } catch { /* leave open_tasks undefined */ }
+
   return { candidates: [...human, ...ai], human, ai, initiatorRole };
 }
 
@@ -154,6 +166,7 @@ function buildPrompt(input, registry) {
     .map((c) => {
       const bits = [`- id=${c.id}`, c.code ? `code=${c.code}` : null, c.name, c.role];
       if (c.skills && c.skills.length) bits.push(`skills: ${c.skills.join(', ')}`);
+      if (Number.isFinite(c.open_tasks)) bits.push(`open tasks: ${c.open_tasks}`);
       if (c.about) bits.push(c.about);
       return bits.filter(Boolean).join(' | ');
     })
@@ -170,6 +183,7 @@ function buildPrompt(input, registry) {
     '- This company has NO teams, departments or reporting groups. There is no field that identifies "the sales team" or any other team. Assign by role and skill instead, and never put team identification in missing.',
     '- Only include a subtask you can assign to someone in the roster. If nobody fits, leave subtasks empty and explain in missing.',
     `- Never assign more than ${MAX_SUBTASKS} subtasks.`,
+    '- Balance the workload: when two people fit equally well, prefer the one with fewer open tasks.',
     '- depends_on is an array of 0-based indexes of earlier subtasks in your own list. A subtask may only depend on a lower index. No cycles.',
     '- due_in_days is an integer number of days from today, or null when there is no deadline.',
     '- priority is one of: low, medium, high, urgent.',

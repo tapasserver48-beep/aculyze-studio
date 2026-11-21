@@ -9,7 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
-  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261120c" />
+  <link rel="stylesheet" href="css/aculyze-studio.css?v=20261121a" />
+  <link rel="stylesheet" href="css/work.css?v=20261121a" />
 </head>
 <body>
   <div id="app" class="app">
@@ -66,7 +67,7 @@
         </button>
         <button class="sidebar-item" id="navTasks" type="button">
           <span class="material-symbols-outlined item-ico" aria-hidden="true">assignment</span>
-          <span class="label">Task Manager</span>
+          <span class="label">Tasks</span>
         </button>
         <button class="sidebar-item" id="navChief" type="button" hidden>
           <span class="material-symbols-outlined item-ico" aria-hidden="true">account_tree</span>
@@ -1005,364 +1006,278 @@
           </section>
 <!-- ---------- TASK MANAGER ---------- -->
           <section id="view-tasks" class="agent-view" data-agent="tasks">
-            <div class="tasks-page">
-              <header class="tasks-header">
-                <div>
-                  <small>ACULYZE AI STUDIO</small>
-                  <h2>Task Manager</h2>
-                  <p class="admin-sub">Dashboard, task tables, reports and exports</p>
+            <div class="work-page" id="tasksPage">
+              <header class="work-head">
+                <div class="work-head-text">
+                  <h2>Tasks</h2>
+                  <p class="work-summary" id="tmSummary" aria-live="polite">Loading tasks…</p>
+                </div>
+                <div class="work-head-actions">
+                  <div class="work-seg" role="group" aria-label="Layout">
+                    <button type="button" data-tm-layout="table" aria-pressed="true">
+                      <span class="material-symbols-outlined" aria-hidden="true">table_rows</span>Table
+                    </button>
+                    <button type="button" data-tm-layout="board" aria-pressed="false">
+                      <span class="material-symbols-outlined" aria-hidden="true">view_kanban</span>Board
+                    </button>
+                  </div>
+                  <details class="work-menu" id="tmExport">
+                    <summary class="utility-secondary">Export</summary>
+                    <div class="work-menu-pop" role="menu">
+                      <button type="button" role="menuitem" data-tm-export="xlsx">Excel spreadsheet</button>
+                      <button type="button" role="menuitem" data-tm-export="pdf">Print or save as PDF</button>
+                    </div>
+                  </details>
+                  <button class="utility-primary" id="tmNew" type="button">
+                    <span class="material-symbols-outlined" aria-hidden="true">add</span>New task
+                  </button>
                 </div>
               </header>
 
-              <div class="tasks-content">
-                <!-- Dashboard Stats -->
-                <div class="tasks-dashboard" id="tasksDashboard">
-                  <div class="tasks-grid">
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatTotal">—</div>
-                      <div class="task-stat-label">Total Tasks</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatTodo">—</div>
-                      <div class="task-stat-label">To Do</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatInProgress">—</div>
-                      <div class="task-stat-label">In Progress</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatPending">—</div>
-                      <div class="task-stat-label">Pending</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatUnderReview">—</div>
-                      <div class="task-stat-label">Under Review</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatCompleted">—</div>
-                      <div class="task-stat-label">Completed</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatOverdue">—</div>
-                      <div class="task-stat-label">Overdue</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatCancelled">—</div>
-                      <div class="task-stat-label">Cancelled</div>
-                    </div>
-                    <div class="task-stat-card">
-                      <div class="task-stat-value" id="taskStatAvgComplete">—</div>
-                      <div class="task-stat-label">Completion Rate</div>
-                    </div>
-                  </div>
+              <section class="wl" aria-label="Open work by state">
+                <div id="tmBar"></div>
+                <div class="wl-legend" id="tmLegend"></div>
+              </section>
+
+              <div class="tm-filters" role="search">
+                <label class="tm-search">
+                  <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                  <input id="tmSearch" type="search" placeholder="Search tasks or people" aria-label="Search tasks or people" maxlength="80">
+                </label>
+                <select id="tmAssignee" aria-label="Assignee"><option value="">Everyone</option></select>
+                <select id="tmStatus" aria-label="Status">
+                  <option value="">Any status</option>
+                  <option value="todo">To do</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="pending">Blocked</option>
+                  <option value="under_review">In review</option>
+                  <option value="completed">Done</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <select id="tmPriority" aria-label="Priority">
+                  <option value="">Any priority</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <select id="tmKind" aria-label="People or AI employees">
+                  <option value="">People and AI</option>
+                  <option value="human">People only</option>
+                  <option value="ai">AI employees only</option>
+                </select>
+                <span class="tm-result-count" id="tmResultCount"></span>
+                <button type="button" class="link-btn" id="tmClear" hidden>Clear filters</button>
+              </div>
+
+              <div class="table-wrap tm-table-wrap" id="tmTableWrap">
+                <table class="tm-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Task</th>
+                      <th scope="col">Assignee</th>
+                      <th scope="col">Priority</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tmRows"></tbody>
+                </table>
+              </div>
+              <div class="tm-board" id="tmBoard" hidden></div>
+              <p class="work-empty" id="tmEmpty" hidden></p>
+
+              <details class="tm-reports" id="tmReports">
+                <summary>
+                  <span class="tm-reports-title">Monthly report</span>
+                  <span class="tm-reports-hint">Tasks created in a month and how many got done, by person</span>
+                </summary>
+                <div class="tm-report-controls">
+                  <label class="tm-field">
+                    <span>Month</span>
+                    <input type="month" id="tmReportMonth">
+                  </label>
+                  <label class="tm-field">
+                    <span>Person</span>
+                    <select id="tmReportPerson"><option value="">Whole company</option></select>
+                  </label>
+                </div>
+                <p class="tm-report-summary" id="tmReportSummary" aria-live="polite"></p>
+                <div class="table-wrap">
+                  <table class="tm-table tm-report-table" id="tmReportTable" hidden>
+                    <thead>
+                      <tr>
+                        <th scope="col">Person</th>
+                        <th scope="col" class="num">Assigned</th>
+                        <th scope="col" class="num">Done</th>
+                        <th scope="col" class="num">Late</th>
+                        <th scope="col">Completion</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tmReportRows"></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            <div class="work-scrim" id="tmScrim" hidden></div>
+            <aside class="work-drawer" id="tmDrawer" role="dialog" aria-modal="true" aria-labelledby="tmDrawerTitle" hidden>
+              <header class="work-drawer-head">
+                <div>
+                  <h2 id="tmDrawerTitle">Task</h2>
+                  <p class="work-drawer-meta" id="tmDrawerMeta"></p>
+                </div>
+                <button class="icon-btn ghost" id="tmDrawerClose" type="button" aria-label="Close task panel">
+                  <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                </button>
+              </header>
+              <div class="work-drawer-body" id="tmDrawerBody"></div>
+            </aside>
+          </section>
+
+          <!-- ---------- CHIEF OF STAFF ---------- -->
+          <section id="view-chief" class="agent-view" data-agent="chief">
+            <div class="work-page chief-page">
+              <header class="work-head">
+                <div class="work-head-text">
+                  <h2>Chief of Staff</h2>
+                  <p class="work-summary" id="csSummary" aria-live="polite">Checking on the team…</p>
+                </div>
+                <div class="work-head-actions">
+                  <button class="utility-primary" id="csNewBtn" type="button">
+                    <span class="material-symbols-outlined" aria-hidden="true">add</span>Plan new work
+                  </button>
+                </div>
+              </header>
+
+              <div class="cs-tabs" role="tablist" aria-label="Chief of Staff">
+                <button type="button" role="tab" id="csTabTeam" data-cs-tab="team" aria-controls="csPanelTeam" aria-selected="true">Team</button>
+                <button type="button" role="tab" id="csTabPlan" data-cs-tab="plan" aria-controls="csPanelPlan" aria-selected="false" tabindex="-1">Plan work</button>
+                <button type="button" role="tab" id="csTabHistory" data-cs-tab="history" aria-controls="csPanelHistory" aria-selected="false" tabindex="-1">
+                  Plans <span class="cs-tab-count" id="csPlanCount"></span>
+                </button>
+              </div>
+
+              <!-- Team -->
+              <section id="csPanelTeam" role="tabpanel" aria-labelledby="csTabTeam" data-cs-panel="team">
+                <div class="cs-section-head">
+                  <h3>Needs attention <span class="cs-tab-count" id="csAttentionCount"></span></h3>
+                  <button class="utility-secondary" id="csRefresh" type="button">Refresh</button>
+                </div>
+                <ul class="cs-attention" id="csAttention" aria-label="Tasks that need a follow-up"></ul>
+                <div class="cs-bulk" id="csBulk" hidden>
+                  <button class="utility-primary" id="csSendBtn" type="button" disabled>Send selected follow-ups</button>
+                  <p>Follow-ups are only sent when you choose them. Each one is logged on the task.</p>
                 </div>
 
-                <!-- Task Table -->
-                <div class="tasks-table-section">
-                  <div class="page-header-inline">
-                    <div class="section-title">Employee-wise Tasks</div>
-                    <div class="tasks-filters">
-                      <div class="filter-group">
-                        <select id="taskFilterEmployee">
-                          <option value="">All Employees</option>
-                        </select>
-                      </div>
-                      <div class="filter-group">
-                        <input type="text" id="taskSearch" placeholder="Search tasks…" maxlength="80">
-                      </div>
-                      <div class="filter-group">
-                        <select id="taskFilterEmployeeType">
-                          <option value="">All Types</option>
-                          <option value="human">Human</option>
-                          <option value="ai">AI</option>
-                        </select>
-                      </div>
-                      <div class="filter-group">
-                        <select id="taskFilterStatus">
-                          <option value="">All Statuses</option>
-                          <option value="todo">To Do</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="pending">Pending</option>
-                          <option value="under_review">Under Review</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      </div>
-                      <div class="filter-group">
-                        <select id="taskFilterPriority">
-                          <option value="">All Priorities</option>
+                <div class="cs-section-head">
+                  <h3>People</h3>
+                  <div class="work-seg" role="group" aria-label="Show">
+                    <button type="button" data-cs-kind="" aria-pressed="true">Everyone</button>
+                    <button type="button" data-cs-kind="human" aria-pressed="false">People</button>
+                    <button type="button" data-cs-kind="ai" aria-pressed="false">AI employees</button>
+                  </div>
+                </div>
+                <div id="csTeamBody">
+                  <ul class="cs-people" id="csPeople"></ul>
+                </div>
+              </section>
+
+              <!-- Plan work -->
+              <section id="csPanelPlan" role="tabpanel" aria-labelledby="csTabPlan" data-cs-panel="plan" hidden>
+                <ol class="chief-steps" id="chiefSteps" aria-label="Planning steps">
+                  <li class="chief-step is-current" data-step="objective"><span class="chief-step-num">1</span><span class="chief-step-label">Objective</span></li>
+                  <li class="chief-step" data-step="plan"><span class="chief-step-num">2</span><span class="chief-step-label">Plan</span></li>
+                  <li class="chief-step" data-step="approval"><span class="chief-step-num">3</span><span class="chief-step-label">Approval</span></li>
+                  <li class="chief-step" data-step="report"><span class="chief-step-num">4</span><span class="chief-step-label">Report</span></li>
+                </ol>
+
+                <div class="chief-notice" id="chiefClarify" hidden role="status">
+                  <div class="chief-notice-title" id="chiefClarifyTitle">A few details are missing before this can be planned</div>
+                  <ul id="chiefMissing"></ul>
+                  <div class="chief-notice-hint" id="chiefClarifyHint"></div>
+                </div>
+                <div class="chief-error" id="chiefError" hidden role="alert"></div>
+
+                <div class="cs-plan-layout">
+                  <form class="cs-compose" id="chiefCompose" onsubmit="return false">
+                    <label class="tm-field">
+                      <span>What do you want done?</span>
+                      <textarea id="chiefObjective" rows="3" maxlength="2000"
+                        placeholder="For example: launch the new pricing page before the end of the month"></textarea>
+                    </label>
+                    <label class="tm-field">
+                      <span>Detail and constraints</span>
+                      <textarea id="chiefDescription" rows="3" maxlength="4000"
+                        placeholder="Scope, tone, budget, systems to touch, anything to avoid"></textarea>
+                    </label>
+                    <div class="tm-field-row">
+                      <label class="tm-field">
+                        <span>Wanted by</span>
+                        <input type="date" id="chiefDeadline">
+                      </label>
+                      <label class="tm-field">
+                        <span>Priority</span>
+                        <select id="chiefPriority">
                           <option value="low">Low</option>
-                          <option value="medium">Medium</option>
+                          <option value="medium" selected>Medium</option>
                           <option value="high">High</option>
                           <option value="urgent">Urgent</option>
                         </select>
-                      </div>
-                      <div class="filter-group">
-                        <input type="month" id="taskFilterMonth">
-                      </div>
-                      <div class="filter-group">
-                        <input type="date" id="taskFilterDueDate">
-                      </div>
-                      <div class="filter-group">
-                        <button class="icon-btn ghost" id="exportExcel" type="button" title="Export to Excel" aria-label="Export to Excel">
-                          <span class="material-symbols-outlined">file_download</span>
-                        </button>
-                        <button class="icon-btn ghost" id="exportPdf" type="button" title="Export to PDF" aria-label="Export to PDF">
-                          <span class="material-symbols-outlined">picture_as_pdf</span>
-                        </button>
-                      </div>
+                      </label>
                     </div>
-                  </div>
-                  
-                  <div class="table-wrap">
-                    <table class="data-table" id="tasksTable">
-                      <thead>
-                        <tr>
-                          <th>Task ID</th>
-                          <th>Title</th>
-                          <th>Employee Type</th>
-                          <th>Assigned To</th>
-                          <th>Assigned By</th>
-                          <th>Priority</th>
-                          <th>Status</th>
-                          <th>Start Date</th>
-                          <th>Due Date</th>
-                          <th>Completed</th>
-                        </tr>
-                      </thead>
-                      <tbody id="taskTableBody">
-                        <tr><td colspan="11" class="data-empty" id="taskTableEmpty">Loading tasks...</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <!-- Monthly Reports -->
-                <div class="tasks-reports-section">
-                  <div class="section-title">Monthly Reports</div>
-                  
-                  <div class="report-controls">
-                    <div class="filter-group">
-                      <select id="reportYear">
-                        <option value="2026">2026</option>
-                      </select>
-                      <select id="reportMonth">
-                        <option value="11">November</option>
-                      </select>
-                    </div>
-                    <div class="filter-group">
-                      <select id="reportType">
-                        <option value="company">Company-wide</option>
-                        <option value="human">All Human Employees</option>
-                        <option value="ai">All AI Employees</option>
-                        <option value="individual">Individual Employee</option>
-                      </select>
-                    </div>
-                    <div class="filter-group">
-                      <select id="reportEmployeeType">
-                        <option value="">Human</option>
-                        <option value="ai">AI</option>
-                      </select>
-                    </div>
-                    <div class="filter-group">
-                      <input type="text" id="reportEmployee" placeholder="Employee ID or name">
-                    </div>
-                    <button class="period-select" id="reportGenerate" type="button">Generate Report</button>
-                  </div>
-
-                  <div id="tasksReportTotals" class="report-totals"></div>
-                  
-                  <div class="table-wrap">
-                    <table class="data-table">
-                      <thead>
-                        <tr>
-                          <th>Period</th>
-                          <th>Total Assigned</th>
-                          <th>Completed</th>
-                          <th>Pending</th>
-                          <th>Overdue</th>
-                          <th>Completion Rate</th>
-                        </tr>
-                      </thead>
-                      <tbody id="reportTable">
-                        <tr><td colspan="6" class="data-empty">Generate a report to see data</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ---------- CHIEF OF STAFF (Phase 03.3) ---------- -->
-          <section id="view-chief" class="agent-view" data-agent="chief">
-            <div class="tasks-page chief-page">
-              <header class="tasks-header">
-                <div>
-                  <small>ACULYZE AI STUDIO</small>
-                  <h2>Chief of Staff</h2>
-                  <p class="admin-sub">Hand over an objective, approve the plan, track what happens.</p>
-                </div>
-              </header>
-
-              <!-- Stage spine: this workflow really is a sequence, so the
-                   numbered markers carry meaning rather than decorate. -->
-              <ol class="chief-steps" id="chiefSteps">
-                <li class="chief-step is-current" data-step="objective">
-                  <span class="chief-step-num">01</span><span class="chief-step-label">Objective</span>
-                </li>
-                <li class="chief-step" data-step="plan">
-                  <span class="chief-step-num">02</span><span class="chief-step-label">Plan</span>
-                </li>
-                <li class="chief-step" data-step="approval">
-                  <span class="chief-step-num">03</span><span class="chief-step-label">Approval</span>
-                </li>
-                <li class="chief-step" data-step="report">
-                  <span class="chief-step-num">04</span><span class="chief-step-label">Report</span>
-                </li>
-              </ol>
-
-              <!-- Clarification: the Chief asks instead of guessing (§3) -->
-              <div class="chief-notice" id="chiefClarify" hidden role="status">
-                <div class="chief-notice-title" id="chiefClarifyTitle">A few details are missing before this can be planned</div>
-                <ul id="chiefMissing"></ul>
-                <div class="chief-notice-hint" id="chiefClarifyHint">
-                  Put what you can in <strong>Detail and constraints</strong>, then draft again. If it is
-                  not something you can supply, reword the objective and try again.
-                </div>
-              </div>
-
-              <div class="chief-error" id="chiefError" hidden role="alert"></div>
-
-              <div class="chief-layout">
-                <!-- 01 · Objective -->
-                <div class="chief-compose" id="chiefCompose">
-                  <label class="chief-field">
-                    <span class="chief-label">What do you want done?</span>
-                    <textarea id="chiefObjective" rows="4" maxlength="2000"
-                      placeholder="Launch the Q1 pricing page refresh for the marketing site"></textarea>
-                  </label>
-
-                  <label class="chief-field">
-                    <span class="chief-label">Detail and constraints</span>
-                    <textarea id="chiefDescription" rows="3" maxlength="4000"
-                      placeholder="Anything that limits the approach — scope, tone, systems to touch"></textarea>
-                  </label>
-
-                  <div class="chief-field-row">
-                    <label class="chief-field">
-                      <span class="chief-label">Wanted by</span>
-                      <input type="date" id="chiefDeadline">
+                    <label class="tm-field">
+                      <span>Who cares about the result</span>
+                      <input type="text" id="chiefStakeholders" maxlength="300" placeholder="Marketing, design, sales">
                     </label>
-                    <label class="chief-field">
-                      <span class="chief-label">Priority</span>
-                      <select id="chiefPriority">
-                        <option value="low">Low</option>
-                        <option value="medium" selected>Medium</option>
-                        <option value="high">High</option>
-                        <option value="urgent">Urgent</option>
-                      </select>
-                    </label>
-                  </div>
+                    <div class="cs-compose-actions">
+                      <button class="utility-primary" id="chiefDraftBtn" type="button">Draft a plan</button>
+                      <p>Nothing is assigned until you approve the plan.</p>
+                    </div>
+                  </form>
 
-                  <label class="chief-field">
-                    <span class="chief-label">Stakeholders</span>
-                    <input type="text" id="chiefStakeholders" maxlength="300"
-                      placeholder="Marketing, design, sales">
-                  </label>
-
-                  <div class="chief-actions">
-                    <button class="utility-primary" id="chiefDraftBtn" type="button">Draft a plan</button>
-                    <span class="muted" id="chiefDraftHint">Nothing is assigned until you approve.</span>
-                  </div>
+                  <aside class="cs-plan-card" id="chiefSummary" hidden aria-live="polite">
+                    <span class="cs-plan-status" id="chiefStatus">Draft</span>
+                    <h3 id="chiefPlanTitle"></h3>
+                    <p class="cs-plan-summary" id="chiefSummaryText"></p>
+                    <div class="chief-progress" role="progressbar" aria-label="Objective progress"
+                         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="chiefProgress">
+                      <div class="chief-progress-fill" id="chiefProgressFill" style="width:0%"></div>
+                    </div>
+                    <p class="cs-plan-progress" id="chiefProgressText">0% complete</p>
+                    <dl class="cs-plan-stats">
+                      <div><dt>Steps</dt><dd id="chiefStatTotal">0</dd></div>
+                      <div><dt>Done</dt><dd id="chiefStatDone">0</dd></div>
+                      <div><dt>Blocked</dt><dd id="chiefStatBlocked">0</dd></div>
+                      <div><dt>Late</dt><dd id="chiefStatOverdue">0</dd></div>
+                    </dl>
+                    <div class="cs-plan-actions" id="chiefApprovalActions" hidden>
+                      <button class="utility-primary" id="chiefApproveBtn" type="button">Approve and create tasks</button>
+                      <button class="utility-secondary" id="chiefRejectBtn" type="button">Reject plan</button>
+                    </div>
+                    <div class="cs-plan-actions" id="chiefReportActions" hidden>
+                      <button class="utility-secondary" id="chiefReportBtn" type="button">View report</button>
+                    </div>
+                    <p class="cs-plan-provider" id="chiefProvider"></p>
+                  </aside>
                 </div>
 
-                <!-- 02 · Plan summary -->
-                <aside class="chief-summary" id="chiefSummary" hidden aria-live="polite">
-                  <div class="chief-summary-head">
-                    <span class="chief-status" id="chiefStatus">Draft</span>
-                    <span class="chief-meta mono" id="chiefPlanId"></span>
-                  </div>
+                <section class="cs-steps" id="chiefSubtasks" hidden aria-labelledby="csStepsHead">
+                  <h3 id="csStepsHead">Steps in this plan</h3>
+                  <ol class="cs-sub-list" id="chiefSubtaskBody"></ol>
+                </section>
 
-                  <p class="chief-summary-text" id="chiefSummaryText"></p>
+                <section class="chief-report" id="chiefReport" hidden aria-labelledby="csReportHead">
+                  <h3 id="csReportHead">Report</h3>
+                  <pre class="chief-report-body" id="chiefReportBody"></pre>
+                  <button class="utility-secondary" id="chiefReportClose" type="button">Hide report</button>
+                </section>
+              </section>
 
-                  <dl class="chief-stats">
-                    <div><dt>Subtasks</dt><dd class="mono" id="chiefStatTotal">0</dd></div>
-                    <div><dt>Complete</dt><dd class="mono" id="chiefStatDone">0</dd></div>
-                    <div><dt>Blocked</dt><dd class="mono" id="chiefStatBlocked">0</dd></div>
-                    <div><dt>Overdue</dt><dd class="mono" id="chiefStatOverdue">0</dd></div>
-                  </dl>
-
-                  <div class="chief-progress" role="progressbar" aria-label="Objective progress"
-                       aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="chiefProgress">
-                    <div class="chief-progress-fill" id="chiefProgressFill" style="width:0%"></div>
-                  </div>
-                  <div class="chief-progress-text mono" id="chiefProgressText">0%</div>
-
-                  <div class="chief-provider muted mono" id="chiefProvider"></div>
-
-                  <div class="chief-actions chief-actions-stack" id="chiefApprovalActions" hidden>
-                    <button class="utility-primary" id="chiefApproveBtn" type="button">Approve and create tasks</button>
-                    <button class="utility-secondary" id="chiefRejectBtn" type="button">Reject plan</button>
-                  </div>
-                  <div class="chief-actions chief-actions-stack" id="chiefReportActions" hidden>
-                    <button class="utility-secondary" id="chiefReportBtn" type="button">View report</button>
-                  </div>
-                </aside>
-              </div>
-
-              <!-- 03 · Subtasks -->
-              <div class="tasks-table-section" id="chiefSubtasks" hidden>
-                <div class="section-title">Subtasks</div>
-                <div class="table-wrap">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Title</th>
-                        <th scope="col">Assignee</th>
-                        <th scope="col">Depends on</th>
-                        <th scope="col">Due</th>
-                        <th scope="col">Expected deliverable</th>
-                        <th scope="col">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="chiefSubtaskBody">
-                      <tr><td colspan="7" class="data-empty">No plan yet</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- 04 · Consolidated report -->
-              <div class="chief-report" id="chiefReport" hidden>
-                <div class="section-title">Consolidated report</div>
-                <pre class="chief-report-body" id="chiefReportBody"></pre>
-                <div class="chief-actions">
-                  <button class="utility-secondary" id="chiefReportClose" type="button">Back to plan</button>
-                </div>
-              </div>
-
-              <!-- Previous objectives -->
-              <div class="tasks-table-section" id="chiefHistory" hidden>
-                <div class="section-title">Your objectives</div>
-                <div class="table-wrap">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Objective</th>
-                        <th scope="col">Subtasks</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Opened</th>
-                        <th scope="col"></th>
-                      </tr>
-                    </thead>
-                    <tbody id="chiefHistoryBody">
-                      <tr><td colspan="5" class="data-empty">Nothing yet</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <!-- Plans -->
+              <section id="csPanelHistory" role="tabpanel" aria-labelledby="csTabHistory" data-cs-panel="history" hidden>
+                <ul class="cs-plans" id="chiefHistoryBody"></ul>
+              </section>
             </div>
           </section>
 
@@ -1395,14 +1310,6 @@
           </section>
 
           <!-- ---------- TASK MODAL ---------- -->
-          <div class="utility-overlay" id="taskModal" hidden>
-            <section class="utility-dialog" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
-              <header>
-                <div><small>ACULYZE AI STUDIO</small><h2 id="taskModalTitle">Task</h2></div>
-                <button class="icon-btn ghost" id="taskModalClose" type="button" aria-label="Close">×</button>
-              </header>
-              <div class="utility-content" id="taskModalBody"></div>
-            </section>
           </section>
         </main>
 
@@ -1668,7 +1575,7 @@
   <script type="module" src="js/voice.js"></script>
   <script type="module" src="js/api.js"></script>
   <script type="module" src="js/mascot.js"></script>
-  <script type="module" src="js/aculyze-studio.js?v=20261120c"></script>
+  <script type="module" src="js/aculyze-studio.js?v=20261121a"></script>
   <script type="module" src="js/voice-assistant.js?v=20261112f"></script>
 </body>
 </html>

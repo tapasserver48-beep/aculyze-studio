@@ -7,6 +7,8 @@
  * POST   /api/chief/plans/:id/approve  Approve → creates tasks via Central Task Engine
  * POST   /api/chief/plans/:id/reject   Reject the draft
  * GET    /api/chief/plans/:id/report Consolidated result for the initiating user
+ * GET    /api/chief/staff            Staff monitor: workload, health, tasks needing attention
+ * POST   /api/chief/staff/followups  Apply chosen follow-ups (nudge / reassign)
  *
  * Every route requires a signed-in human session. Identity and authority are
  * resolved from the session server-side; nothing about an AI identity is read
@@ -25,6 +27,7 @@ const {
   getPlan,
   DELEGATION_ROLES,
 } = require('./index');
+const { getStaffOverview, applyFollowups } = require('./monitor');
 
 function sendError(res, err) {
   const status = err.status || 500;
@@ -176,6 +179,27 @@ function createChiefOfStaffRouter({ dataDir }) {
         return res.status(403).json({ error: 'You do not have access to this plan' });
       }
       res.json(await buildReport({ dataDir, planId: plan.id }));
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // ---- Staff monitoring --------------------------------------------
+  // Workload and health for every employee in the viewer's authority, plus
+  // the tasks that need a follow-up. Delegation roles only.
+  router.get('/staff', async (req, res) => {
+    try {
+      res.json(await getStaffOverview({ dataDir, userId: req.user.id }));
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // Apply follow-ups the human selected (nudge or reassign). Nothing is
+  // applied automatically; every action is re-validated server-side.
+  router.post('/staff/followups', async (req, res) => {
+    try {
+      res.json(await applyFollowups({ dataDir, userId: req.user.id, actions: req.body?.actions }));
     } catch (err) {
       sendError(res, err);
     }

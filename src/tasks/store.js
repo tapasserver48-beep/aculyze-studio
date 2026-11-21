@@ -109,6 +109,7 @@ async function ensureSchema() {
   await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS initiating_user_id TEXT');
   await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS expected_deliverable TEXT');
   await pg.query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dependencies JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pg.query('ALTER TABLE tasks ADD COLUMN IF NOT EXISTS progress INTEGER');
 
   // Indexes for efficient querying
   await pg.query('CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks (assigned_to_type, assigned_to_id)');
@@ -183,7 +184,9 @@ async function listTasks(dataDir, filters = {}) {
     let idx = 1;
 
     if (assignedTo) {
-      conditions.push(`(assigned_to_type = 'human' AND assigned_to_id = $${idx++}) OR (assigned_to_type = 'ai' AND assigned_to_id = $${idx++})`);
+      // Outer parens matter: without them `A OR B AND status = …` ignores the
+      // other filters for every human-assigned row.
+      conditions.push(`((assigned_to_type = 'human' AND assigned_to_id = $${idx++}) OR (assigned_to_type = 'ai' AND assigned_to_id = $${idx++}))`);
     }
     if (status) {
       conditions.push(`status = $${idx++}`);
@@ -287,22 +290,32 @@ async function createTask(dataDir, { title, description, assignedTo, assignedBy,
   return task;
 }
 
+// Columns updateTask may write. Keys are interpolated into SQL as column
+// names, so anything outside this list is dropped — never trust caller keys.
+const UPDATABLE_COLUMNS = new Set([
+  'title', 'description', 'assigned_to_type', 'assigned_to_id', 'priority', 'status',
+  'start_date', 'due_date', 'completed_at', 'pending_reason', 'parent_task_id',
+  'initiating_user_id', 'expected_deliverable', 'dependencies', 'progress', 'updated_at',
+]);
+
 async function updateTask(dataDir, id, updates) {
   const nowTs = now();
-  const updatesWithTs = { ...updates, updated_at: nowTs };
+  const updatesWithTs = {};
+  for (const [k, v] of Object.entries({ ...(updates || {}), updated_at: nowTs })) {
+    if (UPDATABLE_COLUMNS.has(k)) updatesWithTs[k] = v;
+  }
 
   if (pg.enabled()) {
     const fields = [];
     const params = [];
     let idx = 1;
     for (const [k, v] of Object.entries(updatesWithTs)) {
-      if (k === 'id') continue;
       fields.push(`${k} = $${idx++}`);
-      params.push(v);
+      params.push(k === 'dependencies' ? JSON.stringify(Array.isArray(v) ? v : []) : v);
     }
     params.push(id);
 
-    const result = await pg.query(`UPDATE tasks SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`, [...params, id]);
+    const result = await pg.query(`UPDATE tasks SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`, params);
     if (!result.rows.length) return null;
     const r = result.rows[0];
     return { ...r, created_at: Number(r.created_at), updated_at: Number(r.updated_at), start_date: r.start_date ? Number(r.start_date) : null, due_date: r.due_date ? Number(r.due_date) : null, completed_at: r.completed_at ? Number(r.completed_at) : null };
@@ -427,11 +440,12 @@ async function getTaskComments(dataDir, taskId) {
 // ---------- Reports ----------
 
 async function getMonthlyReport(dataDir, { employeeId, employeeType, year, month }) {
-  const from = new Date(year, month, 1).getTime();
-  const to = new Date(year, month + 1, 0).getTime() + 86399999;
+  // `month` is 1-based (1 = January); Date() months are 0-based.
+  const from = new Date(year, month - 1, 1).getTime();
+  const to = new Date(year, month, 0).getTime() + 86399999;
 
   const tasks = await listTasks(dataDir, { limit: 10000 });
-  const filtered = tasks.filter(t => Number(t.created_at) >= from && Number(t.created_at) <= to);
+  let filtered = tasks.filter(t => Number(t.created_at) >= from && Number(t.created_at) <= to);
 
   if (employeeId) {
     filtered = filtered.filter(t => t.assigned_to_id === employeeId);
@@ -457,6 +471,7 @@ async function getMonthlyReport(dataDir, { employeeId, employeeType, year, month
     },
     by_employee: {},
   };
+  stats.completedRate = stats.total ? Math.round((stats.completed / stats.total) * 100) : 0;
 
   for (const t of filtered) {
     const key = t.assigned_to_type + ':' + t.assigned_to_id;

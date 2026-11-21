@@ -33,14 +33,123 @@ const {
 } = require('./store');
 const { requireUser, requireRole } = require('../auth/authorize');
 
+const MANAGER_ROLES = ['admin', 'founder', 'manager'];
+const isManager = (user) => !!user && MANAGER_ROLES.includes(user.role);
+
+// Fields a PATCH /:id may change. Assignees may only move their own work
+// forward; managers may also re-plan and reassign.
+const OWNER_EDITABLE = ['status', 'progress', 'description', 'pending_reason'];
+const MANAGER_EDITABLE = [...OWNER_EDITABLE, 'title', 'priority', 'start_date', 'due_date',
+  'assigned_to_type', 'assigned_to_id', 'expected_deliverable'];
+const VALID_STATUSES = Object.values(TASK_STATUS);
+const VALID_PRIORITIES = Object.values(TASK_PRIORITY);
+const VALID_PENDING_REASONS = ['waiting_for_info', 'awaiting_approval', 'blocked', 'deferred'];
+
+/** Pick and validate allowed PATCH fields. Returns { updates } or { error }. */
+function pickTaskUpdates(body, allowed) {
+  const updates = {};
+  for (const key of allowed) {
+    if (body[key] !== undefined) updates[key] = body[key];
+  }
+  if ('status' in updates && !VALID_STATUSES.includes(updates.status)) return { error: 'Invalid status' };
+  if ('priority' in updates && !VALID_PRIORITIES.includes(updates.priority)) return { error: 'Invalid priority' };
+  if ('pending_reason' in updates && updates.pending_reason !== null && !VALID_PENDING_REASONS.includes(updates.pending_reason)) {
+    return { error: 'Invalid pending_reason' };
+  }
+  if ('assigned_to_type' in updates && !['human', 'ai'].includes(updates.assigned_to_type)) return { error: 'Invalid assigned_to_type' };
+  if ('progress' in updates) updates.progress = Math.max(0, Math.min(100, Number(updates.progress) || 0));
+  if ('description' in updates) updates.description = String(updates.description ?? '').slice(0, 5000);
+  if ('title' in updates) {
+    updates.title = String(updates.title ?? '').trim().slice(0, 300);
+    if (!updates.title) return { error: 'title cannot be empty' };
+  }
+  for (const k of ['start_date', 'due_date']) {
+    if (k in updates && updates[k] !== null) {
+      const n = Number(updates[k]);
+      if (!Number.isFinite(n)) return { error: `Invalid ${k}` };
+      updates[k] = n;
+    }
+  }
+  if (updates.status === 'completed') updates.completed_at = Date.now();
+  return { updates };
+}
+
 function createTasksRouter({ dataDir }) {
   const router = express.Router();
 
-  // List tasks (with optional filters)
+  /**
+   * Resolve the AI employee a human is acting for on an AI-assigned task.
+   * Identity comes from the task's server-side assignment — never from a
+   * browser header. Only managers or the user who initiated the task may act.
+   */
+  async function resolveAiActor(req, res, next) {
+    try {
+      const task = await getTask(dataDir, req.params.id);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      if (task.assigned_to_type !== 'ai') {
+        return res.status(403).json({ error: 'Access denied: task is not assigned to an AI employee', code: 'forbidden' });
+      }
+      if (!isManager(req.user) && task.initiating_user_id !== req.user.id) {
+        return res.status(403).json({ error: 'Access denied', code: 'forbidden' });
+      }
+      const { resolveEmployee } = require('../execution/context');
+      const resolved = await resolveEmployee(dataDir, task.assigned_to_id);
+      if (!resolved.valid) return res.status(403).json({ error: resolved.reason, code: 'forbidden' });
+      req.aiEmployee = resolved.employee;
+      next();
+    } catch (err) {
+      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
+    }
+  }
+
+  // Overall summary — declared before /:id so it is not shadowed by it.
+  // Non-managers only see stats for tasks assigned to them.
+  router.get('/summary', requireUser, async (req, res) => {
+    try {
+      const filters = { limit: 10000 };
+      if (!isManager(req.user)) filters.assignedTo = req.user.id;
+      const allTasks = await listTasks(dataDir, filters);
+      const count = (pred) => allTasks.filter(pred).length;
+      const stats = {
+        total: allTasks.length,
+        completed: count(t => t.status === 'completed'),
+        pending: count(t => t.status === 'pending'),
+        in_progress: count(t => t.status === 'in_progress'),
+        overdue: count(t => t.status !== 'completed' && t.due_date && Number(t.due_date) < Date.now()),
+        by_status: Object.fromEntries(VALID_STATUSES.map(s => [s, count(t => t.status === s)])),
+        by_priority: Object.fromEntries(VALID_PRIORITIES.map(p => [p, count(t => t.priority === p)])),
+      };
+      res.json({ stats });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
+    }
+  });
+
+  // People tasks can be assigned to: humans + active AI employees, by name.
+  // Lets the UI show names instead of raw ids. Declared before /:id.
+  router.get('/people', requireUser, async (req, res) => {
+    try {
+      const authStore = require('../auth/store');
+      const { listEmployees } = require('../employees/store');
+      const users = await authStore.listUsers(dataDir);
+      const employees = await listEmployees(dataDir);
+      const people = [
+        ...users.map(u => ({ id: u.id, name: u.name || u.email || 'Unnamed', kind: 'human', role: u.role || 'employee' })),
+        ...employees
+          .filter(e => e.employee_type === 'ai' && e.status === 'active')
+          .map(e => ({ id: e.id, name: e.name, kind: 'ai', role: e.designation || 'AI employee', code: e.employee_code })),
+      ];
+      res.json({ people });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
+    }
+  });
+
+  // List tasks (with optional filters). Non-managers only see their own tasks.
   router.get('/', requireUser, async (req, res) => {
     try {
       const filters = {
-        assignedTo: req.query.assignedTo,
+        assignedTo: isManager(req.user) ? req.query.assignedTo : req.user.id,
         status: req.query.status,
         priority: req.query.priority,
         employeeType: req.query.employeeType,
@@ -93,21 +202,9 @@ function createTasksRouter({ dataDir }) {
       const isOwner = task.assigned_to_type === 'human' && task.assigned_to_id === req.user.id;
       const isAdmin = req.user.role === 'admin' || req.user.role === 'founder' || req.user.role === 'manager';
       
-      // AI can access their own tasks (validated server-side only)
-      const aiEmployeeId = req.header('X-AI-Employee-Id');
-      const isAiAssigned = aiEmployeeId && task.assigned_to_type === 'ai' && task.assigned_to_id === aiEmployeeId;
-
-      if (!isOwner && !isAdmin && !isAiAssigned) {
+      // X-AI-Employee-Id is never trusted: a browser could forge it.
+      if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Access denied' });
-      }
-
-      if (isAiAssigned) {
-        // Validate AI employee
-        const { findById } = require('../employees/store');
-        const employee = await findById(dataDir, aiEmployeeId);
-        if (!employee || employee.status !== 'active') {
-          return res.status(403).json({ error: 'Invalid AI employee' });
-        }
       }
 
       res.json({ task });
@@ -153,8 +250,10 @@ function createTasksRouter({ dataDir }) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      const updates = req.body || {};
-      const updated = await updateTask(dataDir, req.params.id, updates);
+      const picked = pickTaskUpdates(req.body || {}, isAdmin ? MANAGER_EDITABLE : OWNER_EDITABLE);
+      if (picked.error) return res.status(422).json({ error: picked.error });
+      if (!Object.keys(picked.updates).length) return res.status(422).json({ error: 'No editable fields supplied' });
+      const updated = await updateTask(dataDir, req.params.id, picked.updates);
       res.json({ task: updated });
     } catch (err) {
       res.status(500).json({ error: String(err.message || err).slice(0, 200) });
@@ -186,41 +285,6 @@ function createTasksRouter({ dataDir }) {
 
       const tasks = await listTasks(dataDir, { assignedTo: employeeId });
       res.json({ tasks });
-    } catch (err) {
-      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
-    }
-  });
-
-  // Overall summary (no filters)
-  router.get('/summary', requireUser, async (req, res) => {
-    try {
-      const allTasks = await listTasks(dataDir, { limit: 10000 });
-      const stats = {
-        total: allTasks.length,
-        completed: allTasks.filter(t => t.status === 'completed').length,
-        pending: allTasks.filter(t => t.status === 'pending').length,
-        in_progress: allTasks.filter(t => t.status === 'in_progress').length,
-        overdue: allTasks.filter(t => {
-          if (t.status === 'completed') return false;
-          if (!t.due_date) return false;
-          return Number(t.due_date) < Date.now();
-        }).length,
-        by_status: {
-          todo: allTasks.filter(t => t.status === 'todo').length,
-          in_progress: allTasks.filter(t => t.status === 'in_progress').length,
-          pending: allTasks.filter(t => t.status === 'pending').length,
-          under_review: allTasks.filter(t => t.status === 'under_review').length,
-          completed: allTasks.filter(t => t.status === 'completed').length,
-          cancelled: allTasks.filter(t => t.status === 'cancelled').length,
-        },
-        by_priority: {
-          low: allTasks.filter(t => t.priority === 'low').length,
-          medium: allTasks.filter(t => t.priority === 'medium').length,
-          high: allTasks.filter(t => t.priority === 'high').length,
-          urgent: allTasks.filter(t => t.priority === 'urgent').length,
-        }
-      };
-      res.json({ stats });
     } catch (err) {
       res.status(500).json({ error: String(err.message || err).slice(0, 200) });
     }
@@ -271,6 +335,19 @@ function createTasksRouter({ dataDir }) {
     }
   });
 
+  // Get task comments (same access rule as reading the task)
+  router.get('/:id/comments', requireUser, async (req, res) => {
+    try {
+      const task = await getTask(dataDir, req.params.id);
+      if (!task) return res.status(404).json({ error: 'Task not found' });
+      const isOwner = task.assigned_to_type === 'human' && task.assigned_to_id === req.user.id;
+      if (!isOwner && !isManager(req.user)) return res.status(403).json({ error: 'Access denied' });
+      res.json({ comments: await getTaskComments(dataDir, req.params.id) });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message || err).slice(0, 200) });
+    }
+  });
+
   // Get task activity
   router.get('/:id/activity', async (req, res) => {
     try {
@@ -311,7 +388,7 @@ function createTasksRouter({ dataDir }) {
   // These endpoints are used by the trusted agent runtime, not browser clients
   
   // AI acknowledges a task assignment (internal use)
-  router.patch('/:id/acknowledge', requireUser, async (req, res) => {
+  router.patch('/:id/acknowledge', requireUser, resolveAiActor, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -350,7 +427,7 @@ function createTasksRouter({ dataDir }) {
   });
 
   // AI updates task progress (progress percentage or description) - internal use
-  router.patch('/:id/progress', requireUser, async (req, res) => {
+  router.patch('/:id/progress', requireUser, resolveAiActor, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -395,7 +472,7 @@ function createTasksRouter({ dataDir }) {
   });
 
   // AI changes task status with validation - internal use
-  router.patch('/:id/status', requireUser, async (req, res) => {
+  router.patch('/:id/status', requireUser, resolveAiActor, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -464,7 +541,7 @@ function createTasksRouter({ dataDir }) {
   });
 
   // AI reports a blocker (sets task to pending) - internal use
-  router.patch('/:id/blocker', requireUser, async (req, res) => {
+  router.patch('/:id/blocker', requireUser, resolveAiActor, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
@@ -508,7 +585,7 @@ function createTasksRouter({ dataDir }) {
   });
 
   // AI adds a comment to a task - internal use
-  router.post('/:id/comments/ai', requireUser, async (req, res) => {
+  router.post('/:id/comments/ai', requireUser, resolveAiActor, async (req, res) => {
     try {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });

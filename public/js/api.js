@@ -1008,6 +1008,16 @@ export async function tasksAddComment(taskId, content) {
   });
 }
 
+/** People tasks can be assigned to: [{ id, name, kind: 'human'|'ai', role }]. */
+export async function tasksPeople() {
+  return authRequest('/api/tasks/people');
+}
+
+/** Comments on a task, oldest first. */
+export async function tasksComments(taskId) {
+  return authRequest(`/api/tasks/${encodeURIComponent(taskId)}/comments`);
+}
+
 /** Get task activity. */
 export async function tasksActivity(taskId) {
   return authRequest(`/api/tasks/${taskId}/activity`);
@@ -1193,4 +1203,14 @@ export function chiefReject(planId, reason) {
 
 export function chiefReport(planId) {
   return chiefFetch(`/api/chief/plans/${encodeURIComponent(planId)}/report`);
+}
+
+/** Staff monitor: { totals, staff[], attention[] } for employees in your authority. */
+export function chiefStaff() {
+  return chiefFetch('/api/chief/staff');
+}
+
+/** Apply chosen follow-ups: actions = [{ taskId, type: 'nudge'|'reassign', assigneeId? }]. */
+export function chiefFollowups(actions) {
+  return chiefFetch('/api/chief/staff/followups', { method: 'POST', body: JSON.stringify({ actions }) });
 }
