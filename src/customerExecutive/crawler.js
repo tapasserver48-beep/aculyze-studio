@@ -45,11 +45,16 @@ function generateCrawlJobId() {
 
 /**
  * Convert IP range start to a comparable number
+ * Uses unsigned 32-bit integer arithmetic
  */
 function ipToNumber(ip) {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4) return -1;
-  return (parts[0] << 24) + (parts[1] << 16) + (parts[2] << 8) + parts[3];
+  // Use >>> 0 to force unsigned 32-bit interpretation
+  return ((parts[0] << 24) >>> 0) + 
+         ((parts[1] << 16) >>> 0) + 
+         ((parts[2] << 8) >>> 0) + 
+         (parts[3] >>> 0);
 }
 
 /**
