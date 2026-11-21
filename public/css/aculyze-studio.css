@@ -6740,3 +6740,14 @@ body.is-unauthenticated .foppy-wrap { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .chief-progress-fill { transition: none; }
 }
+
+/* Clarification notice — blocking (warn) vs advisory (accent) */
+.chief-notice-hint {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.chief-notice-hint strong { color: var(--text-sub); font-weight: 650; }
+.chief-notice[data-mode="advisory"] { border-left-color: var(--accent); }
+.chief-notice[data-mode="advisory"] .chief-notice-title { color: var(--accent-ink); }

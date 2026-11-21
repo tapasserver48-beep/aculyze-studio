@@ -223,6 +223,65 @@ async function main() {
       `${registry.candidates.length} candidates, chief excluded`);
     void picks;
 
+    /* ===== 5b. Regression: prompt must carry date + full roster ===== */
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const promptText = chief.buildPrompt({ title: 'Test objective' }, registry);
+    check('5b prompt states today\'s date (model must not ask for it)',
+      promptText.includes(todayStr), todayStr);
+    check('5c prompt says there are no teams/departments',
+      /no teams, departments/i.test(promptText));
+    check('5d prompt lists every roster member by id',
+      registry.candidates.every((c) => promptText.includes(c.id)),
+      `${registry.candidates.length} ids`);
+
+    /* ===== 5e. Roster reflects the initiator's assignment authority ===== */
+    const founderReg = await chief.buildRegistry(dataDir, chiefId, 'founder');
+    const managerReg = await chief.buildRegistry(dataDir, chiefId, 'manager');
+    check('5e ordinary employees ARE in the roster (were wrongly excluded)',
+      founderReg.human.some((h) => h.name === 'Employee'),
+      `${founderReg.human.length} humans for a founder`);
+    check('5f founder may assign to every human', founderReg.human.length === 4,
+      `${founderReg.human.length}`);
+    check('5g manager may only assign to employees, never to admins',
+      managerReg.human.length === 2
+      && managerReg.human.every((h) => h.role.startsWith('employee')),
+      `${managerReg.human.length}: ${managerReg.human.map((h) => h.role).join(', ')}`);
+
+    /* ===== 5h. Caveats ride along instead of blocking ===== */
+    const caveated = await chief.draftPlan({
+      dataDir,
+      userId: founder.id,
+      input: { title: 'Objective with a caveat' },
+      modelCall: async () => modelReply(registry.candidates, {
+        missing: ['Confirm the launch window'],
+      }),
+    });
+    check('5h a caveat does not block a usable plan',
+      caveated.status === 'draft' && caveated.plan.analysis.caveats.length === 1,
+      `status=${caveated.status}`);
+    check('5i caveat is preserved for the approver to check',
+      caveated.plan.analysis.caveats[0] === 'Confirm the launch window');
+
+    /* ===== 5j. Due dates may not exceed the objective deadline ===== */
+    const deadlineIso = new Date(Date.now() + 10 * 86400000).toISOString();
+    const clamped = await chief.draftPlan({
+      dataDir,
+      userId: founder.id,
+      input: { title: 'Deadline clamping probe', deadline: deadlineIso },
+      modelCall: async () => modelReply(registry.candidates, {
+        subtasks: [
+          { title: 'Deliberately too slow', assignee_id: registry.candidates[0].id, due_in_days: 400, deliverable: 'x' },
+        ],
+      }),
+    });
+    const clampedSub = clamped.plan.subtasks[0];
+    check('5j subtask due date clamped to the objective deadline',
+      clampedSub.due_date <= new Date(deadlineIso).getTime(),
+      `${new Date(clampedSub.due_date).toISOString().slice(0, 10)} vs deadline ${deadlineIso.slice(0, 10)}`);
+    check('5k due_in_days recomputed after clamping',
+      clampedSub.due_in_days !== null && clampedSub.due_in_days <= 10,
+      `${clampedSub.due_in_days} day(s)`);
+
     /* ===== 6. Human approval ===== */
     await login(founder.email);
     const approveRes = await api('POST', `/api/chief/plans/${openPlanId}/approve`, {});

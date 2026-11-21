@@ -8141,11 +8141,30 @@ function chiefError(msg) {
   el.textContent = msg;
 }
 
-function chiefClarify(missing) {
+function chiefClarify(missing, mode = 'blocking') {
   const box = chiefEl('chiefClarify');
   const list = chiefEl('chiefMissing');
+  const title = chiefEl('chiefClarifyTitle');
+  const hint = chiefEl('chiefClarifyHint');
   if (!box || !list) return;
-  if (!missing || !missing.length) { box.hidden = true; list.innerHTML = ''; return; }
+  if (!missing || !missing.length) {
+    box.hidden = true;
+    list.innerHTML = '';
+    return;
+  }
+  const advisory = mode === 'advisory';
+  box.dataset.mode = mode;
+  if (title) {
+    title.textContent = advisory
+      ? 'Confirm these when you review the plan'
+      : 'A few details are missing before this can be planned';
+  }
+  if (hint) {
+    hint.innerHTML = advisory
+      ? 'The plan below is ready to approve. Check these points first — approval is where you decide.'
+      : 'Put what you can in <strong>Detail and constraints</strong>, then draft again. '
+        + 'If it is not something you can supply, reword the objective and try again.';
+  }
   list.innerHTML = missing.map((m) => `<li>${esc(m)}</li>`).join('');
   box.hidden = false;
 }
@@ -8174,6 +8193,10 @@ function chiefRender(plan) {
   chiefEl('chiefPlanId').textContent = plan.planId || '';
   chiefEl('chiefSummaryText').textContent =
     plan.analysis?.summary || plan.objective?.title || '';
+
+  // Anything the model wanted confirmed rides along with the plan rather than
+  // blocking it — see draftPlan(). Approval is the checkpoint for these.
+  chiefClarify(plan.analysis?.caveats, 'advisory');
 
   const s = plan.summary || { total: 0, completed: 0, blocked: 0, overdue: 0, progress: 0 };
   chiefEl('chiefStatTotal').textContent = s.total;

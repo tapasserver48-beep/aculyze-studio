@@ -22,6 +22,7 @@
 const { createRouterFromEnv } = require('../services/ai/router');
 const { listEmployees, initializeEmployee, EMPLOYEE_CODES } = require('../employees/store');
 const authStore = require('../auth/store');
+const { canAssignRole } = require('../auth/roles');
 const { createTask, getTask, addActivity } = require('../tasks/store');
 const { generatePlanId, savePlan, getPlan, listPlans, findOpenPlanForObjective } = require('./plans');
 
@@ -87,8 +88,14 @@ async function checkDelegationAuthority(dataDir, userId) {
 /**
  * Build the candidate roster the model is allowed to choose from. Every entry
  * is read from a real store — nothing here is invented (brief §4).
+ *
+ * Two different questions, two different rules:
+ *   - WHO MAY INITIATE/APPROVE → delegation roles only (checked separately).
+ *   - WHO MAY RECEIVE WORK     → anyone the initiator holds authority over.
+ * Filtering assignees by delegation role was wrong: a manager delegating to an
+ * employee is exactly the normal case, so every assignable human is listed.
  */
-async function buildRegistry(dataDir, chiefId) {
+async function buildRegistry(dataDir, chiefId, initiatorRole = 'founder') {
   const employees = await listEmployees(dataDir);
   const humans = await authStore.listUsers(dataDir);
 
@@ -101,20 +108,24 @@ async function buildRegistry(dataDir, chiefId) {
       role: e.designation || 'AI employee',
       kind: 'ai',
       about: e.description || '',
+      // Present in JSON mode, absent from the PG list query — use when we have it.
+      skills: Array.isArray(e.capabilities) ? e.capabilities : [],
     }));
 
+  // Brief §4: never assign outside the initiating user's authority.
   const human = humans
-    .filter(u => DELEGATION_ROLES.includes(u.role || 'employee'))
+    .filter(u => canAssignRole(initiatorRole, u.role || 'employee'))
     .map(u => ({
       id: u.id,
       code: null,
       name: u.name,
-      role: `${u.role} (human)`,
+      role: `${u.role || 'employee'} (human)`,
       kind: 'human',
       about: '',
+      skills: [],
     }));
 
-  return { candidates: [...human, ...ai], human, ai };
+  return { candidates: [...human, ...ai], human, ai, initiatorRole };
 }
 
 /* ------------------------------------------------------------------ *
@@ -138,26 +149,37 @@ function parseModelJson(raw) {
 }
 
 function buildPrompt(input, registry) {
+  const today = new Date().toISOString().slice(0, 10);
   const roster = registry.candidates
-    .map(c => `- id=${c.id} | ${c.name} | ${c.role}${c.about ? ` | ${c.about}` : ''}`)
+    .map((c) => {
+      const bits = [`- id=${c.id}`, c.code ? `code=${c.code}` : null, c.name, c.role];
+      if (c.skills && c.skills.length) bits.push(`skills: ${c.skills.join(', ')}`);
+      if (c.about) bits.push(c.about);
+      return bits.filter(Boolean).join(' | ');
+    })
     .join('\n');
 
   return [
     'You are the Chief of Staff of a company. Decompose the objective below into a small set of subtasks that real employees can complete.',
     '',
+    `Today's date is ${today}. Use it to convert due_in_days into calendar dates. Never ask for the date.`,
+    '',
     'Rules:',
     '- assignee_id MUST be copied exactly from the roster. Never invent an id, skill or person.',
+    '- The roster below is the complete company and everyone you may assign to. Do not ask for an employee list — it is printed below.',
+    '- This company has NO teams, departments or reporting groups. There is no field that identifies "the sales team" or any other team. Assign by role and skill instead, and never put team identification in missing.',
     '- Only include a subtask you can assign to someone in the roster. If nobody fits, leave subtasks empty and explain in missing.',
     `- Never assign more than ${MAX_SUBTASKS} subtasks.`,
     '- depends_on is an array of 0-based indexes of earlier subtasks in your own list. A subtask may only depend on a lower index. No cycles.',
-    '- due_in_days is an integer number of days from now, or null when there is no deadline.',
+    '- due_in_days is an integer number of days from today, or null when there is no deadline.',
     '- priority is one of: low, medium, high, urgent.',
-    '- missing lists essential information that is absent. If it is non-empty the objective cannot be planned yet.',
+    '- missing is ONLY for information the human author must supply — for example the target audience, a budget, or which product. It must never contain the date, the roster, or anything printed in this prompt.',
+    '- If the objective is clear enough to break into work, return an empty missing array and plan it. Do not stall on information you can infer.',
     '',
     'Reply with JSON only, no prose, in this exact shape:',
     '{',
     '  "summary": "one sentence restating the objective",',
-    '  "missing": ["essential info that is missing"],',
+    '  "missing": ["essential info the human must supply"],',
     '  "success_criteria": ["how we know this is done"],',
     '  "subtasks": [',
     '    {',
@@ -172,7 +194,7 @@ function buildPrompt(input, registry) {
     '  ]',
     '}',
     '',
-    'Roster:',
+    `Roster (${registry.candidates.length} people — this is everyone):`,
     roster || '(empty — no employees available)',
     '',
     'Objective:',
@@ -232,6 +254,19 @@ function validatePicks(subtasks, registry) {
  * Drafting
  * ------------------------------------------------------------------ */
 
+/**
+ * Turn the model's due_in_days into a timestamp, never later than the
+ * objective's deadline and never before now. Due dates are a hard constraint
+ * the model may not waive, so this is enforced here rather than trusted.
+ */
+function resolveDueDate(dueInDays, deadline, nowTs) {
+  if (!Number.isFinite(dueInDays)) return null;
+  let ts = nowTs + dueInDays * 86400000;
+  if (deadline) ts = Math.min(ts, deadline);
+  if (ts < nowTs) ts = nowTs;
+  return ts;
+}
+
 async function draftPlan({ dataDir, input, userId, modelCall = null }) {
   const authority = await checkDelegationAuthority(dataDir, userId);
   if (!authority.ok) {
@@ -261,7 +296,7 @@ async function draftPlan({ dataDir, input, userId, modelCall = null }) {
   }
 
   const chiefId = await getChiefId(dataDir);
-  const registry = await buildRegistry(dataDir, chiefId);
+  const registry = await buildRegistry(dataDir, chiefId, authority.role);
   registry.chiefId = chiefId;
 
   const startedAt = Date.now();
@@ -309,8 +344,14 @@ async function draftPlan({ dataDir, input, userId, modelCall = null }) {
   const rawSubs = Array.isArray(parsed.subtasks) ? parsed.subtasks : [];
   const { kept, dropped } = validatePicks(rawSubs, registry);
 
-  // Missing essential information → stop and ask (brief §3 step 3).
-  if (missing.length > 0 || kept.length === 0) {
+  // Brief §3 step 3 — ask when essential information is missing. But the
+  // question is "is there anything a human could approve?", not "did the model
+  // have a doubt". Blocking on a caveat while holding three concrete subtasks
+  // would trap the author on items they cannot supply (the date, the roster),
+  // so we only stop when there is nothing to put in front of them. Anything
+  // the model was unsure about travels with the plan as a caveat to confirm
+  // at approval — which is the human checkpoint anyway (brief §6).
+  if (kept.length === 0) {
     return {
       status: 'needs_clarification',
       reason: missing.length
@@ -342,22 +383,30 @@ async function draftPlan({ dataDir, input, userId, modelCall = null }) {
       summary: String(parsed.summary || ''),
       successCriteria: Array.isArray(parsed.success_criteria) ? parsed.success_criteria.map(String) : [],
       droppedAssignees: dropped,
+      // Non-blocking: things the model wanted confirmed before approval.
+      caveats: missing,
     },
-    subtasks: kept.map((s, i) => ({
-      key: `s${i + 1}`,
-      title: String(s.title).slice(0, 200),
-      description: String(s.description || ''),
-      assignee_id: s.assignee_id,
-      assignee_name: registry.candidates.find(c => c.id === s.assignee_id)?.name || '',
-      assignee_kind: registry.candidates.find(c => c.id === s.assignee_id)?.kind || 'ai',
-      priority: ['low', 'medium', 'high', 'urgent'].includes(s.priority) ? s.priority : normalized.priority,
-      due_in_days: Number.isFinite(s.due_in_days) ? s.due_in_days : null,
-      due_date: Number.isFinite(s.due_in_days) ? nowTs + s.due_in_days * 86400000 : null,
-      depends_on: Array.isArray(s.depends_on) ? s.depends_on.filter(n => Number.isInteger(n)) : [],
-      deliverable: String(s.deliverable || ''),
-      status: 'planned',
-      task_id: null,
-    })),
+    subtasks: kept.map((s, i) => {
+      // The model routinely overshoots: a live probe returned a subtask due 41
+      // days out against a 10-day deadline. Clamp so no subtask can fall due
+      // after the objective it belongs to, and never before today.
+      const dueDateTs = resolveDueDate(s.due_in_days, normalized.deadline, nowTs);
+      return {
+        key: `s${i + 1}`,
+        title: String(s.title).slice(0, 200),
+        description: String(s.description || ''),
+        assignee_id: s.assignee_id,
+        assignee_name: registry.candidates.find(c => c.id === s.assignee_id)?.name || '',
+        assignee_kind: registry.candidates.find(c => c.id === s.assignee_id)?.kind || 'ai',
+        priority: ['low', 'medium', 'high', 'urgent'].includes(s.priority) ? s.priority : normalized.priority,
+        due_in_days: dueDateTs ? Math.round((dueDateTs - nowTs) / 86400000) : null,
+        due_date: dueDateTs,
+        depends_on: Array.isArray(s.depends_on) ? s.depends_on.filter(n => Number.isInteger(n)) : [],
+        deliverable: String(s.deliverable || ''),
+        status: 'planned',
+        task_id: null,
+      };
+    }),
     chief_id: chiefId,
     created_by: userId,
     created_by_role: authority.role,
@@ -674,4 +723,5 @@ module.exports = {
   getPlan,
   hasCycle,
   parseModelJson,
+  buildPrompt,
 };
