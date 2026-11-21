@@ -31,6 +31,10 @@ const {
   createWorkspace, getWorkspace, listWorkspaces, updateWorkspace, deleteWorkspace
 } = require('./store');
 const { ensureSchema } = require('./store');
+const { canAccessWorkspace } = require('./store');
+const {
+  createCrawlJob, executeCrawlJob, getCrawlJob, listCrawlJobs
+} = require('./crawler');
 
 function createCustomerExecutiveRouter({ dataDir }) {
   const router = express.Router();
@@ -116,7 +120,86 @@ function createCustomerExecutiveRouter({ dataDir }) {
     }
   });
 
-  // TODO: Add crawl, knowledge, chatbot, lead endpoints
+  // ---- Crawl Endpoints ----
+  router.post('/workspaces/:id/crawl', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { targetUrl } = req.body;
+      if (!targetUrl) return res.status(400).json({ error: 'targetUrl required' });
+
+      const job = await createCrawlJob(dataDir, {
+        workspaceId: req.params.id,
+        targetUrl
+      });
+      res.status(201).json({ job });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/workspaces/:id/crawl/:jobId/execute', async (req, res) => {
+    try {
+      const job = await getCrawlJob(dataDir, req.params.jobId);
+      if (!job) return res.status(404).json({ error: 'Crawl job not found' });
+
+      if (job.workspace_id !== req.params.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const result = await executeCrawlJob(dataDir, req.params.jobId);
+      res.json({ job: result });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/crawl', async (req, res) => {
+    try {
+      const jobs = await listCrawlJobs(dataDir, req.params.id);
+      res.json({ jobs });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/crawl/:jobId', async (req, res) => {
+    try {
+      const job = await getCrawlJob(dataDir, req.params.jobId);
+      if (!job) return res.status(404).json({ error: 'Crawl job not found' });
+
+      if (job.workspace_id !== req.params.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      res.json({ job });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---- Knowledge Endpoints ----
+  router.get('/workspaces/:id/knowledge', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Return knowledge from completed crawl jobs for this workspace
+      // (Implementation will be in knowledge.js)
+      res.json({ knowledge: [], message: 'Knowledge retrieval endpoint' });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   return router;
 }
