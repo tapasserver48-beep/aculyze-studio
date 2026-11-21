@@ -190,6 +190,9 @@ function createCustomerExecutiveRouter({ dataDir }) {
     updateKnowledge, deleteKnowledge
   } = require('./knowledge');
 
+  // Crawl job import for integration
+  const { getCrawlJob } = require('./crawler');
+
   router.get('/workspaces/:id/knowledge', async (req, res) => {
     try {
       const workspace = await getWorkspace(dataDir, req.params.id);
@@ -263,6 +266,124 @@ function createCustomerExecutiveRouter({ dataDir }) {
 
       const response = await getChatbotResponse(dataDir, req.params.id, q);
       res.json({ response });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---- Integration: Add knowledge from crawl results ----
+  router.get('/workspaces/:id/crawl/:jobId/knowledge', async (req, res) => {
+    try {
+      const job = await getCrawlJob(dataDir, req.params.jobId);
+      if (!job) return res.status(404).json({ error: 'Crawl job not found' });
+
+      if (job.workspace_id !== req.params.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Persist crawl results to knowledge if not already done
+      const contentItems = job.content || [];
+      const persisted = [];
+
+      for (const item of contentItems) {
+        if (item.sourceUrl) {
+          const existing = await getKnowledgeBySource(dataDir, req.params.id, item.sourceUrl);
+          if (!existing || existing.length === 0) {
+            const kg = await addKnowledge(dataDir, {
+              workspaceId: req.params.id,
+              sourceUrl: item.sourceUrl,
+              content: item,
+              contentType: 'crawl_result'
+            });
+            persisted.push(kg);
+          }
+        }
+      }
+
+      res.json({ 
+        crawlJobId: req.params.jobId,
+        pagesCrawled: contentItems.length,
+        knowledgePersisted: persisted.length 
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---- Knowledge CRUD ----
+  router.get('/workspaces/:id/knowledge/search', async (req, res) => {
+    try {
+      const workspace = await getWorkspace(dataDir, req.params.id);
+      if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { q } = req.query;
+      if (!q) return res.status(400).json({ error: 'Query parameter q required' });
+
+      const results = await searchKnowledge(dataDir, req.params.id, q);
+      res.json({ results });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.delete('/workspaces/:id/knowledge/:knowledgeId', async (req, res) => {
+    try {
+      const w = await getWorkspace(dataDir, req.params.id);
+      if (!w) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, w.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Get specific knowledge item first
+      const allK = await getKnowledge(dataDir, req.params.id);
+      const target = allK.find(k => k.id === req.params.knowledgeId || k.source_url === req.params.knowledgeId);
+      if (!target) return res.status(404).json({ error: 'Knowledge not found' });
+
+      const deleted = await deleteKnowledge(dataDir, req.params.id, target.id);
+      res.json({ success: deleted });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.put('/workspaces/:id/knowledge/:knowledgeId', async (req, res) => {
+    try {
+      const w = await getWorkspace(dataDir, req.params.id);
+      if (!w) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, w.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const allK = await getKnowledge(dataDir, req.params.id);
+      const target = allK.find(k => k.id === req.params.knowledgeId || k.source_url === req.params.knowledgeId);
+      if (!target) return res.status(404).json({ error: 'Knowledge not found' });
+
+      const updated = await updateKnowledge(dataDir, req.params.id, target.id, req.body);
+      res.json({ knowledge: updated });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/knowledge/:knowledgeId', async (req, res) => {
+    try {
+      const w = await getWorkspace(dataDir, req.params.id);
+      if (!w) return res.status(404).json({ error: 'Workspace not found' });
+
+      if (!canAccessWorkspace(req.user.role, req.user.id, w.creator_id)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Get by ID - need to find in knowledge list
+      const allK = await getKnowledge(dataDir, req.params.id);
+      const target = allK.find(k => k.id === req.params.knowledgeId || k.source_url === req.params.knowledgeId);
+      res.json({ knowledge: target || null });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
