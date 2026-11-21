@@ -7,10 +7,14 @@
 const { createRouterFromEnv } = require('../services/ai/router');
 const { ensureSchema: ensureKnowledgeSchema } = require('./knowledge');
 const { ensureSchema: ensureCrawlerSchema } = require('./crawler');
+const { ensureSchema: ensureChatbotsSchema } = require('./chatbots');
+const { ensureSchema: ensureLeadsSchema } = require('./leads');
 
 // Initialize schemas on load
 ensureKnowledgeSchema();
 ensureCrawlerSchema();
+ensureChatbotsSchema();
+ensureLeadsSchema();
 
 /**
  * Get the NVIDIA AI Router (Customer Executive uses NVIDIA only)
