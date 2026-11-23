@@ -44,6 +44,9 @@ services:
         value: disabled
       - key: HOSTING_ENV
         value: render
+      # Executive check-ins and Automations run on this clock (Render is UTC).
+      - key: APP_TIMEZONE
+        value: Asia/Kolkata
     plan: starter  # $7/month, 0.5 CPU, 512MB
 
 # ---------------------------------------------------------------------------

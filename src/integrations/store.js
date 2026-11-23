@@ -38,16 +38,17 @@ function getKey(dataDir) {
       : crypto.createHash('sha256').update(env).digest();
     return cachedKey;
   }
-  try {
-    const k = Buffer.from(fs.readFileSync(keyFile(dataDir), 'utf8').trim(), 'hex');
-    if (k.length === 32) {
-      cachedKey = k;
-      return cachedKey;
-    }
-  } catch { /* generate below */ }
+  // Generated key: kept in the document store so it survives redeploys
+  // (a lost key would make every stored token unreadable).
+  const docstore = require('../db/docstore');
+  const stored = docstore.readText(dataDir, keyFile(dataDir));
+  const k = stored ? Buffer.from(stored.trim(), 'hex') : null;
+  if (k && k.length === 32) {
+    cachedKey = k;
+    return cachedKey;
+  }
   const fresh = crypto.randomBytes(32);
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(keyFile(dataDir), fresh.toString('hex'), { mode: 0o600 });
+  docstore.writeText(dataDir, keyFile(dataDir), fresh.toString('hex'), { mode: 0o600 });
   cachedKey = fresh;
   return cachedKey;
 }
@@ -119,18 +120,12 @@ function fileFor(dataDir, uid) {
 
 function loadUser(dataDir, uid) {
   if (!safeUid(uid)) return { connections: {}, pending: {} }; // catalog-only views
-  try {
-    const data = JSON.parse(fs.readFileSync(fileFor(dataDir, uid), 'utf8'));
-    return { connections: data.connections || {}, pending: data.pending || {} };
-  } catch {
-    return { connections: {}, pending: {} };
-  }
+  const data = require('../db/docstore').readJson(dataDir, fileFor(dataDir, uid), {});
+  return { connections: data.connections || {}, pending: data.pending || {} };
 }
 
 function saveUser(dataDir, uid, data) {
-  const file = fileFor(dataDir, uid);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  require('../db/docstore').writeJson(dataDir, fileFor(dataDir, uid), data);
 }
 
 // ---------- signed OAuth state ----------

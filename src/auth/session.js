@@ -41,16 +41,16 @@ function getKey(dataDir) {
       : crypto.createHash('sha256').update(env).digest();
     return cachedKey;
   }
-  try {
-    const k = Buffer.from(fs.readFileSync(keyFile(dataDir), 'utf8').trim(), 'hex');
-    if (k.length === 32) {
-      cachedKey = k;
-      return k;
-    }
-  } catch { /* generate below */ }
+  // Generated key: kept in the document store so logins survive redeploys.
+  const docstore = require('../db/docstore');
+  const stored = docstore.readText(dataDir, keyFile(dataDir));
+  const k = stored ? Buffer.from(stored.trim(), 'hex') : null;
+  if (k && k.length === 32) {
+    cachedKey = k;
+    return k;
+  }
   const fresh = crypto.randomBytes(32);
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(keyFile(dataDir), fresh.toString('hex'), { mode: 0o600 });
+  docstore.writeText(dataDir, keyFile(dataDir), fresh.toString('hex'), { mode: 0o600 });
   cachedKey = fresh;
   return fresh;
 }

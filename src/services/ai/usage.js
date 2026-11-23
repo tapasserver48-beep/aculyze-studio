@@ -73,14 +73,8 @@ function ensureLoaded(dir) {
   if (cache && cacheFile === f) return cache;
   cache = {};
   cacheFile = f;
-  try {
-    if (fs.existsSync(f)) {
-      const parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
-      if (parsed && typeof parsed === 'object') cache = parsed;
-    }
-  } catch {
-    cache = {};
-  }
+  const parsed = require('../../db/docstore').readJson(dir, f, null);
+  if (parsed && typeof parsed === 'object') cache = parsed;
   return cache;
 }
 
@@ -103,11 +97,7 @@ function flush(dir) {
   if (!dirty || !cache) return;
   dirty = false;
   try {
-    const f = fileFor(dir);
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    const tmp = `${f}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(cache, null, 2));
-    fs.renameSync(tmp, f);
+    require('../../db/docstore').writeJson(dir, fileFor(dir), cache);
   } catch (err) {
     dirty = true; // retry on the next record
     console.warn('[usage] flush failed:', String(err.message || err).slice(0, 140));

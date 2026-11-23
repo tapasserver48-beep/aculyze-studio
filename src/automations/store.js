@@ -10,8 +10,9 @@
  */
 
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
+const docstore = require('../db/docstore');
+
 
 const TRIGGERS = ['schedule', 'email', 'lead', 'overdue'];
 const MANAGER_ONLY_TRIGGERS = ['lead', 'overdue'];
@@ -23,19 +24,11 @@ const dirOf = (dataDir) => path.join(dataDir, 'automations');
 const fileOf = (dataDir, name) => path.join(dirOf(dataDir), `${name}.json`);
 
 function read(dataDir, name, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(fileOf(dataDir, name), 'utf8'));
-  } catch {
-    return fallback;
-  }
+  return docstore.readJson(dataDir, fileOf(dataDir, name), fallback);
 }
 
 function write(dataDir, name, doc) {
-  fs.mkdirSync(dirOf(dataDir), { recursive: true });
-  const file = fileOf(dataDir, name);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2));
-  fs.renameSync(tmp, file);
+  docstore.writeJson(dataDir, fileOf(dataDir, name), doc);
 }
 
 const fail = (msg) => { throw Object.assign(new Error(msg), { status: 422 }); };

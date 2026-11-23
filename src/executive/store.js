@@ -10,27 +10,20 @@
  */
 
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
+const docstore = require('../db/docstore');
+
 
 const dirOf = (dataDir) => path.join(dataDir, 'executive');
 const fileOf = (dataDir, name) => path.join(dirOf(dataDir), `${name}.json`);
 
 function readList(dataDir, name) {
-  try {
-    const doc = JSON.parse(fs.readFileSync(fileOf(dataDir, name), 'utf8'));
-    return Array.isArray(doc.items) ? doc.items : [];
-  } catch {
-    return [];
-  }
+  const doc = docstore.readJson(dataDir, fileOf(dataDir, name), { items: [] });
+  return Array.isArray(doc.items) ? doc.items : [];
 }
 
 function writeList(dataDir, name, items) {
-  fs.mkdirSync(dirOf(dataDir), { recursive: true });
-  const file = fileOf(dataDir, name);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ items }, null, 2));
-  fs.renameSync(tmp, file);
+  docstore.writeJson(dataDir, fileOf(dataDir, name), { items });
 }
 
 const id = (prefix) => `${prefix}-${crypto.randomUUID().substring(0, 10)}`;

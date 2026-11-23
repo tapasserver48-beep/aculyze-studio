@@ -103,3 +103,14 @@ CMD ["npm", "start"]
 ```
 
 Then add `Dockerfile` to the repo and deploy via Render's Docker service.
+## Saved data on Render (2026-11-23)
+
+Render wipes the disk on every deploy or restart, so nothing important may live only in `data/`.
+
+- **Database tables:** accounts, tasks, Inbox, AI employees and Customer Executive data.
+- **`app_documents` table** (`src/db/docstore.js`): app connections (Gmail tokens), the login-session and token-encryption keys, automations and their history, AI approvals, Executive check-ins, Chief of Staff plans, and AI usage stats. On the first boot with `DATABASE_URL`, any existing files are imported once.
+- **Local development without `DATABASE_URL`** keeps using files exactly as before.
+
+Set **`APP_TIMEZONE=Asia/Kolkata`** (it is in `render.yaml`; click **Sync Blueprint**, or add it in the dashboard) so 3:00 PM check-ins and 9:00 AM automations run on India time.
+
+The AI employee registry is served at `/api/employees`, and LMS company staff (Command Centre) at `/api/lms/employees`. They used to share one address, which made Admin → AI Employees show LMS staff. If Admin → AI Employees is empty on a fresh database, click **Initialize AI Employees**.

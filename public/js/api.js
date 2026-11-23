@@ -273,8 +273,9 @@ export async function lmsStatus() {
 }
 
 /** Fetch employees from Aculyze LMS for the inbox. Returns { employees, provider, count }. */
+/** Company staff from the Aculyze LMS app (Command Centre). */
 export async function loadEmployees() {
-  const res = await fetch('/api/employees');
+  const res = await fetch('/api/lms/employees');
   const data = await res.json().catch(() => ({ employees: [], provider: 'Aculyze LMS', count: 0 }));
   if (!res.ok) {
     const err = new Error(data.error || 'Could not load employees.');

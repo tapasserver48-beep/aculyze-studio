@@ -21,24 +21,16 @@ function plansFile(dataDir) {
   return path.join(dataDir, 'delegation', 'plans.json');
 }
 
+// Files locally, Postgres (app_documents) when DATABASE_URL is set.
+const docstore = require('../db/docstore');
+
 function readPlans(dataDir) {
-  const file = plansFile(dataDir);
-  try {
-    if (!fs.existsSync(file)) return { plans: [] };
-    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { plans: Array.isArray(doc.plans) ? doc.plans : [] };
-  } catch (err) {
-    console.warn('[ChiefOfStaff] plans.json unreadable, starting empty:', err.message);
-    return { plans: [] };
-  }
+  const doc = docstore.readJson(dataDir, plansFile(dataDir), { plans: [] });
+  return { plans: Array.isArray(doc.plans) ? doc.plans : [] };
 }
 
 function writePlans(dataDir, doc) {
-  const file = plansFile(dataDir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf8');
-  fs.renameSync(tmp, file); // atomic — never leave a half-written plan
+  docstore.writeJson(dataDir, plansFile(dataDir), doc);
 }
 
 function generatePlanId() {

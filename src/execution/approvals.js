@@ -10,28 +10,21 @@
  */
 
 const crypto = require('crypto');
-const fs = require('fs');
 const path = require('path');
+const docstore = require('../db/docstore');
+
 
 const STATUS = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected', FAILED: 'failed' };
 
 const fileOf = (dataDir) => path.join(dataDir, 'agent-approvals.json');
 
 function readAll(dataDir) {
-  try {
-    const doc = JSON.parse(fs.readFileSync(fileOf(dataDir), 'utf8'));
-    return Array.isArray(doc.items) ? doc.items : [];
-  } catch {
-    return [];
-  }
+  const doc = docstore.readJson(dataDir, fileOf(dataDir), { items: [] });
+  return Array.isArray(doc.items) ? doc.items : [];
 }
 
 function writeAll(dataDir, items) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  const file = fileOf(dataDir);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ items }, null, 2));
-  fs.renameSync(tmp, file);
+  docstore.writeJson(dataDir, fileOf(dataDir), { items });
 }
 
 function createApproval(dataDir, { taskId, employeeId, initiatingUserId, executionId, tool, args, toolCallId, confirm, state }) {

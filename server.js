@@ -1042,7 +1042,12 @@ app.get('/api/usage/today', requirePage('command'), (req, res) => {
   res.json(aiUsage.today());
 });
 
-app.get('/api/employees', requirePage('command'), async (req, res) => {
+// Company staff from the Aculyze LMS app (Command Centre). Lives under
+// /api/lms/ so it can never shadow /api/employees, which is the AI employee
+// registry (Admin → AI Employees, Tasks, Inbox). Both used to share
+// /api/employees and this handler, registered first, won — so on Render the
+// Admin page listed LMS staff as "AI employees".
+app.get('/api/lms/employees', requirePage('command'), async (req, res) => {
   const { key, baseUrl } = lmsCredentials(req, res);
   if (!key) {
     return res.json({ employees: [], status: 'Not configured', provider: 'Aculyze LMS', count: 0 });
@@ -1291,6 +1296,9 @@ async function initStorage() {
     await ensureTasksSchema();
     const a = await authStore.migrateToPostgres(DATA_DIR);
     const b = await inboxStore.migrateToPostgres(DATA_DIR);
+    // Keys, app connections, automations, approvals, check-ins, plans, usage.
+    const docs = await require('./src/db/docstore').init(DATA_DIR);
+    console.log(`  Documents: ${docs.documents} in Postgres${docs.imported ? ` (imported ${docs.imported} from files)` : ''}`);
     console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
   }
   // First-admin bootstrap (BOOTSTRAP_ADMIN_* + the setup-code banner). Runs in
