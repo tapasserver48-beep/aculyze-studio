@@ -282,8 +282,24 @@ async function main() {
       const loop = () => ({ toolCalls: [call('task__report_progress', { note: 'working', percent: 10 })] });
       const p = fakeProvider([loop, loop, loop, loop]);
       const out = await run(chief, task, p, fakeManager(), { maxSteps: 2 });
-      check('stops after maxSteps model calls', p.seen.length === 2, String(p.seen.length));
+      check('maxSteps rounds + one tool-free wrap-up call', p.seen.length === 3, String(p.seen.length));
+      check('last round offers only submit_result', p.seen[1].tools.length === 1 && p.seen[1].tools[0] === 'task__submit_result', JSON.stringify(p.seen[1].tools));
+      check('wrap-up call offers no tools', p.seen[2].tools.length === 0);
       check('no result → failed + blocked', out.outcome === 'failed' && (await tasksStore.getTask(dir, task.id)).pending_reason === 'blocked');
+
+      const taskW = await newTask(chief);
+      const search = () => ({ toolCalls: [call('gmail__search', { q: 'x' })] });
+      const pw = fakeProvider([search, search, (msgs) => {
+        assert.ok(msgs.some((m) => m.role === 'user' && /no steps left/i.test(m.content)), 'wrap-up nudge sent');
+        return { toolCalls: [call('task__submit_result', { summary: 'Wrapped up', result: 'From what I found…' })] };
+      }]);
+      const outW = await run(chief, taskW, pw, fakeManager(), { maxSteps: 3 });
+      check('model that keeps searching is made to submit on the last round', outW.outcome === 'submitted', outW.outcome);
+
+      const taskF = await newTask(chief);
+      const pf = fakeProvider([search, search, { content: 'Here is the summary from the emails found.' }]);
+      const outF = await run(chief, taskF, pf, fakeManager(), { maxSteps: 2 });
+      check('ignored last round → tool-free wrap-up text is submitted', outF.outcome === 'submitted' && /summary/.test(outF.result || ''), outF.outcome);
 
       const task2 = await newTask(chief);
       const out2 = await run(chief, task2, fakeProvider([new Error('LM Studio offline')]), fakeManager());

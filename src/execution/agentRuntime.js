@@ -30,7 +30,7 @@ const { NAME_TO_ID } = require('../agent/schemas');
 const policy = require('./toolPolicy');
 const approvals = require('./approvals');
 
-const DEFAULT_MAX_STEPS = 8;
+const DEFAULT_MAX_STEPS = 10;
 const HARD_MAX_STEPS = 20;
 const RUN_BUDGET_MS = 240000;     // whole run
 const MODEL_TIMEOUT_MS = 60000;   // one model call
@@ -58,7 +58,12 @@ How you work:
 - Tools that send or create things (email, events, messages) pause for human approval — call them only when the task requires that action.
 - Use task__report_progress for notable milestones (optional).
 - If you are blocked on information only the requester has, call task__request_info.
+- Be efficient: you have a limited number of steps. Prefer one or two well-aimed searches over many similar ones.
+- Email search results include each message's [id: …] and a short preview. Previews are usually enough to summarize; open a message (get_message) only when you need its full text, and always pass the exact id from the results.
+- Gmail search syntax examples: "newer_than:3d -category:promotions -category:social", "from:name@company.com", "is:unread".
 - When done, ALWAYS call task__submit_result with a one-line summary and the full deliverable.`;
+
+const WRAP_UP = 'You have no steps left. Do not gather more data. Call task__submit_result now with the best deliverable you can make from what you already found, and mention any gaps.';
 
 /* ------------------------------------------------------------------ *
  * Prompt
@@ -181,14 +186,20 @@ async function runLoop(ctx) {
   for (let round = ctx.round || 0; round < maxSteps; round++) {
     if (Date.now() > deadline) break;
 
+    // Last round: no more data gathering — only submitting is allowed.
+    const lastRound = round === maxSteps - 1;
+    const roundTools = lastRound ? tools.filter((t) => t.function.name === 'task__submit_result') : tools;
+    if (lastRound) messages.push({ role: 'user', content: WRAP_UP });
+
     let res;
     try {
       res = await provider.sendMessage({
         messages,
-        tools,
+        tools: roundTools,
         model,
         temperature: 0.2,
-        max_tokens: 2000,
+        max_tokens: 3000,
+        thinking: false, // NVIDIA: hidden reasoning can eat the budget → empty answer
         timeoutMs: Math.min(MODEL_TIMEOUT_MS, Math.max(1000, deadline - Date.now())),
       });
     } catch (err) {
@@ -213,6 +224,14 @@ async function runLoop(ctx) {
       const args = parseArgs(call && call.function && call.function.arguments);
       const callId = (call && call.id) || `${name}-${round}-${i}`;
       const reply = (content) => messages.push({ role: 'tool', tool_call_id: callId, content });
+
+      // Only tools offered this round may run (the last round offers submit only).
+      if (!roundTools.some((t) => t.function.name === name)) {
+        steps.push({ tool: name, ok: false, text: lastRound ? 'out of steps' : 'not allowed' });
+        if (!lastRound) await log(dataDir, task.id, employee.id, 'agent_tool_refused', { executionId, tool: name });
+        reply(JSON.stringify({ error: lastRound ? 'No steps left. Call task__submit_result now.' : `Tool "${name}" is not available to you.` }));
+        continue;
+      }
 
       // ---- built-in task tools ----
       if (policy.TASK_TOOL_NAMES.has(name)) {
@@ -266,6 +285,28 @@ async function runLoop(ctx) {
         await log(dataDir, task.id, employee.id, 'agent_tool_error', { executionId, tool: toolId, error: msg });
         reply(JSON.stringify({ error: msg }));
       }
+    }
+  }
+
+  // Out of steps: one final tool-free call asking for the deliverable from
+  // everything gathered so far, so a run that collected data still finishes.
+  if (!lastText.trim() && Date.now() < deadline) {
+    try {
+      messages.push({ role: 'user', content: `${WRAP_UP} Reply with the deliverable as plain text.` });
+      const res = await provider.sendMessage({
+        messages: messages.filter((m) => !m.tool_calls).map((m) => (m.role === 'tool' ? { role: 'user', content: `Tool result: ${m.content}` } : m)),
+        model,
+        temperature: 0.2,
+        max_tokens: 3000,
+        thinking: false,
+        timeoutMs: Math.min(MODEL_TIMEOUT_MS, Math.max(1000, deadline - Date.now())),
+      });
+      const text = String((res && res.content) || '').trim();
+      if (text && !(res.toolCalls && res.toolCalls.length)) {
+        return submit(ctx, steps, { summary: text.split('\n')[0].slice(0, 160), result: text });
+      }
+    } catch (err) {
+      console.warn(`[AI Runtime] final wrap-up call failed: ${err.message}`);
     }
   }
 

@@ -19,6 +19,9 @@ function friendly(appName, status, detail = '') {
   if (status === 401 || /invalid_grant|token.*expired|unauthorized/i.test(d)) {
     return new IntegrationError(`${appName} needs to be reconnected.`, { code: 'reauth', status, });
   }
+  if (/has not been used in project|accessNotConfigured|SERVICE_DISABLED|API is disabled/i.test(d)) {
+    return new IntegrationError(`The ${appName} API is switched off in your Google/Microsoft cloud project. An admin needs to enable it there, then try again.`, { code: 'api_disabled', status });
+  }
   if (status === 403 || /insufficient scope|forbidden|permission/i.test(d)) {
     return new IntegrationError(`Zara doesn't have permission for that in ${appName}.`, { code: 'forbidden', status });
   }
@@ -95,6 +98,8 @@ function stripHtml(html) {
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
     .replace(/\s+/g, ' ')
     .trim();
 }

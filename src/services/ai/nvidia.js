@@ -157,7 +157,7 @@ class NVIDIAProvider extends AIProvider {
     return '';
   }
 
-  _buildPayload(messages, model, temperature, max_tokens, tools) {
+  _buildPayload(messages, model, temperature, max_tokens, tools, thinking) {
     // Nemotron 3.x models emit reasoning_content before content — with a tiny
     // max_tokens the budget is eaten by reasoning and `content` comes back
     // empty. Enforce a floor so answers are never blank.
@@ -172,6 +172,11 @@ class NVIDIAProvider extends AIProvider {
     };
     // OpenAI function-calling (Tier 2 tool agent) — only sent when provided.
     if (Array.isArray(tools) && tools.length) payload.tools = tools;
+    // thinking:false turns off Nemotron's hidden reasoning. Structured
+    // callers (JSON plans, tool loops) use it: otherwise reasoning can eat
+    // the whole max_tokens budget and the answer comes back cut off or empty.
+    // Verified accepted by every model in VERIFIED_MODELS.
+    if (thinking === false) payload.chat_template_kwargs = { enable_thinking: false };
     return payload;
   }
 
@@ -186,7 +191,7 @@ class NVIDIAProvider extends AIProvider {
     }
   }
 
-  async sendMessage({ messages, model, temperature, max_tokens, timeoutMs, tools } = {}) {
+  async sendMessage({ messages, model, temperature, max_tokens, timeoutMs, tools, thinking } = {}) {
     if (!this.isConfigured) {
       throw new Error('NVIDIA API key not configured');
     }
@@ -195,7 +200,7 @@ class NVIDIAProvider extends AIProvider {
     let lastError = null;
 
     for (const candidate of chain) {
-      const payload = this._buildPayload(messages, candidate, temperature, max_tokens, tools);
+      const payload = this._buildPayload(messages, candidate, temperature, max_tokens, tools, thinking);
       try {
         const res = await this._fetchWithTimeout(`${this.baseUrl}/chat/completions`, {
           method: 'POST',
@@ -223,6 +228,7 @@ class NVIDIAProvider extends AIProvider {
           content,
           model: candidate,
           provider: 'nvidia',
+          finishReason: data?.choices?.[0]?.finish_reason || null,
           // Tier 2 tool agent: native function calls (empty when unused)
           toolCalls: Array.isArray(message.tool_calls) && message.tool_calls.length
             ? message.tool_calls

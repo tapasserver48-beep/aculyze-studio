@@ -341,11 +341,21 @@ async function draftPlan({ dataDir, input, userId, modelCall = null }) {
     result = { provider: 'test-harness', model: 'injected', ...result };
   } else {
     const router = getNvidiaRouter();
-    result = await router.active.sendMessage({ messages, max_tokens: 2200, temperature: 0.2 });
+    // thinking:false — Nemotron's hidden reasoning could use the whole token
+    // budget and cut the JSON plan off mid-way (finish_reason "length").
+    result = await router.active.sendMessage({ messages, max_tokens: 4000, temperature: 0.2, thinking: false, timeoutMs: 90000 });
   }
 
   const latencyMs = Date.now() - startedAt;
   const parsed = parseModelJson(result.content);
+
+  if (!parsed && (result.finishReason === 'length' || !String(result.content || '').trim())) {
+    const err = new Error('The Chief of Staff ran out of space before finishing the plan. Try again, or shorten the request.');
+    err.status = 502;
+    err.code = 'truncated_model_output';
+    err.rawContent = typeof result.content === 'string' ? result.content.slice(0, 500) : '';
+    throw err;
+  }
 
   if (!parsed) {
     // Model output wasn't parseable JSON. Check if it's prose that essentially

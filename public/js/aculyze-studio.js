@@ -4824,6 +4824,27 @@ async function initAuth() {
   }
   // After showAuthScreen() so a fresh Sign-in form is on screen first.
   consumeAuthRedirect();
+  consumeAppRedirect();
+}
+
+/** Consume ?app=<id>&status=… left by an app-connection OAuth redirect. */
+function consumeAppRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const appId = params.get('app');
+  const status = params.get('status');
+  if (!status || appId === null) return;
+  params.delete('app');
+  params.delete('status');
+  params.delete('reason');
+  const qs = params.toString();
+  window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+
+  const name = appId ? appId.replace(/-/g, ' ') : 'App';
+  if (status === 'connected') toast(`${name} connected`, 'success');
+  else if (status === 'denied') toast(`${name} connection was cancelled`, 'info');
+  else toast(`Couldn't finish connecting ${name}. Please try again.`, 'error');
+  setView('apps');
+  refreshApps();
 }
 
 /**
@@ -6015,20 +6036,7 @@ async function openAppDrawer(appId) {
       connect.type = 'button';
       connect.className = 'utility-primary';
       connect.textContent = 'Connect';
-      connect.addEventListener('click', async () => {
-        connect.disabled = true;
-        connect.textContent = 'Connecting…';
-        try {
-          await integrationConnect(appId, {});
-          toast('Connected');
-          closeAppDrawer();
-          refreshApps();
-        } catch (err) {
-          toast(err.message || 'Could not connect', 'error');
-          connect.disabled = false;
-          connect.textContent = 'Connect';
-        }
-      });
+      connect.addEventListener('click', () => startIntegrationConnect(appId, connect));
       actions.appendChild(connect);
     }
   } else if (detail.status === 'not_connected' || detail.status === 'disconnected') {
@@ -6037,40 +6045,14 @@ async function openAppDrawer(appId) {
     connect.type = 'button';
     connect.className = 'utility-primary';
     connect.textContent = 'Connect';
-    connect.addEventListener('click', async () => {
-      connect.disabled = true;
-      connect.textContent = 'Connecting…';
-      try {
-        await integrationConnect(appId, {});
-        toast('Connected');
-        closeAppDrawer();
-        refreshApps();
-      } catch (err) {
-        toast(err.message || 'Could not connect', 'error');
-        connect.disabled = false;
-        connect.textContent = 'Connect';
-      }
-    });
+    connect.addEventListener('click', () => startIntegrationConnect(appId, connect));
     actions.appendChild(connect);
   } else if (detail.status !== 'coming_soon' && detail.status !== 'error') {
     const connect = document.createElement('button');
     connect.type = 'button';
     connect.className = 'utility-primary';
     connect.textContent = 'Connect';
-    connect.addEventListener('click', async () => {
-      connect.disabled = true;
-      connect.textContent = 'Connecting…';
-      try {
-        await integrationConnect(appId, {});
-        toast('Connected');
-        closeAppDrawer();
-        refreshApps();
-      } catch (err) {
-        toast(err.message || 'Could not connect', 'error');
-        connect.disabled = false;
-        connect.textContent = 'Connect';
-      }
-    });
+    connect.addEventListener('click', () => startIntegrationConnect(appId, connect));
     actions.appendChild(connect);
   } else if (detail.status === 'error') {
     const errorNote = document.createElement('div');
@@ -6090,6 +6072,29 @@ async function openAppDrawer(appId) {
     note.textContent = 'API keys are stored server-side and never shown here.';
   }
   body.appendChild(note);
+}
+
+/**
+ * Connect an app. OAuth apps (Google, Microsoft, Canva) answer with an
+ * authorizationUrl: send the browser there; the provider redirects back to
+ * /?app=<id>&status=connected|denied|error, handled by consumeAppRedirect().
+ * API-key apps connect immediately.
+ */
+async function startIntegrationConnect(appId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  try {
+    const r = await integrationConnect(appId, {});
+    if (r && r.authorizationUrl) {
+      window.location.href = r.authorizationUrl;
+      return;
+    }
+    toast('Connected');
+    closeAppDrawer();
+    refreshApps();
+  } catch (err) {
+    toast(err.message || 'Could not connect', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
+  }
 }
 
 function closeAppDrawer() {

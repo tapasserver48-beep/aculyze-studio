@@ -7,7 +7,7 @@
  * Google's official endpoints. Scopes are minimal and per app (§4).
  */
 const crypto = require('crypto');
-const { http, request, IntegrationError } = require('./base');
+const { http, request, IntegrationError, stripHtml } = require('./base');
 
 const REAL = {
   gmail: 'https://gmail.googleapis.com/gmail/v1',
@@ -242,13 +242,18 @@ class GoogleProvider {
       return {
         title: h.subject || '(no subject)',
         meta: `${h.from || ''}${h.date ? ` · ${h.date}` : ''}`.replace(/^ · /, ''),
+        // Gmail's own ~200-char preview: often enough to summarize without
+        // opening each message.
+        snippet: stripHtml(m.snippet).slice(0, 240),
         body: '', id: m.id,
       };
     });
     return {
       count: items.length,
       items: items.map(({ title, meta }) => ({ title, meta })),
-      text: items.map((it, i) => `${i + 1}. ${it.title}${it.meta ? ` — ${it.meta}` : ''}`).join('\n'),
+      // The id is included so a model can open the message with
+      // gmail.get_message instead of guessing an id.
+      text: items.map((it, i) => `${i + 1}. ${it.title}${it.meta ? ` — ${it.meta}` : ''} [id: ${it.id}]${it.snippet ? `\n   ${it.snippet}` : ''}`).join('\n'),
     };
   }
 
