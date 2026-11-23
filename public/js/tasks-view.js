@@ -47,6 +47,8 @@ const ACTIVITY_LABEL = {
   agent_submitted: 'submitted a result for review',
   result_accepted: 'accepted the result',
   changes_requested: 'asked for changes',
+  agent_notified: 'messaged a colleague',
+  agent_created_followup: 'created a follow-up task',
 };
 
 /** Plain-language names for what an AI employee did, shown in live progress. */
@@ -84,6 +86,8 @@ const TOOL_LABEL = {
   task__report_progress: 'Progress',
   task__submit_result: 'Submitted the result',
   task__request_info: 'Asked a question',
+  task__notify_person: 'Messaged a colleague',
+  task__create_followup: 'Created a follow-up task',
 };
 
 const AI_OUTCOME_TEXT = {

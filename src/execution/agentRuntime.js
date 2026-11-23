@@ -76,7 +76,7 @@ function systemPromptFor(employee) {
   return `${persona}\n${RUNTIME_RULES}`;
 }
 
-function taskBrief(task, comments = []) {
+function taskBrief(task, comments = [], people = []) {
   const lines = [
     'TASK ASSIGNED TO YOU',
     `Title: ${task.title}`,
@@ -91,15 +91,44 @@ function taskBrief(task, comments = []) {
     lines.push('', 'RECENT COMMENTS (oldest first):');
     for (const c of recent) lines.push(`- [${c.author_type || 'user'}] ${String(c.content || '').slice(0, 600)}`);
   }
+  if (people && people.length) {
+    lines.push('', 'PEOPLE IN THE COMPANY (for task__notify_person / task__create_followup):');
+    for (const p of people.slice(0, 60)) lines.push(`- ${p.name} (${p.role || 'employee'})${p.email ? `, ${p.email}` : ''}`);
+  }
   return lines.join('\n');
 }
 
 /** Kept for compatibility with earlier callers/tests. */
-function buildPrompt(employee, task, comments = []) {
+function buildPrompt(employee, task, comments = [], people = []) {
   return [
     { role: 'system', content: systemPromptFor(employee) },
-    { role: 'user', content: task ? taskBrief(task, comments) : 'No task context.' },
+    { role: 'user', content: task ? taskBrief(task, comments, people) : 'No task context.' },
   ];
+}
+
+/** Colleagues the employee may message/assign — only when it has those tools. */
+async function peopleFor(dataDir, employee) {
+  if (!policy.peopleToolsFor(employee).length) return [];
+  try {
+    const users = await require('../auth/store').listUsers(dataDir);
+    return (users || []).map((u) => ({ id: u.id, name: u.name || u.email, email: u.email || '', role: u.role || 'employee' }));
+  } catch {
+    return [];
+  }
+}
+
+/** Resolve "Anu" / "anu@x.com" to exactly one person, or explain why not. */
+function findPerson(people, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return { error: 'Say which colleague.' };
+  const byEmail = people.find((p) => p.email && p.email.toLowerCase() === q);
+  if (byEmail) return { person: byEmail };
+  const exact = people.filter((p) => String(p.name).toLowerCase() === q);
+  if (exact.length === 1) return { person: exact[0] };
+  const partial = people.filter((p) => String(p.name).toLowerCase().includes(q));
+  if (partial.length === 1) return { person: partial[0] };
+  if (!partial.length) return { error: `Nobody called "${query}" is in the people list.` };
+  return { error: `"${query}" matches several people (${partial.slice(0, 5).map((p) => p.name).join(', ')}). Use the email.` };
 }
 
 /** NVIDIA for complex work when configured, otherwise the active provider's default. */
@@ -266,6 +295,12 @@ async function runLoop(ctx) {
         if (name === 'task__request_info') {
           return requestInfo(ctx, steps, String(args.question || '').trim() || 'I need more information to continue.');
         }
+        if (name === 'task__notify_person' || name === 'task__create_followup') {
+          const out = await peopleTool(ctx, name, args);
+          steps.push({ tool: name, ok: !out.error, text: out.error || out.summary });
+          reply(JSON.stringify(out));
+          continue;
+        }
         // report_progress
         const pct = Number.isFinite(Number(args.percent)) ? Math.max(0, Math.min(99, Math.round(Number(args.percent)))) : null;
         const note = String(args.note || '').slice(0, 1000);
@@ -342,6 +377,41 @@ async function runLoop(ctx) {
     return submit(ctx, steps, { summary: 'Partial result (step limit reached)', result: lastText });
   }
   return fail(ctx, steps, 'Step limit reached without a result.');
+}
+
+/** task__notify_person / task__create_followup — internal, logged, no approval. */
+async function peopleTool(ctx, name, args) {
+  const { dataDir, employee, task, executionId, initiatingUserId } = ctx;
+  const people = ctx.people || [];
+  const found = findPerson(people, args.person);
+  if (found.error) return { error: found.error };
+  const who = found.person;
+
+  if (name === 'task__notify_person') {
+    const message = String(args.message || '').trim().slice(0, 3000);
+    if (!message) return { error: 'The message is empty.' };
+    await notify(dataDir, employee, who.id, `${message}\n\n[task:${task.id}]`);
+    await log(dataDir, task.id, employee.id, 'agent_notified', { executionId, to: who.id, toName: who.name });
+    return { ok: true, summary: `Messaged ${who.name} in the Inbox` };
+  }
+
+  const title = String(args.title || '').trim().slice(0, 160);
+  if (!title) return { error: 'The follow-up task needs a title.' };
+  const days = Math.max(0, Math.min(30, Math.round(Number(args.due_in_days) || 0)));
+  const { createTask } = require('../tasks/store');
+  const followup = await createTask(dataDir, {
+    title,
+    description: String(args.details || '').slice(0, 4000),
+    assignedTo: { type: 'human', id: who.id },
+    assignedBy: { type: 'ai', id: employee.id },
+    priority: 'medium',
+    dueDate: days ? Date.now() + days * 86400000 : undefined,
+    parentTaskId: task.id,
+    initiatingUserId: initiatingUserId || null,
+  });
+  await notify(dataDir, employee, who.id, `📋 New task for you: **${title}**${days ? ` (due in ${days} day${days === 1 ? '' : 's'})` : ''}.\n\n[task:${followup.id}]`);
+  await log(dataDir, task.id, employee.id, 'agent_created_followup', { executionId, taskId: followup.id, assignee: who.id });
+  return { ok: true, summary: `Created "${title}" for ${who.name}`, taskId: followup.id };
 }
 
 async function submit(ctx, steps, { summary, result }) {
@@ -459,6 +529,7 @@ async function executeTask(dataDir, opts) {
 
   const sel = pickProvider(opts, employee, task);
   const comments = await getTaskComments(dataDir, taskId).catch(() => []);
+  const people = await peopleFor(dataDir, employee);
   const maxSteps = Math.max(1, Math.min(HARD_MAX_STEPS, Number(opts.maxSteps) || DEFAULT_MAX_STEPS));
 
   await updateTask(dataDir, taskId, { status: 'in_progress', pending_reason: null });
@@ -469,7 +540,8 @@ async function executeTask(dataDir, opts) {
     uid: initiatingUserId, initiatingUserId,
     provider: sel.provider, model: sel.model, providerKey: sel.providerKey,
     executionId, maxSteps,
-    messages: buildPrompt(employee, task, comments),
+    messages: buildPrompt(employee, task, comments, people),
+    people,
     steps: opts.steps || [], round: 0,
     onPhase: opts.onPhase,
   });
@@ -552,6 +624,7 @@ async function decideAndResume(dataDir, opts) {
     executionId: decided.executionId,
     maxSteps: Math.max(1, Math.min(HARD_MAX_STEPS, Number(opts.maxSteps) || DEFAULT_MAX_STEPS)),
     messages, steps: state.steps || [], round: state.round || 0,
+    people: await peopleFor(dataDir, employee),
     onPhase: opts.onPhase,
   });
   return { executionId: decided.executionId, taskId: task.id, approval: approvals.publicView(approvals.getApproval(dataDir, approvalId)), ...out };

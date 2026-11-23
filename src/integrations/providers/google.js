@@ -251,6 +251,12 @@ class GoogleProvider {
     return {
       count: items.length,
       items: items.map(({ title, meta }) => ({ title, meta })),
+      // Structured list for server-side callers (the "New email" automation
+      // trigger). Not sent to the model, which reads `text`.
+      messages: msgs.filter(Boolean).map((m) => {
+        const h = headerMap(m.payload);
+        return { id: m.id, from: h.from || '', subject: h.subject || '(no subject)', date: h.date || '', snippet: stripHtml(m.snippet).slice(0, 300) };
+      }),
       // The id is included so a model can open the message with
       // gmail.get_message instead of guessing an id.
       text: items.map((it, i) => `${i + 1}. ${it.title}${it.meta ? ` — ${it.meta}` : ''} [id: ${it.id}]${it.snippet ? `\n   ${it.snippet}` : ''}`).join('\n'),

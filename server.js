@@ -1192,6 +1192,8 @@ app.use('/api/agents', createAgentsRouter({ dataDir: DATA_DIR }));
 app.use('/api/chief', createChiefOfStaffRouter({ dataDir: DATA_DIR }));
 // Executive Agent: daily check-ins over the Inbox + team performance page.
 app.use('/api/executive', require('./src/executive/routes').createExecutiveRouter({ dataDir: DATA_DIR }));
+// Automations: "when X happens → an AI employee does Y" (Phase 04.2).
+app.use('/api/automations', require('./src/automations/routes').createAutomationsRouter({ dataDir: DATA_DIR }));
 app.use('/api/customer', require('./src/customerExecutive/routes').createCustomerExecutiveRouter({ dataDir: DATA_DIR }));
 // The broadcast hook is filled in once the HTTP server exists (see below).
 let chatBroadcast = null;
@@ -1305,6 +1307,8 @@ initStorage()
       console.log(`Aculyze Studio server running on http://localhost:${PORT}`);
       // Executive Agent clock: asks daily check-ins and chases missing answers.
       require('./src/executive/service').startScheduler(DATA_DIR);
+      // Automations clock: schedules, overdue tasks, new emails; plus the website-lead event.
+      require('./src/automations/service').startScheduler(DATA_DIR);
       console.log(`  Provider : ${router.providerName}`);
       if (router.providerName === 'lmstudio') console.log(`  LM Studio: ${router.lmstudioBaseUrl}`);
       console.log(`  Langfuse : ${observability.configured ? 'tracing enabled' : 'disabled'}`);

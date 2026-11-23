@@ -912,3 +912,55 @@ body.work-drawer-open .foppy-wrap { display: none; }
 
 /* Inbox: report + Excel links under an Executive Agent summary */
 .inbox-messages .msg-report-links { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- Automations page (Phase 04.2) ---------- */
+.au-section-title { margin: 22px 0 10px; font-size: 15px; font-weight: 700; color: var(--text); }
+.au-templates { list-style: none; margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 10px; }
+.au-template {
+  width: 100%; height: 100%; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-content: start;
+  padding: 14px; text-align: left; cursor: pointer; font: inherit; color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+  border-top: 3px solid var(--agent, var(--accent));
+}
+.au-template:hover { border-color: var(--border-strong); border-top-color: var(--agent, var(--accent)); box-shadow: var(--shadow); }
+.au-template:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.au-template-ico {
+  grid-row: span 2; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
+  background: color-mix(in srgb, var(--agent, var(--accent)) 14%, transparent); font-size: 17px;
+}
+.au-template-title { font-weight: 700; font-size: 14px; }
+.au-template-blurb { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+
+.au-form { margin-top: 18px; }
+.au-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.au-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: start;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+}
+.au-card.is-paused { opacity: .78; }
+.au-ava {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; font-weight: 800;
+  background: var(--agent, var(--accent)); color: var(--on-agent, var(--on-accent));
+}
+.au-main { min-width: 0; }
+.au-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.au-when, .au-who { margin: 0 0 3px; font-size: 13.5px; color: var(--text-sub); overflow-wrap: anywhere; }
+.au-meta { margin: 6px 0 0; font-size: 12.5px; color: var(--text-muted); }
+.au-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.au-history { list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid var(--border); display: grid; gap: 6px; font-size: 13px; }
+.au-history li { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; color: var(--text-sub); }
+.au-history time { color: var(--text-muted); min-width: 92px; }
+
+/* On/off switch */
+.au-switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: none; cursor: pointer; }
+.au-switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.au-switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--border-strong); transition: background .15s; }
+.au-switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-sm); transition: transform .15s; }
+.au-switch input:checked + span { background: var(--success); }
+.au-switch input:checked + span::after { transform: translateX(16px); }
+.au-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .au-switch span, .au-switch span::after { transition: none; } }
+@media (max-width: 720px) {
+  .au-card { grid-template-columns: auto 1fr; }
+  .au-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}

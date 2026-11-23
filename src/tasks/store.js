@@ -264,7 +264,12 @@ async function createTask(dataDir, { title, description, assignedTo, assignedBy,
     priority: priority || 'medium',
     status: 'todo',
     start_date: null,
-    due_date: dueDate ? Date.parse(dueDate) : null,
+    // Accept an ISO string or epoch ms; never store NaN.
+    due_date: (() => {
+      if (!dueDate) return null;
+      const ms = typeof dueDate === 'number' ? dueDate : Date.parse(dueDate);
+      return Number.isFinite(ms) ? ms : null;
+    })(),
     completed_at: null,
     // Phase 03.3 delegation metadata (§5)
     parent_task_id: parentTaskId || null,

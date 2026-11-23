@@ -110,12 +110,15 @@ async function createLead(dataDir, {
       [id, chatbotId, email, name, phone, company, JSON.stringify(conversation || []),
        consent, consentTextHash, sourceUrl, userAgent, ipAddress, now]
     );
+    require('../automations/events').emit('lead.created', { dataDir, lead: rows[0] });
     return rows[0];
   }
 
   const items = readLeads(dataDir);
   items.push(lead);
   writeLeads(dataDir, items);
+  // Automations ("New website lead" trigger) listen for this.
+  require('../automations/events').emit('lead.created', { dataDir, lead });
   return lead;
 }
 

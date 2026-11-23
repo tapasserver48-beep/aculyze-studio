@@ -53,7 +53,7 @@ const ROLE_LIST = Object.keys(ROLES);
 // Canonical list of app pages a permission can be granted against. This is
 // the single source of truth for the admin matrix, API validation and the
 // client's nav gating — keep it in sync with VIEW_META in the client.
-const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks', 'chief', 'customer', 'executive'];
+const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command', 'settings', 'admin', 'tasks', 'chief', 'customer', 'executive', 'automations'];
 
 // Role → default allowed pages BEFORE per-user overrides. founder/admin get
 // everything; manager/employee mirror the documented intent of ROLES above
@@ -65,8 +65,8 @@ const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command',
 const ROLE_PAGES = {
   founder: [...PAGE_LIST],
   admin: [...PAGE_LIST],
-  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command', 'chief', 'executive'],
-  employee: ['home', 'inbox', 'tasks'],
+  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command', 'chief', 'executive', 'automations'],
+  employee: ['home', 'inbox', 'tasks', 'automations'],
 };
 
 /** Keep only known pages with boolean values — the stored override shape. */

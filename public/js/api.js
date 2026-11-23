@@ -1170,6 +1170,17 @@ export function agentAsk({ text, employeeId, source, priority } = {}) {
   return postJson('/api/agents/ask', { text, employeeId, source, priority });
 }
 
+/* ---------------- Automations (when X → AI employee does Y) ---------------- */
+export const automationsList = () => agentJson('/api/automations');
+export const automationsOptions = () => agentJson('/api/automations/options');
+export const automationsCreate = (body) => postJson('/api/automations', body);
+export const automationsUpdate = (id, body) => agentJson(`/api/automations/${encodeURIComponent(id)}`, {
+  method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+export const automationsDelete = (id) => agentJson(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const automationsTest = (id) => postJson(`/api/automations/${encodeURIComponent(id)}/test`);
+export const automationsHistory = (id) => agentJson(`/api/automations/${encodeURIComponent(id)}/history`);
+
 /* ---------------- Executive Agent (daily check-ins + team performance) ---------------- */
 export const executiveDashboard = () => agentJson('/api/executive/dashboard');
 export const executiveCheckins = () => agentJson('/api/executive/checkins');

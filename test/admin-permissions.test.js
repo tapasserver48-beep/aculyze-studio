@@ -36,7 +36,7 @@ async function main() {
   // ===== 1. Page catalogue =====
   assert.deepStrictEqual(
     PAGE_LIST.slice().sort(),
-    ['admin', 'apps', 'chief', 'command', 'customer', 'executive', 'home', 'inbox', 'sales', 'settings', 'store', 'tasks', 'zara'].sort(),
+    ['admin', 'apps', 'automations', 'chief', 'command', 'customer', 'executive', 'home', 'inbox', 'sales', 'settings', 'store', 'tasks', 'zara'].sort(),
     'PAGE_LIST matches the client views + admin'
   );
   for (const [role, pages] of Object.entries(ROLE_PAGES)) {

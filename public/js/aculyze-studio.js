@@ -18,6 +18,7 @@ import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { initTasksView } from './tasks-view.js';
 import { initChiefView } from './chief-view.js';
 import { initExecutiveView } from './executive-view.js';
+import { initAutomationsView } from './automations-view.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
 
@@ -292,6 +293,7 @@ const els = {
   navTasks: document.getElementById('navTasks'),
   navChief: document.getElementById('navChief'),
   navExecutive: document.getElementById('navExecutive'),
+  navAutomations: document.getElementById('navAutomations'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
   viewHome: document.getElementById('view-home'),
@@ -306,6 +308,7 @@ const els = {
   viewTasks: document.getElementById('view-tasks'),
   viewChief: document.getElementById('view-chief'),
   viewExecutive: document.getElementById('view-executive'),
+  viewAutomations: document.getElementById('view-automations'),
   copilot: document.getElementById('copilot'),
   zaraConversations: document.getElementById('zaraConversations'),
   zaraEmptyState: document.getElementById('zaraEmptyState'),
@@ -504,6 +507,7 @@ els.navAdmin?.addEventListener('click', () => setView('admin'));
 els.navTasks?.addEventListener('click', () => setView('tasks'));
 els.navChief?.addEventListener('click', () => setView('chief'));
 els.navExecutive?.addEventListener('click', () => setView('executive'));
+els.navAutomations?.addEventListener('click', () => setView('automations'));
 
 /* ---------- Aculyze Store — contact / free-trial dialog ---------- */
 const storeContactOverlay = document.getElementById('storeContactOverlay');
@@ -857,7 +861,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true, executive: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true, executive: true, automations: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -893,7 +897,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief, executive: els.navExecutive };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief, executive: els.navExecutive, automations: els.navAutomations };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -916,6 +920,8 @@ function setView(view) {
   if (next === 'chief' && typeof chiefOnOpen === 'function') chiefOnOpen();
   els.viewExecutive?.classList.toggle('active', next === 'executive');
   if (next === 'executive' && typeof executiveView !== 'undefined' && executiveView) executiveView.onOpen();
+  els.viewAutomations?.classList.toggle('active', next === 'automations');
+  if (next === 'automations' && typeof automationsView !== 'undefined' && automationsView) automationsView.onOpen();
 
   // On compact viewports the Zara panel is an overlay: close it on navigation.
   // On desktop the persisted open/closed state is left untouched.
@@ -1098,6 +1104,12 @@ function setView(view) {
     showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
     if (els.workspaceTitle) els.workspaceTitle.textContent = 'Executive Agent';
+  }
+  // --- Automations view ---
+  else if (next === 'automations') {
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.workspaceTitle) els.workspaceTitle.textContent = 'Automations';
   }
   // --- Home view ---
   else {
@@ -5771,6 +5783,7 @@ const NAV_PAGE_EL = {
   tasks: () => els.navTasks,
   chief: () => els.navChief,
   executive: () => els.navExecutive,
+  automations: () => els.navAutomations,
 };
 
 function applyNavGating() {
@@ -7711,6 +7724,12 @@ var chiefView = initChiefView({
 function refreshTasks() { return tasksView ? tasksView.refresh() : undefined; }
 function chiefOnOpen() { if (chiefView) chiefView.onOpen(); }
 var executiveView = initExecutiveView({ toast, confirm: showAppConfirm });
+var automationsView = initAutomationsView({
+  toast,
+  confirm: showAppConfirm,
+  getUser: () => authState.user,
+  openTask: (id) => { setView('tasks'); if (tasksView) tasksView.openTaskById(id); },
+});
 
 // If the app started on one of these pages, load it now that the views exist.
 if (els.viewTasks?.classList.contains('active')) refreshTasks();

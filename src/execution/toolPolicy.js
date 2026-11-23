@@ -86,7 +86,59 @@ const TASK_TOOLS = [
     },
   },
 ];
-const TASK_TOOL_NAMES = new Set(TASK_TOOLS.map((t) => t.function.name));
+/**
+ * Internal "people" tools (Phase 04.2): reach colleagues inside Aculyze.
+ * No external app is touched, so no approval step; every use is logged on
+ * the task. Offered only to employees whose capabilities allow it.
+ */
+const PEOPLE_TOOLS = [
+  {
+    caps: ['inbox_communication', 'task_assignment', 'delegation', 'employee_monitoring', 'task_management'],
+    schema: {
+      type: 'function',
+      function: {
+        name: 'task__notify_person',
+        description: 'Send an Inbox message to a colleague in the company (by name or email from the people list).',
+        parameters: {
+          type: 'object',
+          properties: {
+            person: { type: 'string', description: 'colleague name or email, exactly as in the people list' },
+            message: { type: 'string', description: 'the message (plain text or light markdown)' },
+          },
+          required: ['person', 'message'],
+        },
+      },
+    },
+  },
+  {
+    caps: ['task_assignment', 'delegation', 'task_management'],
+    schema: {
+      type: 'function',
+      function: {
+        name: 'task__create_followup',
+        description: 'Create a follow-up task for a colleague (a person, not an AI employee).',
+        parameters: {
+          type: 'object',
+          properties: {
+            person: { type: 'string', description: 'colleague name or email from the people list' },
+            title: { type: 'string', description: 'short imperative title' },
+            details: { type: 'string', description: 'what to do and why' },
+            due_in_days: { type: 'integer', description: 'days from today, 0-30' },
+          },
+          required: ['person', 'title'],
+        },
+      },
+    },
+  },
+];
+
+const TASK_TOOL_NAMES = new Set([...TASK_TOOLS, ...PEOPLE_TOOLS.map((p) => p.schema)].map((t) => t.function.name));
+
+/** People tools this employee may use. */
+function peopleToolsFor(employee) {
+  const caps = new Set((employee && employee.capabilities) || []);
+  return PEOPLE_TOOLS.filter((p) => p.caps.some((c) => caps.has(c))).map((p) => p.schema);
+}
 
 /** Integration tool ids this employee's capabilities allow. */
 function allowedToolIds(employee) {
@@ -109,13 +161,14 @@ function isAllowed(employee, toolId) {
 function buildEmployeeTools(employee, connectedViews) {
   const allowed = allowedToolIds(employee);
   const integration = buildToolSchemas(connectedViews).filter((s) => allowed.has(NAME_TO_ID.get(s.function.name)));
-  return [...integration, ...TASK_TOOLS];
+  return [...integration, ...TASK_TOOLS, ...peopleToolsFor(employee)];
 }
 
 module.exports = {
   CAPABILITY_TOOLS,
   TASK_TOOLS,
   TASK_TOOL_NAMES,
+  peopleToolsFor,
   allowedToolIds,
   isAllowed,
   buildEmployeeTools,
