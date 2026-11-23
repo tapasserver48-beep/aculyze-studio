@@ -1130,6 +1130,27 @@ export async function agentExecute(employeeId, taskId) {
   return data;
 }
 
+/** Pending AI actions waiting for my approval (optionally for one task). */
+export async function agentApprovals(taskId) {
+  const qs = taskId ? `?taskId=${encodeURIComponent(taskId)}` : '';
+  const res = await fetch(`/api/agents/approvals${qs}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not load approvals.');
+  return data;
+}
+
+/** Approve or reject a paused AI action; the run resumes server-side. */
+export async function agentDecide(approvalId, approve, reason = '') {
+  const res = await fetch(`/api/agents/approvals/${encodeURIComponent(approvalId)}/${approve ? 'approve' : 'reject'}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(approve ? {} : { reason }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'That decision could not be saved.');
+  return data;
+}
+
 /** Get AI employee status. */
 export async function agentStatus(employeeId) {
   const res = await fetch(`/api/agents/${encodeURIComponent(employeeId)}/status`);

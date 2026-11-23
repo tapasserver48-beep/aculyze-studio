@@ -475,6 +475,36 @@
 .tm-activity li strong { color: var(--text-2); }
 .tm-loading { padding: 6px 0; font-size: 13.5px; color: var(--text-muted); }
 
+/* ---------- AI employee runs (Phase 04.1) ---------- */
+.tm-ai-note { margin: 0 0 12px; font-size: 13.5px; color: var(--text-sub); }
+.tm-ai-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.tm-ai-outcome { margin: 12px 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
+.tm-ai-outcome.is-submitted { color: var(--st-done); }
+.tm-ai-outcome.is-needs_approval, .tm-ai-outcome.is-needs_info { color: var(--warn); }
+.tm-ai-outcome.is-failed { color: var(--danger); }
+.tm-ai-error {
+  margin: 10px 0 0; padding: 10px 12px; border-radius: 8px;
+  background: var(--danger-soft); color: var(--danger); font-size: 13.5px;
+}
+.tm-ai-steps { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; color: var(--text-sub); }
+.tm-ai-steps li { padding: 3px 0; overflow-wrap: anywhere; }
+.tm-ai-steps li.is-ok span { color: var(--st-done); }
+.tm-ai-steps li.is-err span { color: var(--danger); }
+.tm-ai-steps code { font-size: 12px; color: var(--text-body); }
+.tm-ai-approval {
+  margin: 0 0 12px; padding: 12px 14px; border-radius: var(--radius-lg);
+  border: 1px solid var(--warn); background: var(--warn-soft);
+}
+.tm-ai-appr-title { margin: 0 0 8px; font-weight: 700; color: var(--text); }
+.tm-ai-preview { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 10px; font-size: 13.5px; }
+.tm-ai-preview dt { color: var(--text-muted); }
+.tm-ai-preview dd { margin: 0; color: var(--text-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tm-ai-args { margin: 0 0 10px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-body); }
+.tm-ai-approval input {
+  width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px;
+}
+
 /* ---------- Chief of Staff ---------- */
 .cs-tabs {
   display: flex;

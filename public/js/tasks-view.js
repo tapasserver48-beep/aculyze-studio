@@ -9,6 +9,7 @@
 import {
   tasksList, tasksCreate, tasksUpdate, tasksDelete, tasksMonthlyReport,
   tasksAddComment, tasksActivity, tasksPeople, tasksComments,
+  agentExecute, agentApprovals, agentDecide,
 } from './api.js';
 import {
   STATUS_LABEL, PRIORITY_LABEL, PENDING_REASON_LABEL, LOAD_STATES,
@@ -31,6 +32,24 @@ const ACTIVITY_LABEL = {
   add_comment: 'commented',
   chief_followup_nudge: 'asked for an update (Chief of Staff)',
   chief_followup_reassign: 'reassigned the task (Chief of Staff)',
+  execution_started: 'started working on the task',
+  execution_failed: 'got stuck and needs help',
+  agent_tool_call: 'used a connected app',
+  agent_tool_error: 'hit an error in a connected app',
+  agent_tool_refused: 'tried a tool it is not allowed to use',
+  agent_progress: 'reported progress',
+  agent_requested_info: 'asked a question',
+  agent_approval_requested: 'asked for approval',
+  agent_action_approved: 'ran an approved action',
+  agent_action_rejected: 'had an action rejected',
+  agent_submitted: 'submitted a result for review',
+};
+
+const AI_OUTCOME_TEXT = {
+  submitted: 'Result submitted for your review. See the comments below.',
+  needs_approval: 'Waiting for your approval before it continues.',
+  needs_info: 'The AI employee asked a question. See the comments below.',
+  failed: 'The run stopped before finishing.',
 };
 
 export function initTasksView({ toast, confirm, getUser }) {
@@ -402,8 +421,19 @@ export function initTasksView({ toast, confirm, getUser }) {
     $('tmDrawerTitle').textContent = t.title || 'Untitled';
     const by = t.assigned_by_id ? `Assigned by ${personName(t.assigned_by_id)}` : '';
     $('tmDrawerMeta').textContent = [t.task_code || t.id, by, t.created_at ? `created ${shortDate(t.created_at)}` : ''].filter(Boolean).join(', ');
+    const aiRunnable = t.assigned_to_type === 'ai' && canManage() && !['completed', 'cancelled'].includes(t.status);
     $('tmDrawerBody').innerHTML = `
       ${formHtml(t, { isNew: false })}
+      ${aiRunnable ? `
+      <section class="tm-thread tm-ai" aria-labelledby="tmAiHead">
+        <h3 id="tmAiHead">AI employee</h3>
+        <p class="tm-ai-note">${esc(personName(t.assigned_to_id))} works with the apps you have connected. Anything that sends or creates something waits for your approval.</p>
+        <div id="tmAiApproval"></div>
+        <div class="tm-ai-actions">
+          <button type="button" class="utility-primary" id="tmAiRun">Run with AI</button>
+        </div>
+        <div id="tmAiResult" aria-live="polite"></div>
+      </section>` : ''}
       <section class="tm-thread" aria-labelledby="tmCommentsHead">
         <h3 id="tmCommentsHead">Comments</h3>
         <ol class="tm-comments" id="tmComments"><li class="tm-loading">Loading comments…</li></ol>
@@ -419,8 +449,95 @@ export function initTasksView({ toast, confirm, getUser }) {
       </section>`;
     openDrawer(opener);
     wireForm(t);
+    if (aiRunnable) wireAi(t);
     $('tmDrawerClose').focus();
     loadThread(t.id);
+  }
+
+  /* ---------------- AI employee runs (Phase 04.1) ---------------- */
+  function aiStepsHtml(steps) {
+    if (!steps || !steps.length) return '';
+    return `<ol class="tm-ai-steps">${steps.map((s) => `<li class="${s.ok ? 'is-ok' : 'is-err'}">
+      <span aria-hidden="true">${s.ok ? '✓' : '⚠'}</span> <code>${esc(s.tool)}</code> ${esc(s.text || '')}</li>`).join('')}</ol>`;
+  }
+
+  function showAiOutcome(data) {
+    const box = $('tmAiResult');
+    if (!box) return;
+    const msg = AI_OUTCOME_TEXT[data.outcome] || 'Run finished.';
+    const err = data.outcome === 'failed' && data.error ? `<p class="tm-ai-error">${esc(data.error)}</p>` : '';
+    box.innerHTML = `<p class="tm-ai-outcome is-${esc(data.outcome || 'unknown')}">${esc(msg)}</p>${err}${aiStepsHtml(data.steps)}`;
+  }
+
+  async function loadApproval(task) {
+    const slot = $('tmAiApproval');
+    const run = $('tmAiRun');
+    if (!slot) return;
+    let pending = [];
+    try { pending = (await agentApprovals(task.id)).approvals || []; } catch { /* leave empty */ }
+    if (state.drawerTaskId !== task.id) return;
+    const a = pending[0];
+    if (run) run.hidden = !!a || task.pending_reason === 'awaiting_approval';
+    if (!a) {
+      slot.innerHTML = task.pending_reason === 'awaiting_approval'
+        ? '<p class="tm-ai-note">An action is waiting for approval by the person who started this run.</p>'
+        : '';
+      return;
+    }
+    const c = a.confirm || {};
+    const rows = (c.preview || []).map((p) => `<dt>${esc(p.label || '')}</dt><dd>${esc(p.value || '')}</dd>`).join('');
+    slot.innerHTML = `<div class="tm-ai-approval" role="group" aria-labelledby="tmAiApprTitle">
+        <p class="tm-ai-appr-title" id="tmAiApprTitle">${esc(c.icon || '🔐')} ${esc(c.title || `Run ${a.tool}?`)}</p>
+        ${rows ? `<dl class="tm-ai-preview">${rows}</dl>` : `<pre class="tm-ai-args">${esc(JSON.stringify(a.args, null, 2))}</pre>`}
+        <label class="sr-only" for="tmAiReason">Reason for rejecting (optional)</label>
+        <input id="tmAiReason" type="text" maxlength="300" placeholder="Reason if you reject (optional)">
+        <div class="tm-ai-actions">
+          <button type="button" class="utility-secondary" data-ai-decide="reject">Reject</button>
+          <button type="button" class="utility-primary" data-ai-decide="approve">${esc(c.verb || 'Approve')}</button>
+        </div>
+      </div>`;
+    slot.querySelectorAll('[data-ai-decide]').forEach((btn) => btn.addEventListener('click', async () => {
+      const approve = btn.dataset.aiDecide === 'approve';
+      slot.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      $('tmAiResult').innerHTML = `<p class="tm-loading">${approve ? 'Running the approved action and continuing…' : 'Sending your feedback and continuing…'}</p>`;
+      try {
+        const data = await agentDecide(a.id, approve, $('tmAiReason')?.value || '');
+        showAiOutcome(data);
+        toast(approve ? 'Approved' : 'Rejected', 'success');
+      } catch (ex) {
+        $('tmAiResult').innerHTML = `<p class="tm-ai-error">${esc(ex.message)}</p>`;
+      }
+      await afterAiRun(task);
+    }));
+  }
+
+  async function afterAiRun(task) {
+    await refresh();
+    const fresh = state.tasks.find((x) => x.id === task.id);
+    if (fresh) Object.assign(task, fresh);
+    if (state.drawerTaskId !== task.id) return;
+    loadThread(task.id);
+    loadApproval(task);
+  }
+
+  function wireAi(task) {
+    loadApproval(task);
+    $('tmAiRun')?.addEventListener('click', async () => {
+      const btn = $('tmAiRun');
+      btn.disabled = true;
+      btn.textContent = 'Working…';
+      $('tmAiResult').innerHTML = '<p class="tm-loading">The AI employee is working on this task. This can take a minute.</p>';
+      try {
+        const data = await agentExecute(task.assigned_to_id, task.id);
+        showAiOutcome(data);
+      } catch (ex) {
+        $('tmAiResult').innerHTML = `<p class="tm-ai-error">${esc(ex.message)}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run again';
+      }
+      await afterAiRun(task);
+    });
   }
 
   async function loadThread(id) {

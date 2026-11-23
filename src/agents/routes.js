@@ -13,17 +13,85 @@
  * POST /api/agents/:employeeId/execute - Request AI employee to execute a task
  * GET  /api/agents/:employeeId/status  - Get AI employee status
  * GET  /api/agents/:employeeId/tasks   - Get tasks assigned to AI employee (filtered by requester permissions)
+ * GET  /api/agents/approvals           - Pending write actions awaiting the signed-in user
+ * POST /api/agents/approvals/:id/approve|reject - Decide, then resume the run
  */
 
 const express = require('express');
 const { requireUser } = require('../auth/authorize');
 const { employee } = require('./store');
+const { executeTask, decideAndResume } = require('../execution/agentRuntime');
+const approvals = require('../execution/approvals');
+const { IntegrationManager } = require('../integrations/manager');
 
-function createAgentsRouter({ dataDir }) {
+function createAgentsRouter(options = {}) {
+  const { dataDir } = options;
   const router = express.Router();
   
   // All routes require authenticated human user
   router.use(requireUser);
+
+  // One IntegrationManager per router: AI employees act through the
+  // initiating human's own app connections.
+  let manager = options.manager || null;
+  const getManager = () => {
+    if (!manager) manager = new IntegrationManager({ dataDir, env: process.env, provider: options.provider || null });
+    return manager;
+  };
+
+  /**
+   * Pending write actions waiting for the signed-in user's decision.
+   * GET /api/agents/approvals?taskId=&status=
+   */
+  router.get('/approvals', async (req, res) => {
+    try {
+      const status = req.query.status ? String(req.query.status) : approvals.STATUS.PENDING;
+      const items = approvals.listApprovals(dataDir, {
+        userId: req.user.id,
+        taskId: req.query.taskId ? String(req.query.taskId) : undefined,
+        status: status === 'all' ? undefined : status,
+      }).map(approvals.publicView);
+      res.json({ approvals: items, count: items.length });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  /**
+   * Approve / reject a paused action, then resume the agent run.
+   * POST /api/agents/approvals/:id/approve
+   * POST /api/agents/approvals/:id/reject   { reason? }
+   */
+  for (const verb of ['approve', 'reject']) {
+    router.post(`/approvals/:id/${verb}`, async (req, res) => {
+      try {
+        const out = await decideAndResume(dataDir, {
+          approvalId: String(req.params.id),
+          userId: req.user.id,
+          approve: verb === 'approve',
+          reason: req.body && req.body.reason,
+          manager: getManager(),
+          provider: options.runtimeProvider,
+        });
+        res.json({
+          executionId: out.executionId,
+          task: out.taskId,
+          outcome: out.outcome,
+          status: out.outcome,
+          approval: out.outcome === 'needs_approval' ? out.approval : undefined,
+          decided: out.outcome === 'needs_approval' ? undefined : out.approval,
+          summary: out.summary,
+          result: out.result,
+          question: out.question,
+          error: out.error,
+          steps: out.steps || [],
+        });
+      } catch (err) {
+        if (!err.status) console.error(`[Agents] ${verb} error:`, err);
+        res.status(err.status || 500).json({ error: err.message || 'Failed' });
+      }
+    });
+  }
   
   /**
    * Execute a task with an AI employee
@@ -62,31 +130,39 @@ function createAgentsRouter({ dataDir }) {
         return res.status(403).json({ error: permissionCheck.reason });
       }
       
-      // Trigger server-side execution
-      const { executeTask } = require('../execution/agentRuntime');
+      // Trigger server-side execution (Phase 04.1 tool loop).
       const result = await executeTask(dataDir, {
         employeeId,
         taskId,
         initiatingUserId: user.id,
-        maxSteps: 20,
-        timeoutMs: 300000
+        manager: getManager(),
+        provider: options.runtimeProvider,
+        maxSteps: req.body && req.body.maxSteps,
       });
-      
-      res.json({ 
+
+      res.json({
         executionId: result.executionId,
-        status: result.status,
+        status: result.outcome,
+        outcome: result.outcome,
         employee: result.employeeCode,
         task: taskId,
         provider: result.provider,
         model: result.model,
-        startedAt: result.startTime
+        startedAt: result.startTime,
+        elapsedMs: result.elapsedMs,
+        summary: result.summary,
+        result: result.result,
+        question: result.question,
+        approval: result.approval,
+        error: result.error,
+        steps: result.steps || [],
       });
     } catch (err) {
-      console.error('[Agents] Execution error:', err);
-      res.status(500).json({ error: err.message || 'Execution failed' });
+      if (!err.status) console.error('[Agents] Execution error:', err);
+      res.status(err.status || 500).json({ error: err.message || 'Execution failed' });
     }
   });
-  
+
   /**
    * Get AI employee status
    * GET /api/agents/:employeeId/status
