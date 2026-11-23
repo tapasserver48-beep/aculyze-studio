@@ -113,7 +113,7 @@ async function ensureSchema() {
   
   // Migrate from JSON if table is empty
   const { rows } = await pg.query('SELECT COUNT(*) AS cnt FROM ai_employees');
-  if (rows[0].cnt === 0) {
+  if (Number(rows[0].cnt) === 0) {
     const dataDir = process.env.ACULYZE_DATA_DIR;
     const jsonData = readEmployees(dataDir);
     for (const emp of jsonData.employees || []) {
@@ -122,7 +122,7 @@ async function ensureSchema() {
           description, system_instructions, capabilities, permissions, status, created_at, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [emp.id, emp.employee_code, emp.name, emp.designation, emp.employee_type,
-         emp.description, emp.system_instructions, emp.capabilities, emp.permissions,
+         emp.description, emp.system_instructions, toJson(emp.capabilities, []), toJson(emp.permissions, {}),
          emp.status, emp.created_at, emp.updated_at]
       );
     }
@@ -147,10 +147,34 @@ async function pgUpsertEmployees(dataDir, employees) {
          status = EXCLUDED.status,
          updated_at = EXCLUDED.updated_at`,
       [emp.id, emp.employee_code, emp.name, emp.designation, emp.employee_type,
-       emp.description, emp.system_instructions, emp.capabilities, emp.permissions,
+       emp.description, emp.system_instructions, toJson(emp.capabilities, []), toJson(emp.permissions, {}),
        emp.status, emp.created_at || now, emp.updated_at || now]
     );
   }
+}
+
+/** Postgres row → employee (JSONB may arrive parsed or as text). */
+function rowToEmployee(r) {
+  const parse = (v, fb) => {
+    if (v === null || v === undefined) return fb;
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { return fb; } }
+    return v;
+  };
+  return {
+    id: r.id, employee_code: r.employee_code, name: r.name, designation: r.designation,
+    employee_type: r.employee_type, description: r.description, system_instructions: r.system_instructions,
+    capabilities: parse(r.capabilities, []), permissions: parse(r.permissions, {}), status: r.status,
+    created_at: Number(r.created_at), updated_at: Number(r.updated_at),
+  };
+}
+
+/** JSONB parameter: send JSON text, never a raw JS array (see above). */
+function toJson(value, fallback) {
+  if (value === undefined || value === null) return JSON.stringify(fallback);
+  if (typeof value === 'string') {
+    try { JSON.parse(value); return value; } catch { return JSON.stringify(fallback); }
+  }
+  return JSON.stringify(value);
 }
 
 // ---------- Main functions ----------
@@ -161,8 +185,8 @@ function generateAiId() {
 
 async function listEmployees(dataDir) {
   if (pg.enabled()) {
-    const { rows } = await pg.query('SELECT id, employee_code, name, designation, employee_type, description, status, created_at, updated_at FROM ai_employees ORDER BY created_at');
-    return rows.map(r => ({ id: r.id, employee_code: r.employee_code, name: r.name, designation: r.designation, employee_type: r.employee_type, description: r.description, status: r.status, created_at: Number(r.created_at), updated_at: Number(r.updated_at) }));
+    const { rows } = await pg.query('SELECT * FROM ai_employees ORDER BY created_at');
+    return rows.map(rowToEmployee);
   }
   const doc = readEmployees(dataDir);
   return doc.employees || [];
@@ -172,8 +196,7 @@ async function findById(dataDir, id) {
   if (pg.enabled()) {
     const { rows } = await pg.query('SELECT * FROM ai_employees WHERE id = $1', [id]);
     if (!rows.length) return null;
-    const r = rows[0];
-    return { id: r.id, employee_code: r.employee_code, name: r.name, designation: r.designation, employee_type: r.employee_type, description: r.description, system_instructions: r.system_instructions, capabilities: r.capabilities, permissions: r.permissions, status: r.status, created_at: Number(r.created_at), updated_at: Number(r.updated_at) };
+    return rowToEmployee(rows[0]);
   }
   const doc = readEmployees(dataDir);
   return doc.employees.find(e => e.id === id) || null;
@@ -183,8 +206,7 @@ async function findByCode(dataDir, code) {
   if (pg.enabled()) {
     const { rows } = await pg.query('SELECT * FROM ai_employees WHERE employee_code = $1', [code]);
     if (!rows.length) return null;
-    const r = rows[0];
-    return { id: r.id, employee_code: r.employee_code, name: r.name, designation: r.designation, employee_type: r.employee_type, description: r.description, system_instructions: r.system_instructions, capabilities: r.capabilities, permissions: r.permissions, status: r.status, created_at: Number(r.created_at), updated_at: Number(r.updated_at) };
+    return rowToEmployee(rows[0]);
   }
   const doc = readEmployees(dataDir);
   return doc.employees.find(e => e.employee_code === code) || null;
@@ -211,7 +233,7 @@ async function initializeEmployee(dataDir, code) {
         description, system_instructions, capabilities, permissions, status, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [employee.id, employee.employee_code, employee.name, employee.designation, employee.employee_type,
-       employee.description, employee.system_instructions, employee.capabilities, employee.permissions,
+       employee.description, employee.system_instructions, toJson(employee.capabilities, []), toJson(employee.permissions, {}),
        employee.status, employee.created_at, employee.updated_at]
     );
   } else {
@@ -228,9 +250,12 @@ async function updateEmployee(dataDir, id, updates) {
   const updatesWithTs = { ...updates, updated_at: now };
 
   if (pg.enabled()) {
-    const result = await pg.query('UPDATE ai_employees SET name = $1, designation = $2, description = $3, system_instructions = $4, capabilities = $5, permissions = $6, status = $7, updated_at = $8 WHERE id = $9 RETURNING *', 
-      [updatesWithTs.name, updatesWithTs.designation, updatesWithTs.description, updatesWithTs.system_instructions,
-       updatesWithTs.capabilities, updatesWithTs.permissions, updatesWithTs.status, now, id]);
+    const current = await findById(dataDir, id);
+    if (!current) return null;
+    const next = { ...current, ...Object.fromEntries(Object.entries(updates || {}).filter(([, v]) => v !== undefined)) };
+    const result = await pg.query('UPDATE ai_employees SET name = $1, designation = $2, description = $3, system_instructions = $4, capabilities = $5, permissions = $6, status = $7, updated_at = $8 WHERE id = $9 RETURNING *',
+      [next.name, next.designation, next.description, next.system_instructions,
+       toJson(next.capabilities, []), toJson(next.permissions, {}), next.status, now, id]);
     if (!result.rows.length) return null;
     const r = result.rows[0];
     return { id: r.id, employee_code: r.employee_code, name: r.name, designation: r.designation, employee_type: r.employee_type, description: r.description, system_instructions: r.system_instructions, capabilities: r.capabilities, permissions: r.permissions, status: r.status, created_at: Number(r.created_at), updated_at: Number(r.updated_at) };

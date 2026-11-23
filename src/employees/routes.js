@@ -77,14 +77,23 @@ function createEmployeesRouter({ dataDir }) {
       return res.status(422).json({ error: 'At least one employee code is required' });
     }
 
+    // Accept the codes ('AI-CHIEF-001') or the constant names ('CHIEF_OF_STAFF').
+    // (This used to look codes up as constant names, so every code was "unknown".)
+    const known = new Set(Object.values(EMPLOYEE_CODES));
     const results = [];
-    for (const code of codes) {
-      if (!EMPLOYEE_CODES[code.toUpperCase()]) {
-        results.push({ code, created: false, reason: 'unknown_code' });
+    for (const raw of codes) {
+      const up = String(raw || '').trim().toUpperCase();
+      const code = known.has(up) ? up : EMPLOYEE_CODES[up];
+      if (!code) {
+        results.push({ code: raw, created: false, reason: 'unknown_code' });
         continue;
       }
-      const result = await initializeEmployee(dataDir, code.toUpperCase());
-      results.push({ code, ...result });
+      try {
+        const result = await initializeEmployee(dataDir, code);
+        results.push({ code, ...result });
+      } catch (err) {
+        results.push({ code, created: false, reason: String(err.message || err).slice(0, 160) });
+      }
     }
 
     res.json({ results });

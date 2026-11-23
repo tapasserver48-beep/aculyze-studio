@@ -1301,6 +1301,19 @@ async function initStorage() {
     console.log(`  Documents: ${docs.documents} in Postgres${docs.imported ? ` (imported ${docs.imported} from files)` : ''}`);
     console.log(`  DB       : PostgreSQL (accounts${a.migrated ? `, imported ${a.migrated}` : ''}${b.migrated ? `, inbox messages imported ${b.migrated}` : ''})`);
   }
+  // The three built-in AI employees must always exist (Inbox, Tasks, Chief of
+  // Staff, Executive check-ins and Automations all rely on them). Idempotent.
+  try {
+    const employees = require('./src/employees/store');
+    const made = [];
+    for (const code of Object.values(employees.EMPLOYEE_CODES)) {
+      const r = await employees.initializeEmployee(DATA_DIR, code);
+      if (r.created) made.push(r.employee.name);
+    }
+    if (made.length) console.log(`  AI staff : created ${made.join(', ')}`);
+  } catch (err) {
+    console.warn(`  AI staff : could not create AI employees: ${String((err && err.message) || err).slice(0, 200)}`);
+  }
   // First-admin bootstrap (BOOTSTRAP_ADMIN_* + the setup-code banner). Runs in
   // BOTH storage modes and never throws — see src/auth/setup.js.
   const { firstAdminBootstrap } = require('./src/auth/setup');
