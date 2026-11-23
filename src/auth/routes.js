@@ -289,6 +289,17 @@ function createAuthRouter(options = {}) {
     }
     if (body.name !== undefined) updates.name = body.name;
     if (body.permissions !== undefined) updates.permissions = normalizePermissions(body.permissions);
+    // "Reports to": the person's team lead / manager ('' or null clears it).
+    if (body.managerId !== undefined) {
+      const mid = body.managerId ? String(body.managerId) : '';
+      if (mid && mid === target.id) {
+        return res.status(422).json({ error: 'A person cannot report to themselves.', code: 'validation' });
+      }
+      if (mid && !(await findById(dataDir, mid))) {
+        return res.status(422).json({ error: 'That "reports to" person does not exist.', code: 'validation' });
+      }
+      updates.managerId = mid || null;
+    }
 
     const user = await updateUser(dataDir, req.params.id, updates);
     res.json({ user });

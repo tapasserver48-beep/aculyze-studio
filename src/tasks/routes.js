@@ -35,6 +35,9 @@ const { requireUser, requireRole } = require('../auth/authorize');
 
 const MANAGER_ROLES = ['admin', 'founder', 'manager'];
 const isManager = (user) => !!user && MANAGER_ROLES.includes(user.role);
+/** The human who asked for the task (assigned it, or started its AI run). */
+const isRequester = (task, user) => !!user && !!task
+  && ((task.assigned_by_type !== 'ai' && task.assigned_by_id === user.id) || task.initiating_user_id === user.id);
 
 // Fields a PATCH /:id may change. Assignees may only move their own work
 // forward; managers may also re-plan and reassign.
@@ -149,7 +152,9 @@ function createTasksRouter({ dataDir }) {
   router.get('/', requireUser, async (req, res) => {
     try {
       const filters = {
-        assignedTo: isManager(req.user) ? req.query.assignedTo : req.user.id,
+        assignedTo: isManager(req.user) ? req.query.assignedTo : undefined,
+        // Non-managers see tasks assigned to them plus tasks they asked for.
+        visibleTo: isManager(req.user) ? undefined : req.user.id,
         status: req.query.status,
         priority: req.query.priority,
         employeeType: req.query.employeeType,
@@ -174,7 +179,7 @@ function createTasksRouter({ dataDir }) {
       const taskOwner = task.assigned_to_type === 'human' && task.assigned_to_id === user.id;
       const isAdmin = user.role === 'admin' || user.role === 'founder' || user.role === 'manager';
 
-      if (!taskOwner && !isAdmin) {
+      if (!taskOwner && !isAdmin && !isRequester(task, user)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -316,7 +321,7 @@ function createTasksRouter({ dataDir }) {
       const taskOwner = task.assigned_to_type === 'human' && task.assigned_to_id === user.id;
       const isAdmin = user.role === 'admin' || user.role === 'founder' || user.role === 'manager';
 
-      if (!taskOwner && !isAdmin) {
+      if (!taskOwner && !isAdmin && !isRequester(task, user)) {
         return res.status(403).json({ error: 'Access denied: cannot comment on this task' });
       }
 
@@ -341,7 +346,7 @@ function createTasksRouter({ dataDir }) {
       const task = await getTask(dataDir, req.params.id);
       if (!task) return res.status(404).json({ error: 'Task not found' });
       const isOwner = task.assigned_to_type === 'human' && task.assigned_to_id === req.user.id;
-      if (!isOwner && !isManager(req.user)) return res.status(403).json({ error: 'Access denied' });
+      if (!isOwner && !isManager(req.user) && !isRequester(task, req.user)) return res.status(403).json({ error: 'Access denied' });
       res.json({ comments: await getTaskComments(dataDir, req.params.id) });
     } catch (err) {
       res.status(500).json({ error: String(err.message || err).slice(0, 200) });
@@ -360,7 +365,7 @@ function createTasksRouter({ dataDir }) {
         const taskOwner = task.assigned_to_type === 'human' && task.assigned_to_id === user.id;
         const isAdmin = user.role === 'admin' || user.role === 'founder' || user.role === 'manager';
 
-        if (taskOwner || isAdmin) {
+        if (taskOwner || isAdmin || isRequester(task, user)) {
           const activity = await getTaskActivity(dataDir, req.params.id);
           return res.json({ activity });
         }
@@ -372,7 +377,7 @@ function createTasksRouter({ dataDir }) {
         const taskOwner = task.assigned_to_type === 'human' && task.assigned_to_id === user.id;
         const isAdmin = user.role === 'admin' || user.role === 'founder' || user.role === 'manager';
         
-        if (taskOwner || isAdmin) {
+        if (taskOwner || isAdmin || isRequester(task, user)) {
           const activity = await getTaskActivity(dataDir, req.params.id);
           return res.json({ activity });
         }

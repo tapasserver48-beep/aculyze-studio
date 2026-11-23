@@ -176,7 +176,7 @@ function calcOverdue(task) {
 }
 
 async function listTasks(dataDir, filters = {}) {
-  const { assignedTo, status, priority, employeeType, limit = 100, offset = 0 } = filters;
+  const { assignedTo, visibleTo, status, priority, employeeType, limit = 100, offset = 0 } = filters;
 
   if (pg.enabled()) {
     const params = [];
@@ -187,6 +187,11 @@ async function listTasks(dataDir, filters = {}) {
       // Outer parens matter: without them `A OR B AND status = …` ignores the
       // other filters for every human-assigned row.
       conditions.push(`((assigned_to_type = 'human' AND assigned_to_id = $${idx++}) OR (assigned_to_type = 'ai' AND assigned_to_id = $${idx++}))`);
+    }
+    // visibleTo: tasks assigned to this user OR requested by them (they
+    // assigned it, or started it) - e.g. tasks an employee gave an AI.
+    if (visibleTo) {
+      conditions.push(`(assigned_to_id = $${idx++} OR assigned_by_id = $${idx++} OR initiating_user_id = $${idx++})`);
     }
     if (status) {
       conditions.push(`status = $${idx++}`);
@@ -202,6 +207,7 @@ async function listTasks(dataDir, filters = {}) {
     const { rows } = await pg.query(
       `SELECT * FROM tasks ${where} ORDER BY due_date NULLS LAST, created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
       [...(typeof assignedTo === 'object' ? [assignedTo.human, assignedTo.ai] : assignedTo ? [assignedTo, assignedTo] : []),
+       ...(visibleTo ? [visibleTo, visibleTo, visibleTo] : []),
        status, priority, employeeType, limit, offset].filter(x => x !== undefined)
     );
     return rows.map(r => ({ ...r, created_at: Number(r.created_at), updated_at: Number(r.updated_at), start_date: r.start_date ? Number(r.start_date) : null, due_date: r.due_date ? Number(r.due_date) : null, completed_at: r.completed_at ? Number(r.completed_at) : null }));
@@ -212,6 +218,9 @@ async function listTasks(dataDir, filters = {}) {
 
   if (assignedTo) {
     tasks = tasks.filter(t => t.assigned_to_id === assignedTo || t.assigned_to_id === assignedTo);
+  }
+  if (visibleTo) {
+    tasks = tasks.filter(t => t.assigned_to_id === visibleTo || t.assigned_by_id === visibleTo || t.initiating_user_id === visibleTo);
   }
   if (status) {
     tasks = tasks.filter(t => t.status === status);

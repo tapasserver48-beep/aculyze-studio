@@ -61,6 +61,7 @@ How you work:
 - Be efficient: you have a limited number of steps. Prefer one or two well-aimed searches over many similar ones.
 - Email search results include each message's [id: …] and a short preview. Previews are usually enough to summarize; open a message (get_message) only when you need its full text, and always pass the exact id from the results.
 - Gmail search syntax examples: "newer_than:3d -category:promotions -category:social", "from:name@company.com", "is:unread".
+- If the recent comments contain the requester's feedback on an earlier result, produce a revised deliverable that addresses it.
 - When done, ALWAYS call task__submit_result with a one-line summary and the full deliverable.`;
 
 const WRAP_UP = 'You have no steps left. Do not gather more data. Call task__submit_result now with the best deliverable you can make from what you already found, and mention any gaps.';
@@ -142,6 +143,28 @@ function toolPayload(res) {
   }
 }
 
+/**
+ * Short preview of a result for an Inbox message: whole paragraphs/tables
+ * only (never cut mid-table), up to ~900 chars, then a pointer to the task.
+ */
+function chatExcerpt(text, limit = 900) {
+  const blocks = String(text || '').trim().split(/\n{2,}/);
+  const out = [];
+  let used = 0;
+  for (const b of blocks) {
+    if (used + b.length > limit) break;
+    out.push(b);
+    used += b.length + 2;
+  }
+  if (!out.length) {
+    const cut = blocks[0].slice(0, limit);
+    const nl = cut.lastIndexOf('\n');
+    out.push(nl > limit / 3 ? cut.slice(0, nl) : cut);
+  }
+  const more = out.length < blocks.length || out.join('\n\n').length < String(text || '').trim().length;
+  return more ? `${out.join('\n\n')}\n\n_Open the task for the full result._` : out.join('\n\n');
+}
+
 async function notify(dataDir, employee, userId, body) {
   if (!userId) return;
   try {
@@ -181,6 +204,7 @@ async function runLoop(ctx) {
   const steps = ctx.steps || [];
   const tools = policy.buildEmployeeTools(employee, manager ? manager.listApps(uid) : []);
   const deadline = Date.now() + RUN_BUDGET_MS;
+  const phase = typeof ctx.onPhase === 'function' ? ctx.onPhase : () => {};
   let lastText = '';
 
   for (let round = ctx.round || 0; round < maxSteps; round++) {
@@ -190,6 +214,7 @@ async function runLoop(ctx) {
     const lastRound = round === maxSteps - 1;
     const roundTools = lastRound ? tools.filter((t) => t.function.name === 'task__submit_result') : tools;
     if (lastRound) messages.push({ role: 'user', content: WRAP_UP });
+    phase(lastRound ? 'Writing the result…' : 'Thinking…');
 
     let res;
     try {
@@ -274,6 +299,7 @@ async function runLoop(ctx) {
       }
 
       try {
+        phase(def.progress || `Using ${toolId}…`);
         const out = await manager.runTool(uid, toolId, args);
         const count = typeof out.count === 'number' ? out.count : null;
         steps.push({ tool: toolId, ok: true, text: out.summary || (count !== null ? `${count} ${def.unit || 'results'}` : def.done || 'done') });
@@ -291,6 +317,7 @@ async function runLoop(ctx) {
   // Out of steps: one final tool-free call asking for the deliverable from
   // everything gathered so far, so a run that collected data still finishes.
   if (!lastText.trim() && Date.now() < deadline) {
+    phase('Writing the result…');
     try {
       messages.push({ role: 'user', content: `${WRAP_UP} Reply with the deliverable as plain text.` });
       const res = await provider.sendMessage({
@@ -324,7 +351,8 @@ async function submit(ctx, steps, { summary, result }) {
   await addComment(dataDir, { taskId: task.id, authorType: 'ai', authorId: employee.id, content: `**Result submitted for review:** ${sum}\n\n${body}` });
   await updateTask(dataDir, task.id, { status: 'under_review', pending_reason: null, progress: 100 });
   await log(dataDir, task.id, employee.id, 'agent_submitted', { executionId, summary: sum, steps: steps.length });
-  await notify(dataDir, employee, initiatingUserId, `✅ I finished "${task.title}" and submitted it for your review.\n\n${sum}`);
+  await notify(dataDir, employee, initiatingUserId,
+    `✅ Finished **${task.title}**. It's ready for your review.\n\n${chatExcerpt(body)}\n\n[task:${task.id}]`);
   return { outcome: OUTCOME.SUBMITTED, summary: sum, result: body, steps };
 }
 
@@ -333,7 +361,8 @@ async function requestInfo(ctx, steps, question) {
   await addComment(dataDir, { taskId: task.id, authorType: 'ai', authorId: employee.id, content: `**Question:** ${question}` });
   await updateTask(dataDir, task.id, { status: 'pending', pending_reason: 'waiting_for_info' });
   await log(dataDir, task.id, employee.id, 'agent_requested_info', { executionId, question: question.slice(0, 500) });
-  await notify(dataDir, employee, initiatingUserId, `❓ I need information to continue "${task.title}":\n\n${question}\n\nReply in the task comments, then run the task again.`);
+  await notify(dataDir, employee, initiatingUserId,
+    `❓ I need information to continue **${task.title}**:\n\n${question}\n\nAnswer in the task comments, then click Run again.\n\n[task:${task.id}]`);
   return { outcome: OUTCOME.NEEDS_INFO, question, steps };
 }
 
@@ -366,7 +395,7 @@ async function requestApproval(ctx, steps, { toolId, args, callId, round }) {
   await updateTask(dataDir, task.id, { status: 'pending', pending_reason: 'awaiting_approval' });
   await log(dataDir, task.id, employee.id, 'agent_approval_requested', { executionId, tool: toolId, approvalId: approval.id });
   await notify(dataDir, employee, initiatingUserId,
-    `🔐 Approval needed for "${task.title}": ${(confirm && confirm.title) || toolId}\nOpen the task to approve or reject.`);
+    `🔐 Approval needed for **${task.title}**: ${(confirm && confirm.title) || toolId}\nOpen the task to approve or reject.\n\n[task:${task.id}]`);
   return { outcome: OUTCOME.NEEDS_APPROVAL, approval: approvals.publicView(approval), steps };
 }
 
@@ -412,7 +441,7 @@ function providerFromKey(opts, key) {
 async function executeTask(dataDir, opts) {
   const { employeeId, taskId, initiatingUserId, manager = null } = opts;
   const startTime = Date.now();
-  const executionId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const executionId = opts.executionId || `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   const empResult = await resolveEmployee(dataDir, employeeId);
   if (!empResult.valid) throw new Error(`Invalid employee: ${empResult.reason}`);
@@ -441,7 +470,8 @@ async function executeTask(dataDir, opts) {
     provider: sel.provider, model: sel.model, providerKey: sel.providerKey,
     executionId, maxSteps,
     messages: buildPrompt(employee, task, comments),
-    steps: [], round: 0,
+    steps: opts.steps || [], round: 0,
+    onPhase: opts.onPhase,
   });
 
   return {
@@ -485,6 +515,11 @@ async function decideAndResume(dataDir, opts) {
   }
 
   const state = decided.state || { messages: [], steps: [], round: 0 };
+  // Live view: keep earlier steps, then stream new ones into the caller's array.
+  if (Array.isArray(opts.steps)) {
+    opts.steps.push(...(state.steps || []));
+    state.steps = opts.steps;
+  }
   const messages = state.messages || [];
   let toolContent;
   if (approve) {
@@ -517,6 +552,7 @@ async function decideAndResume(dataDir, opts) {
     executionId: decided.executionId,
     maxSteps: Math.max(1, Math.min(HARD_MAX_STEPS, Number(opts.maxSteps) || DEFAULT_MAX_STEPS)),
     messages, steps: state.steps || [], round: state.round || 0,
+    onPhase: opts.onPhase,
   });
   return { executionId: decided.executionId, taskId: task.id, approval: approvals.publicView(approvals.getApproval(dataDir, approvalId)), ...out };
 }

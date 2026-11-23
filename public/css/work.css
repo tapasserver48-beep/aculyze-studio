@@ -475,7 +475,73 @@
 .tm-activity li strong { color: var(--text-2); }
 .tm-loading { padding: 6px 0; font-size: 13.5px; color: var(--text-muted); }
 
-/* ---------- AI employee runs (Phase 04.1) ---------- */
+/* ---------- AI employee runs (Phase 04.1 / 04.1b) ---------- */
+.tm-ai {
+  margin: 0 0 22px; padding: 14px 16px; border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+.tm-ai-head { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+.tm-ai-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
+.tm-ai-badge, .tm-ask-badge {
+  display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px;
+  background: var(--accent); color: var(--accent-ink, #fff); font-size: 11px; font-weight: 800; letter-spacing: .04em;
+}
+.tm-ai-state { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.tm-ai-state.is-busy { color: var(--accent); }
+.tm-ai-state.is-ok { color: var(--st-done); }
+.tm-ai-state.is-warn { color: var(--warn); }
+.tm-ai-state.is-err { color: var(--danger); }
+.tm-ai-progress { margin: 10px 0 4px; }
+.tm-ai-phase { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
+.tm-ai-spinner {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent); border-top-color: var(--accent);
+  animation: tm-ai-spin .8s linear infinite;
+}
+@keyframes tm-ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tm-ai-spinner { animation-duration: 2.4s; } }
+.tm-ai-steps li { display: flex; gap: 8px; align-items: baseline; }
+.tm-ai-step-ico { flex: none; width: 14px; font-weight: 700; text-align: center; }
+.tm-ai-step-text { color: var(--text-muted); }
+.tm-ai-trace { margin-top: 6px; font-size: 13px; }
+.tm-ai-trace summary { cursor: pointer; color: var(--text-sub); }
+.tm-ai-review {
+  margin: 12px 0 10px; padding: 12px 14px; border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--st-done) 45%, var(--border));
+  background: color-mix(in srgb, var(--st-done) 8%, var(--surface));
+}
+.tm-ai-review-title { margin: 0 0 2px; font-weight: 700; color: var(--text); }
+.tm-ai-revise { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.tm-ai-revise label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.tm-ai-revise textarea {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; resize: vertical;
+}
+
+/* Quick ask bar on the Tasks page */
+.tm-ask {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 18px; padding: 8px 8px 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.tm-ask:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.tm-ask input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text);
+  font: inherit; font-size: 14.5px; padding: 6px 0;
+}
+.tm-ask button { flex: none; }
+
+/* Comments render markdown (AI results) */
+.tm-comment-body.md { white-space: normal; overflow-wrap: anywhere; }
+.tm-comment-body.md > :first-child { margin-top: 0; }
+.tm-comment-body.md > :last-child { margin-bottom: 0; }
+.tm-comment-body.md p, .tm-comment-body.md ul, .tm-comment-body.md ol { margin: 0 0 8px; }
+.tm-comment-body.md ul, .tm-comment-body.md ol { padding-left: 20px; }
+.tm-comment-body.md h1, .tm-comment-body.md h2, .tm-comment-body.md h3 { margin: 10px 0 6px; font-size: 14.5px; color: var(--text); }
+.tm-comment-body.md table { border-collapse: collapse; font-size: 13px; }
+.tm-comment-body.md th, .tm-comment-body.md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+
 .tm-ai-note { margin: 0 0 12px; font-size: 13.5px; color: var(--text-sub); }
 .tm-ai-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .tm-ai-outcome { margin: 12px 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
@@ -745,3 +811,104 @@ body.work-drawer-open .foppy-wrap { display: none; }
   .work-drawer { transition: none; }
   .tm-reports > summary::before { transition: none; }
 }
+
+/* ---------- Inbox ↔ AI employees (Phase 04.1b) ---------- */
+.inbox-messages .msg-task-link {
+  display: inline-flex; align-items: center; margin: 6px 0 2px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--accent); background: var(--accent-soft, transparent); color: var(--accent);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.inbox-messages .msg-task-link:hover { background: var(--accent); color: var(--accent-ink, #fff); }
+.inbox-messages .msg-make-task {
+  display: block; margin: 6px 0 0 auto; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8;
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.inbox-messages .msg-make-task:hover:not(:disabled), .inbox-messages .msg-make-task:focus-visible { opacity: 1; }
+.inbox-messages .msg-make-task:disabled { cursor: default; opacity: .6; }
+
+/* Formatted text inside Inbox bubbles: one block, so bold/links stay inline */
+.dm-thread .msg-text { display: block; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.dm-thread .msg-text > :first-child { margin-top: 0; }
+.dm-thread .msg-text > :last-child { margin-bottom: 0; }
+.dm-thread .msg-text h1, .dm-thread .msg-text h2, .dm-thread .msg-text h3, .dm-thread .msg-text h4 {
+  margin: 10px 0 4px; font-size: 15px; font-weight: 700; line-height: 1.35;
+}
+.dm-thread .msg-text p { margin: 0 0 6px; }
+.dm-thread .msg-text ul, .dm-thread .msg-text ol { margin: 4px 0 6px; padding-left: 20px; }
+.dm-thread .msg-text li { margin: 2px 0; }
+.dm-thread .msg-text hr { border: 0; border-top: 1px solid currentColor; opacity: .2; margin: 8px 0; }
+.dm-thread .msg-text pre { max-width: 100%; overflow-x: auto; }
+
+/* Tables (Inbox bubbles and task comments): scroll sideways instead of overflowing */
+.md-table { max-width: 100%; overflow-x: auto; margin: 6px 0 8px; }
+.md-table table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.md-table th, .md-table td { border: 1px solid color-mix(in srgb, currentColor 22%, transparent); padding: 5px 8px; text-align: left; vertical-align: top; }
+.md-table th { font-weight: 700; background: color-mix(in srgb, currentColor 6%, transparent); }
+.dm-thread .msg-text .msg-task-link { margin-top: 8px; }
+
+/* ---------- Executive Agent page (Phase 04.2a) ---------- */
+.ex-checkins { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 10px; }
+.ex-card {
+  display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface);
+}
+.ex-card.is-paused { opacity: .72; }
+.ex-card-main { min-width: 0; flex: 1 1 320px; }
+.ex-card-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ex-card-meta { margin: 0; font-size: 13px; color: var(--text-muted); }
+.ex-card-totals { margin: 8px 0 0; font-size: 13.5px; color: var(--text-sub); display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
+.ex-total strong { font-size: 16px; color: var(--text); }
+.ex-card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ex-empty {
+  padding: 22px; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg);
+  background: var(--surface); color: var(--text-sub); font-size: 14px;
+}
+.ex-empty p { margin: 0 0 10px; }
+
+.ex-chip {
+  display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.6;
+  background: var(--surface-2); color: var(--text-sub);
+}
+.ex-chip.is-ok { background: color-mix(in srgb, var(--st-done) 15%, transparent); color: var(--st-done); }
+.ex-chip.is-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.ex-chip.is-err { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.ex-chip.is-busy { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.ex-dash { color: var(--text-muted); }
+
+.ex-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.ex-kpi { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); display: flex; flex-direction: column; gap: 2px; }
+.ex-kpi-value { font-size: 22px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.ex-kpi-label { font-size: 12.5px; color: var(--text-muted); }
+.ex-kpi.is-ok .ex-kpi-value { color: var(--st-done); }
+.ex-kpi.is-err .ex-kpi-value { color: var(--danger); }
+
+.ex-report { margin-top: 8px; }
+.ex-report-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ex-report-tools select, .ex-form input, .ex-form textarea, .ex-form select {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+}
+.ex-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ex-table tfoot th, .ex-table tfoot td { border-top: 2px solid var(--border-strong); padding-top: 10px; }
+.ex-note { margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
+
+.ex-form {
+  margin: 0 0 18px; padding: 16px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius-lg); background: var(--surface);
+}
+.ex-form h3 { margin: 0 0 12px; font-size: 16px; }
+.ex-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.ex-field { display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; font-weight: 600; color: var(--text); min-width: 0; }
+.ex-field input, .ex-field textarea, .ex-field select { width: 100%; box-sizing: border-box; font-weight: 400; }
+.ex-wide { grid-column: 1 / -1; }
+.ex-hint { font-weight: 400; color: var(--text-muted); }
+.ex-days { border: 0; padding: 0; margin: 0; flex-direction: row; flex-wrap: wrap; gap: 6px 14px; }
+.ex-days legend { padding: 0; margin-bottom: 6px; font-weight: 600; }
+.ex-days label { font-weight: 400; display: inline-flex; gap: 5px; align-items: center; }
+@media (max-width: 720px) {
+  .ex-form-grid { grid-template-columns: 1fr; }
+  .ex-card-actions { width: 100%; }
+}
+
+/* Inbox: report + Excel links under an Executive Agent summary */
+.inbox-messages .msg-report-links { display: flex; gap: 6px; flex-wrap: wrap; }

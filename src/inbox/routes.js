@@ -120,6 +120,23 @@ function createInboxRouter(options = {}) {
     });
 
     res.status(201).json({ message, maxBody: MAX_BODY });
+
+    // Messaging an AI employee: it replies in the same thread (chat only, no
+    // tools). Fire-and-forget — the Inbox poll picks the reply up.
+    // The Executive Agent first checks whether this is someone's daily
+    // check-in answer ("sales 5, calls 20"); anything else is normal chat.
+    const text = String(body.body || '').trim();
+    if (to.startsWith('emp-ai-') && text) {
+      (async () => {
+        const handled = await require('../executive/service')
+          .handleReply(dataDir, { employeeId: to, userId: req.authUid, text, provider: options.aiProvider || null })
+          .catch((err) => { console.warn(`[inbox] check-in reply failed: ${err.message}`); return false; });
+        if (!handled) {
+          await require('../execution/inboxChat')
+            .replyInThread(dataDir, { employeeId: to, userId: req.authUid, provider: options.aiProvider || null });
+        }
+      })().catch(() => {});
+    }
   }));
 
   /**

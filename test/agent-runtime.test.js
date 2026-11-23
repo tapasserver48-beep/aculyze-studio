@@ -23,6 +23,8 @@ const runtime = require('../src/execution/agentRuntime');
 const approvals = require('../src/execution/approvals');
 const policy = require('../src/execution/toolPolicy');
 const { createAgentsRouter } = require('../src/agents/routes');
+const { createTasksRouter } = require('../src/tasks/routes');
+const { createInboxRouter } = require('../src/inbox/routes');
 const { attachAuth } = require('../src/auth/session');
 const { createAuthRouter } = require('../src/auth/routes');
 
@@ -89,6 +91,7 @@ async function main() {
   const PW = 'TestPass-12345!';
   const founder = await authStore.createUser(dir, { name: 'Founder', email: 'founder@test.com', password: PW, role: 'founder' });
   const other = await authStore.createUser(dir, { name: 'Other Manager', email: 'other@test.com', password: PW, role: 'manager' });
+  const staff = await authStore.createUser(dir, { name: 'Staff Member', email: 'staff@test.com', password: PW, role: 'employee' });
 
   await employeesStore.initializeEmployee(dir, 'AI-CHIEF-001');
   await employeesStore.initializeEmployee(dir, 'AI-EXEC-001');
@@ -182,6 +185,10 @@ async function main() {
     app.use(attachAuth(dir));
     app.use('/api/auth', createAuthRouter({ dataDir: dir }));
     app.use('/api/agents', createAgentsRouter({ dataDir: dir, manager: mgr, runtimeProvider: httpProvider }));
+    app.use('/api/tasks', createTasksRouter({ dataDir: dir }));
+    const chatScript = [];
+    const chatProvider = fakeProvider(chatScript);
+    app.use('/api/inbox', createInboxRouter({ dataDir: dir, aiProvider: chatProvider }));
     const server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
     const base = `http://127.0.0.1:${server.address().port}`;
@@ -213,7 +220,7 @@ async function main() {
       approveScript.push(
         { toolCalls: [call('gmail__send_message', { to: 'ceo@orbinox.com', subject: 'Summary', body: 'Hi' }, 'send-1')] },
       );
-      let r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task.id });
+      let r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task.id, wait: true });
       check('execute returns needs_approval', r.status === 200 && r.data.outcome === 'needs_approval', JSON.stringify(r.data));
       const apprId = r.data.approval && r.data.approval.id;
       check('approval has preview, no saved state leaked', !!apprId && r.data.approval.confirm && r.data.approval.state === undefined);
@@ -224,12 +231,12 @@ async function main() {
       r = await client('GET', '/api/agents/approvals');
       check('approval listed for requester', r.status === 200 && r.data.approvals.some((a) => a.id === apprId));
 
-      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task.id });
+      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task.id, wait: true });
       check('re-running while approval pending → 409', r.status === 409, String(r.status));
 
       console.log('\n=== 6. Only the requester can approve ===');
       await login(other.email);
-      r = await client('POST', `/api/agents/approvals/${apprId}/approve`);
+      r = await client('POST', `/api/agents/approvals/${apprId}/approve`, { wait: true });
       check('other manager gets 403', r.status === 403, String(r.status));
       check('still not sent', mgr.executed.length === 0);
 
@@ -240,28 +247,135 @@ async function main() {
         assert.ok(toolMsg && toolMsg.content.includes('Email sent'), 'resume sees action result');
         return { toolCalls: [call('task__submit_result', { summary: 'Summary emailed to Orbinox', result: 'Sent.' })] };
       });
-      r = await client('POST', `/api/agents/approvals/${apprId}/approve`);
+      r = await client('POST', `/api/agents/approvals/${apprId}/approve`, { wait: true });
       check('approve → submitted', r.status === 200 && r.data.outcome === 'submitted', JSON.stringify(r.data));
       check('email executed once as requester', mgr.executed.length === 1 && mgr.executed[0].uid === founder.id);
       t = await tasksStore.getTask(dir, task.id);
       check('task under_review after resume', t.status === 'under_review', t.status);
-      r = await client('POST', `/api/agents/approvals/${apprId}/approve`);
+      r = await client('POST', `/api/agents/approvals/${apprId}/approve`, { wait: true });
       check('double approve → 409 (no double send)', r.status === 409 && mgr.executed.length === 1, String(r.status));
       check('saved conversation cleared', approvals.getApproval(dir, apprId).state === null);
 
       console.log('\n=== 8. Reject → reason reaches the agent ===');
       const task2 = await newTask(chief, 'Email the team');
       approveScript.push({ toolCalls: [call('gmail__send_message', { to: 'team@x.com', subject: 's', body: 'b' }, 'send-2')] });
-      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task2.id });
+      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task2.id, wait: true });
       const appr2 = r.data.approval.id;
       approveScript.push((msgs) => {
         const toolMsg = msgs.find((m) => m.role === 'tool' && m.tool_call_id === 'send-2');
         assert.ok(toolMsg && toolMsg.content.includes('wrong recipients'));
         return { content: 'Drafted only; not sent per your feedback.' };
       });
-      r = await client('POST', `/api/agents/approvals/${appr2}/reject`, { reason: 'wrong recipients' });
+      r = await client('POST', `/api/agents/approvals/${appr2}/reject`, { reason: 'wrong recipients', wait: true });
       check('reject → run resumes and submits', r.status === 200 && r.data.outcome === 'submitted', JSON.stringify(r.data));
       check('rejected action never executed', mgr.executed.length === 1);
+
+      // Poll a background run until it finishes.
+      async function waitRun(executionId) {
+        for (let i = 0; i < 100; i++) {
+          const pr = await client('GET', `/api/agents/runs/${executionId}`);
+          if (pr.data && pr.data.run && pr.data.run.status === 'done') return pr.data.run;
+          await new Promise((res) => setTimeout(res, 30));
+        }
+        throw new Error('run did not finish');
+      }
+
+      console.log('\n=== 11. Background run with live steps ===');
+      const task3 = await newTask(chief, 'Background summary');
+      let release;
+      const gate = new Promise((res) => { release = res; });
+      approveScript.push(
+        { toolCalls: [call('gmail__search', { q: 'x' })] },
+        async () => { await gate; return { toolCalls: [call('task__submit_result', { summary: 'BG done', result: 'Background result.' })] }; },
+      );
+      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task3.id });
+      check('execute without wait → 202 + executionId', r.status === 202 && !!r.data.executionId, JSON.stringify(r.data));
+      const execId = r.data.executionId;
+      await new Promise((res) => setTimeout(res, 80));
+      let live = (await client('GET', `/api/agents/runs/${execId}`)).data.run;
+      check('run is visible while running, with live steps', live.status === 'running' && live.steps.some((s) => s.tool === 'gmail.search'), JSON.stringify(live));
+      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task3.id });
+      check('second run on same task while running → 409', r.status === 409, String(r.status));
+      release();
+      const doneRun = await waitRun(execId);
+      check('background run finishes as submitted', doneRun.outcome === 'submitted' && doneRun.summary === 'BG done', JSON.stringify(doneRun));
+      r = await client('GET', `/api/agents/runs?taskId=${task3.id}`);
+      check('latest run is found by taskId', r.data.run && r.data.run.executionId === execId);
+      await login(other.email);
+      r = await client('GET', `/api/agents/runs/${execId}`);
+      check('managers may view runs; route stays authenticated', r.status === 200);
+      await login(founder.email);
+
+      console.log('\n=== 12. Accept result ===');
+      r = await client('POST', `/api/agents/tasks/${task3.id}/accept`);
+      check('accept → completed', r.status === 200 && r.data.task.status === 'completed', JSON.stringify(r.data));
+      r = await client('POST', `/api/agents/tasks/${task3.id}/accept`);
+      check('accept twice → 409', r.status === 409, String(r.status));
+
+      console.log('\n=== 13. Ask for changes ===');
+      const task4 = await newTask(chief, 'Draft summary');
+      approveScript.push({ toolCalls: [call('task__submit_result', { summary: 'v1', result: 'Long version.' })] });
+      await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task4.id, wait: true });
+      approveScript.push((msgs) => {
+        assert.ok(msgs.some((m) => m.role === 'user' && /Changes requested:\*\* make it shorter/.test(m.content)), 'feedback reaches the agent');
+        return { toolCalls: [call('task__submit_result', { summary: 'v2', result: 'Short.' })] };
+      });
+      r = await client('POST', `/api/agents/tasks/${task4.id}/revise`, { feedback: 'make it shorter' });
+      check('revise → 202 run', r.status === 202, JSON.stringify(r.data));
+      const revRun = await waitRun(r.data.executionId);
+      check('revised result submitted', revRun.outcome === 'submitted' && revRun.summary === 'v2', JSON.stringify(revRun));
+      r = await client('POST', `/api/agents/tasks/${task4.id}/revise`, { feedback: '' });
+      check('empty feedback → 422', r.status === 422);
+
+      console.log('\n=== 14. Quick ask creates a task and runs it ===');
+      approveScript.push({ toolCalls: [call('task__submit_result', { summary: 'Asked', result: 'Done from ask.' })] });
+      r = await client('POST', '/api/agents/ask', { text: 'Check my inbox for anything urgent\nfocus on clients' });
+      check('ask → 202 with a task for the Chief of Staff', r.status === 202 && r.data.task.assigned_to_id === chief.id && r.data.task.title === 'Check my inbox for anything urgent', JSON.stringify(r.data));
+      const askRun = await waitRun(r.data.executionId);
+      check('ask run finishes', askRun.outcome === 'submitted');
+      const askTask = await tasksStore.getTask(dir, r.data.task.id);
+      check('ask task records who asked', askTask.initiating_user_id === founder.id && askTask.status === 'under_review');
+
+      console.log('\n=== 15. Employees can use AI on tasks they asked for ===');
+      await login(staff.email);
+      approveScript.push({ toolCalls: [call('task__submit_result', { summary: 'Staff result', result: 'For staff.' })] });
+      r = await client('POST', '/api/agents/ask', { text: 'Summarize my week' });
+      check('employee can ask the Chief of Staff', r.status === 202, JSON.stringify(r.data));
+      const staffTaskId = r.data.task.id;
+      await waitRun(r.data.executionId);
+      r = await client('GET', '/api/tasks');
+      check('employee sees the AI task they asked for', r.status === 200 && r.data.tasks.some((x) => x.id === staffTaskId));
+      check('employee does not see other people\'s AI tasks', !r.data.tasks.some((x) => x.id === task4.id));
+      r = await client('GET', `/api/tasks/${staffTaskId}/comments`);
+      check('employee can read comments on their AI task', r.status === 200 && r.data.comments.some((c) => /Staff result/.test(c.content)));
+      r = await client('POST', `/api/agents/${chief.id}/execute`, { taskId: task4.id, wait: true });
+      check('employee cannot run AI on someone else\'s task', r.status === 403, String(r.status));
+      r = await client('POST', `/api/agents/tasks/${staffTaskId}/accept`);
+      check('employee can accept their own result', r.status === 200 && r.data.task.status === 'completed');
+
+      console.log('\n=== 16. Inbox: chat reply + make it a task ===');
+      chatScript.push((msgs) => {
+        assert.ok(/cannot open apps/i.test(msgs[0].content), 'chat rules in system prompt');
+        return { content: 'Happy to help! Click "Make this a task" and I will check your email.' };
+      });
+      r = await client('POST', '/api/inbox/messages', { to: chief.id, body: 'Can you check my email?' });
+      check('message to AI employee accepted', r.status === 201, JSON.stringify(r.data));
+      let reply = null;
+      for (let i = 0; i < 60 && !reply; i++) {
+        await new Promise((res) => setTimeout(res, 30));
+        const { messages } = await inbox.listMessages(dir, `usr-${staff.id}`, chief.id, 0);
+        reply = messages.find((m) => m.from === chief.id && /Make this a task/.test(m.body));
+      }
+      check('AI employee replies in the thread', !!reply);
+      check('chat reply used no tools', chatProvider.seen.every((s) => s.tools.length === 0));
+
+      approveScript.push({ toolCalls: [call('task__submit_result', { summary: 'Inbox task done', result: 'From inbox.' })] });
+      r = await client('POST', '/api/agents/ask', { text: 'Can you check my email?', source: 'inbox', employeeId: chief.id });
+      check('make-this-a-task → 202', r.status === 202);
+      await waitRun(r.data.executionId);
+      const { messages: thread } = await inbox.listMessages(dir, `usr-${staff.id}`, chief.id, 0);
+      check('thread gets an "On it" message with a task link', thread.some((m) => /On it/.test(m.body) && m.body.includes(`[task:${r.data.task.id}]`)));
+      check('thread gets the finished result with a task link', thread.some((m) => /Finished/.test(m.body) && m.body.includes(`[task:${r.data.task.id}]`)));
     } finally {
       server.close();
     }

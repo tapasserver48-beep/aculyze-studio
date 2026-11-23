@@ -96,12 +96,15 @@ async function checkExecutionPermission(dataDir, user, employeeId, task) {
     return { allowed: true, reason: 'Manager access granted' };
   }
   
-  // Regular employees need special permission or task ownership
+  // Regular employees may run AI on tasks THEY asked for. The run uses their
+  // own connected apps, and any write action waits for their own approval.
   if (task && task.assigned_to_type === 'ai') {
-    // Employees can't directly trigger AI execution on unassigned tasks
-    return { 
-      allowed: false, 
-      reason: 'Employees cannot directly trigger AI execution. Request through manager.' 
+    const requester = (task.assigned_by_type !== 'ai' && task.assigned_by_id === user.id)
+      || task.initiating_user_id === user.id;
+    if (requester) return { allowed: true, reason: 'Requester access' };
+    return {
+      allowed: false,
+      reason: 'You can run AI only on tasks you asked for. Ask the person who created this task, or a manager.',
     };
   }
   

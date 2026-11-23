@@ -297,6 +297,8 @@ function publicUser(user) {
     email: user.email,
     createdAt: user.createdAt,
     role,
+    // "Reports to" — acts as the person's team lead (Executive Agent follow-ups).
+    managerId: user.managerId || null,
     // Raw per-user overrides (admin UI needs them to render the matrix).
     permissions,
     // Resolved page access — the client gates its nav from this map, so it

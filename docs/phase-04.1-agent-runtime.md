@@ -114,6 +114,16 @@ user:    task title / description / expected deliverable / priority / due /
 - Not yet verified: a real end-to-end run with a live model (LM Studio or NVIDIA) and a connected Gmail account.
 - Known follow-ups: approvals stored in Postgres; the agents router and the integrations router each create their own `IntegrationManager`, so token refreshes are not serialized across the two.
 
+## Phase 04.1b: workflow and UX (2026-11-23)
+
+- **Employees:** anyone may run an AI employee on a task they asked for (they assigned it, or started its run). They can see those tasks, read and post comments, and view activity. Managers can still run AI on any task. Every run uses the runner's own apps and approvals. (`src/agents/store.js`, `src/tasks/routes.js`, `listTasks({ visibleTo })`)
+- **Background runs and live progress:** `POST /:employeeId/execute` returns 202 with an `executionId`, and the browser polls `GET /api/agents/runs/:id` (or `?taskId=`) for the current phase and each step. `{ wait: true }` keeps the old blocking behaviour, which the tests use. Approve and reject also resume in the background. Run state is kept in memory (`src/execution/runs.js`). Only one run per task at a time; a second run gets 409.
+- **Review:** `POST /api/agents/tasks/:id/accept` moves the task from under_review to completed. `POST /api/agents/tasks/:id/revise { feedback }` adds a "Changes requested" comment and starts a new run, and the runtime revises using that comment.
+- **Quick ask:** `POST /api/agents/ask { text, employeeId?, source? }` creates a task (Chief of Staff by default, title taken from the first line) and starts a run. The Tasks page has an Ask bar for it.
+- **Inbox, chat first:** messaging an AI employee in the Inbox gets a chat reply (`src/execution/inboxChat.js`). Chat replies use no tools and never claim to have done work. "Make this a task" under your message calls `/ask` with `source: 'inbox'`. The AI posts "On it", and the approval, question and result messages arrive in the same thread with `[task:<id>]` tokens, which the Inbox shows as an "Open task" button.
+- **UI:** the AI panel sits at the top of the task drawer and shows a status label, a live phase spinner, plain-language step names, a collapsible "What it did" trace, an approval card, and Accept / Ask for changes. Comments render as markdown.
+- Tests: `test/agent-runtime.test.js` sections 11–16 (68 checks in total).
+
 ## Out of scope (later phases)
 
 - Scheduled or event-triggered runs (04.2), the workflow engine (04.3), agent memory (04.4).

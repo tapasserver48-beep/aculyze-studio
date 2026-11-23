@@ -13,10 +13,11 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, agentAsk } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { initTasksView } from './tasks-view.js';
 import { initChiefView } from './chief-view.js';
+import { initExecutiveView } from './executive-view.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
 
@@ -290,6 +291,7 @@ const els = {
   navAdmin: document.getElementById('navAdmin'),
   navTasks: document.getElementById('navTasks'),
   navChief: document.getElementById('navChief'),
+  navExecutive: document.getElementById('navExecutive'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
   viewHome: document.getElementById('view-home'),
@@ -303,6 +305,7 @@ const els = {
   viewAdmin: document.getElementById('view-admin'),
   viewTasks: document.getElementById('view-tasks'),
   viewChief: document.getElementById('view-chief'),
+  viewExecutive: document.getElementById('view-executive'),
   copilot: document.getElementById('copilot'),
   zaraConversations: document.getElementById('zaraConversations'),
   zaraEmptyState: document.getElementById('zaraEmptyState'),
@@ -500,6 +503,7 @@ els.navSettings?.addEventListener('click', () => {
 els.navAdmin?.addEventListener('click', () => setView('admin'));
 els.navTasks?.addEventListener('click', () => setView('tasks'));
 els.navChief?.addEventListener('click', () => setView('chief'));
+els.navExecutive?.addEventListener('click', () => setView('executive'));
 
 /* ---------- Aculyze Store — contact / free-trial dialog ---------- */
 const storeContactOverlay = document.getElementById('storeContactOverlay');
@@ -853,7 +857,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true, executive: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -889,7 +893,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief, executive: els.navExecutive };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -910,6 +914,8 @@ function setView(view) {
   els.viewTasks?.classList.toggle('active', next === 'tasks');
   els.viewChief?.classList.toggle('active', next === 'chief');
   if (next === 'chief' && typeof chiefOnOpen === 'function') chiefOnOpen();
+  els.viewExecutive?.classList.toggle('active', next === 'executive');
+  if (next === 'executive' && typeof executiveView !== 'undefined' && executiveView) executiveView.onOpen();
 
   // On compact viewports the Zara panel is an overlay: close it on navigation.
   // On desktop the persisted open/closed state is left untouched.
@@ -1086,6 +1092,12 @@ function setView(view) {
     if (copilotAgent) copilotAgent.textContent = 'Zara';
     if (copilotSubtitle) copilotSubtitle.textContent = 'Research · General AI';
     if (els.workspaceTitle) els.workspaceTitle.textContent = 'Chief of Staff';
+  }
+  // --- Executive Agent view ---
+  else if (next === 'executive') {
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.workspaceTitle) els.workspaceTitle.textContent = 'Executive Agent';
   }
   // --- Home view ---
   else {
@@ -2356,7 +2368,8 @@ function renderInboxList() {
   if (els.inboxEmpty) els.inboxEmpty.style.display = 'none';
 
   for (const user of users) {
-    const online = user.status === 'online';
+    // AI employees have no login session: they are always available.
+    const online = user.status === 'online' || String(user.id || '').startsWith('emp-ai-');
     const initial = String(user.avatar || user.name || '?').trim().charAt(0).toUpperCase() || '?';
 
     const li = document.createElement('li');
@@ -2376,8 +2389,9 @@ function renderInboxList() {
     nameRow.className = 'inbox-name-row';
     const dot = document.createElement('span');
     dot.className = `inbox-status-dot ${online ? 'online' : 'offline'}`;
-    dot.title = online ? 'Online' : 'Offline';
-    dot.setAttribute('aria-label', online ? 'Online' : 'Offline');
+    const statusLabel = String(user.id || '').startsWith('emp-ai-') ? 'AI employee, always available' : (online ? 'Online' : 'Offline');
+    dot.title = statusLabel;
+    dot.setAttribute('aria-label', statusLabel);
     const name = document.createElement('strong');
     name.className = 'inbox-name';
     name.textContent = user.name || 'Unknown';
@@ -2498,9 +2512,10 @@ function showInboxUserDetail(userId) {
     els.inboxDetailAvatar.textContent = user.avatar || user.name.charAt(0).toUpperCase();
   }
   if (els.inboxDetailStatusDot && els.inboxDetailStatusText) {
-    const isOnline = user.status === 'online';
+    const isAi = String(user.id || '').startsWith('emp-ai-');
+    const isOnline = isAi || user.status === 'online';
     els.inboxDetailStatusDot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
-    els.inboxDetailStatusText.textContent = isOnline ? 'Online' : 'Offline';
+    els.inboxDetailStatusText.textContent = isAi ? 'AI employee · always available' : (isOnline ? 'Online' : 'Offline');
   }
 
   renderInboxMessages(userId);
@@ -2570,10 +2585,17 @@ function renderInboxMessages(userId) {
 
     const timeStr = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const mediaHtml = deleted ? '' : renderAttachmentHtml(atts);
-    const textHtml = deleted || !msg.content ? '' : renderMarkdown(msg.content);
+    // [task:<id>] tokens posted by AI employees become an "Open task" button.
+    const textHtml = deleted || !msg.content ? '' : renderMarkdown(msg.content)
+      .replace(/\[task:([\w-]{4,64})\]/g, '<button type="button" class="msg-task-link" data-open-task="$1">Open task</button>')
+      .replace(/\[checkin:([\w-]{4,64}):(\d{4}-\d{2}-\d{2})\]/g, (m, cid, day) => (['founder', 'admin', 'manager'].includes(authState.user && authState.user.role)
+        ? `<span class="msg-report-links"><button type="button" class="msg-task-link" data-open-checkin="${cid}" data-day="${day}">Open report</button><button type="button" class="msg-task-link" data-xlsx-checkin="${cid}" data-day="${day}">Download Excel</button></span>`
+        : ''));
+    const aiThread = String(userId || '').startsWith('emp-ai-');
+    const canMakeTask = aiThread && role === 'user' && !deleted && !!msg.content && msg.content.trim().length >= 3;
     const inner = deleted
       ? `<div class="msg-content msg-deleted"><svg class="tomb-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg><span>Message deleted</span></div>`
-      : `<div class="msg-content">${mediaHtml}${textHtml}</div>`;
+      : `<div class="msg-content">${mediaHtml}${textHtml ? `<div class="msg-text">${textHtml}</div>` : ''}</div>`;
 
     // The ⋯ button is a sibling of the bubble, not a child: inside .msg-body
     // its 44px row inflated every bubble (the "misaligned" look). The CSS
@@ -2582,19 +2604,38 @@ function renderInboxMessages(userId) {
     // icon webfont never loads.
     msgEl.innerHTML = `
       <div class="msg-body${atts.length ? ' has-media' : ''}${deleted ? ' deleted' : ''}">
-        ${isGenerated && !deleted ? '<span class="msg-ai-tag">AI drafted</span>' : ''}
+        ${isGenerated && !deleted && !aiThread ? '<span class="msg-ai-tag">AI drafted</span>' : ''}
         ${inner}
         ${!deleted ? `<span class="msg-time">${timeStr}</span>` : ''}
+        ${canMakeTask ? '<button type="button" class="msg-make-task" data-make-task title="Create a task from this message and start working on it">Make this a task</button>' : ''}
       </div>
       <button class="msg-act" type="button" aria-label="Message options" title="Message options" aria-haspopup="menu">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
       </button>
     `;
     msgEl._attachments = atts;
+    msgEl._message = msg;
     els.inboxMessages.appendChild(msgEl);
     wireAudioPlayers(msgEl, atts);
     wireMessageActions(msgEl, msg);
     lastSender = role;
+  }
+
+  // "Typing…" while an AI employee is composing its chat reply.
+  const typing = inboxState.aiTyping;
+  if (typing && typing.peer === userId) {
+    const replied = messages.some((m) => m.role === 'assistant' && (m.timestamp || 0) >= typing.since);
+    if (replied || Date.now() - typing.since > 25000) {
+      inboxState.aiTyping = null;
+    } else {
+      // Re-check when the wait runs out, so the dots never linger if no reply comes.
+      clearTimeout(inboxState.aiTypingTimer);
+      inboxState.aiTypingTimer = setTimeout(() => renderInboxMessages(userId), 25000 - (Date.now() - typing.since) + 50);
+      const t = document.createElement('div');
+      t.className = 'msg agent msg-first msg-last msg-typing';
+      t.innerHTML = '<div class="msg-body"><div class="msg-content"><span class="chat-typing-dots" aria-label="Typing"><i></i><i></i><i></i></span></div></div>';
+      els.inboxMessages.appendChild(t);
+    }
   }
   els.inboxMessages.scrollTop = els.inboxMessages.scrollHeight;
 
@@ -2739,6 +2780,45 @@ function wireAudioPlayers(root, attachments) {
 function closeMessageMenus() {
   document.querySelectorAll('.msg-menu').forEach((m) => m.remove());
 }
+
+// Inbox ↔ AI employees (Phase 04.1b): open task links, "Make this a task".
+els.inboxMessages?.addEventListener('click', async (e) => {
+  const report = e.target.closest('[data-open-checkin]');
+  if (report) {
+    setView('executive');
+    if (executiveView) executiveView.openReport(report.dataset.openCheckin, report.dataset.day);
+    return;
+  }
+  const xlsx = e.target.closest('[data-xlsx-checkin]');
+  if (xlsx) {
+    if (executiveView) executiveView.downloadExcel(xlsx.dataset.xlsxCheckin, xlsx.dataset.day);
+    return;
+  }
+  const link = e.target.closest('[data-open-task]');
+  if (link) {
+    setView('tasks');
+    if (tasksView) tasksView.openTaskById(link.dataset.openTask);
+    return;
+  }
+  const make = e.target.closest('[data-make-task]');
+  if (!make) return;
+  const msgEl = make.closest('.msg');
+  const msg = msgEl && msgEl._message;
+  const peer = inboxState.selectedUserId;
+  if (!msg || !peer) return;
+  make.disabled = true;
+  make.textContent = 'Creating task…';
+  try {
+    await agentAsk({ text: msg.content, employeeId: peer, source: 'inbox' });
+    make.textContent = 'Task created ✓';
+    toast('Task created. Progress and the result will appear in this chat.', 'success');
+    pollInboxMessages();
+  } catch (err) {
+    make.disabled = false;
+    make.textContent = 'Make this a task';
+    toast(err.message || 'Could not create the task', 'error');
+  }
+});
 
 function wireMessageActions(msgEl, msg) {
   const act = msgEl.querySelector('.msg-act');
@@ -4383,6 +4463,7 @@ async function sendInboxMessage() {
       toRole: user ? user.role : '',
     });
     mergeMessages(userId, [message]);
+    if (String(userId).startsWith('emp-ai-') && text) inboxState.aiTyping = { peer: userId, since: message.ts || Date.now() };
     applyThreadPreview(userId, text || attachmentPreview(attachments), message.ts);
     markThreadRead(userId); // sending counts as reading that thread
     renderInboxMessages(userId);
@@ -5108,7 +5189,7 @@ async function adminLoad() {
       adminEls.rows.innerHTML = '';
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 5;
+      td.colSpan = 6;
       td.className = 'admin-note';
       td.textContent = err && err.status === 403
         ? 'You do not have permission to manage users.'
@@ -5150,7 +5231,7 @@ function adminRenderUsers() {
   if (!adminState.users.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 5;
+    td.colSpan = 6;
     td.className = 'admin-note';
     td.textContent = 'No users yet.';
     tr.appendChild(td);
@@ -5195,6 +5276,27 @@ function adminRenderUsers() {
     roleSel.addEventListener('change', () => adminChangeRole(u, roleSel.value, roleSel));
     tdRole.appendChild(roleSel);
 
+    // Reports to: the person's team lead / manager. The Executive Agent tells
+    // this person when someone on their team misses a daily check-in.
+    const tdLead = document.createElement('td');
+    const leadSel = document.createElement('select');
+    leadSel.className = 'admin-role-select';
+    leadSel.setAttribute('aria-label', `${u.name || u.email} reports to`);
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Nobody';
+    leadSel.appendChild(none);
+    for (const other of adminState.users) {
+      if (other.id === u.id) continue;
+      const opt = document.createElement('option');
+      opt.value = other.id;
+      opt.textContent = other.name || other.email;
+      if (other.id === u.managerId) opt.selected = true;
+      leadSel.appendChild(opt);
+    }
+    leadSel.addEventListener('change', () => adminChangeLead(u, leadSel.value, leadSel));
+    tdLead.appendChild(leadSel);
+
     const tdCreated = document.createElement('td');
     tdCreated.className = 'admin-created';
     tdCreated.textContent = adminFmtDate(u.createdAt);
@@ -5222,8 +5324,22 @@ function adminRenderUsers() {
     delBtn.addEventListener('click', () => adminDeleteUserFlow(u));
     tdActions.appendChild(delBtn);
 
-    tr.append(tdName, tdEmail, tdRole, tdCreated, tdActions);
+    tr.append(tdName, tdEmail, tdRole, tdLead, tdCreated, tdActions);
     body.appendChild(tr);
+  }
+}
+
+async function adminChangeLead(user, managerId, sel) {
+  const prev = user.managerId || '';
+  if (managerId === prev) return;
+  try {
+    const res = await adminUpdateUser(user.id, { managerId: managerId || null });
+    user.managerId = (res.user && res.user.managerId) || null;
+    const lead = adminState.users.find((x) => x.id === user.managerId);
+    toast(lead ? `${user.name || user.email} now reports to ${lead.name || lead.email}` : `${user.name || user.email} reports to nobody`, 'info');
+  } catch (err) {
+    sel.value = prev;
+    toast((err && err.message) || 'Could not update who they report to', 'error');
   }
 }
 
@@ -5510,6 +5626,7 @@ const NAV_PAGE_EL = {
   admin: () => els.navAdmin,
   tasks: () => els.navTasks,
   chief: () => els.navChief,
+  executive: () => els.navExecutive,
 };
 
 function applyNavGating() {
@@ -7449,6 +7566,7 @@ var chiefView = initChiefView({
 
 function refreshTasks() { return tasksView ? tasksView.refresh() : undefined; }
 function chiefOnOpen() { if (chiefView) chiefView.onOpen(); }
+var executiveView = initExecutiveView({ toast, confirm: showAppConfirm });
 
 // If the app started on one of these pages, load it now that the views exist.
 if (els.viewTasks?.classList.contains('active')) refreshTasks();

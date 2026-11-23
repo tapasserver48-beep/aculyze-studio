@@ -1130,6 +1130,58 @@ export async function agentExecute(employeeId, taskId) {
   return data;
 }
 
+async function agentJson(url, init) {
+  const res = await fetch(url, init);
+  let data = {};
+  try { data = await res.json(); } catch { /* empty body */ }
+  if (!res.ok) {
+    const err = new Error(data.error || 'Something went wrong.');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+const postJson = (url, body = {}) => agentJson(url, {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
+/** Live view of one AI run: { run: { status, phase, steps, outcome, … } }. */
+export function agentRun(executionId) {
+  return agentJson(`/api/agents/runs/${encodeURIComponent(executionId)}`);
+}
+
+/** Latest AI run for a task (or { run: null }). */
+export function agentRunForTask(taskId) {
+  return agentJson(`/api/agents/runs?taskId=${encodeURIComponent(taskId)}`);
+}
+
+/** Accept a submitted AI result: the task becomes completed. */
+export function agentAccept(taskId) {
+  return postJson(`/api/agents/tasks/${encodeURIComponent(taskId)}/accept`);
+}
+
+/** Ask the AI employee to revise its result; starts a new run. */
+export function agentRevise(taskId, feedback) {
+  return postJson(`/api/agents/tasks/${encodeURIComponent(taskId)}/revise`, { feedback });
+}
+
+/** Quick request → new task for an AI employee (Chief of Staff by default) + run. */
+export function agentAsk({ text, employeeId, source, priority } = {}) {
+  return postJson('/api/agents/ask', { text, employeeId, source, priority });
+}
+
+/* ---------------- Executive Agent (daily check-ins + team performance) ---------------- */
+export const executiveDashboard = () => agentJson('/api/executive/dashboard');
+export const executiveCheckins = () => agentJson('/api/executive/checkins');
+export const executiveCreateCheckin = (body) => postJson('/api/executive/checkins', body);
+export const executiveUpdateCheckin = (id, body) => agentJson(`/api/executive/checkins/${encodeURIComponent(id)}`, {
+  method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+export const executiveDeleteCheckin = (id) => agentJson(`/api/executive/checkins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const executiveReport = (id, date) => agentJson(`/api/executive/checkins/${encodeURIComponent(id)}/report${date ? `?date=${encodeURIComponent(date)}` : ''}`);
+export const executiveAsk = (id, force = false) => postJson(`/api/executive/checkins/${encodeURIComponent(id)}/ask`, { force });
+export const executiveRemind = (id) => postJson(`/api/executive/checkins/${encodeURIComponent(id)}/remind`);
+
 /** Pending AI actions waiting for my approval (optionally for one task). */
 export async function agentApprovals(taskId) {
   const qs = taskId ? `?taskId=${encodeURIComponent(taskId)}` : '';

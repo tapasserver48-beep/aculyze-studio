@@ -9,8 +9,10 @@
 import {
   tasksList, tasksCreate, tasksUpdate, tasksDelete, tasksMonthlyReport,
   tasksAddComment, tasksActivity, tasksPeople, tasksComments,
-  agentExecute, agentApprovals, agentDecide,
+  agentExecute, agentApprovals, agentDecide, agentRun, agentRunForTask,
+  agentAccept, agentRevise, agentAsk,
 } from './api.js';
+import { renderMarkdown } from './markdown.js';
 import {
   STATUS_LABEL, PRIORITY_LABEL, PENDING_REASON_LABEL, LOAD_STATES,
   isOpen, isLate, loadState, countLoad, workloadBarHtml, dueText,
@@ -43,6 +45,45 @@ const ACTIVITY_LABEL = {
   agent_action_approved: 'ran an approved action',
   agent_action_rejected: 'had an action rejected',
   agent_submitted: 'submitted a result for review',
+  result_accepted: 'accepted the result',
+  changes_requested: 'asked for changes',
+};
+
+/** Plain-language names for what an AI employee did, shown in live progress. */
+const TOOL_LABEL = {
+  'gmail.search': 'Searched Gmail',
+  'gmail.get_message': 'Read an email',
+  'gmail.create_draft': 'Drafted an email',
+  'gmail.send_message': 'Email',
+  'outlook.search_mail': 'Searched Outlook',
+  'outlook.get_mail': 'Read an email',
+  'outlook.create_draft': 'Drafted an email',
+  'outlook.send_mail': 'Email',
+  'calendar.list_events': 'Checked the calendar',
+  'calendar.search_events': 'Searched the calendar',
+  'calendar.create_event': 'Calendar event',
+  'calendar.update_event': 'Calendar event',
+  'mscalendar.list_events': 'Checked the calendar',
+  'mscalendar.search_events': 'Searched the calendar',
+  'drive.search_files': 'Searched Drive',
+  'drive.get_file': 'Opened a Drive file',
+  'docs.get_document': 'Read a document',
+  'sheets.get_values': 'Read a spreadsheet',
+  'onedrive.search_files': 'Searched OneDrive',
+  'sharepoint.search_files': 'Searched SharePoint',
+  'teams.search_messages': 'Searched Teams',
+  'teams.get_messages': 'Read Teams messages',
+  'teams.send_message': 'Teams message',
+  'sales.getSales': 'Pulled sales',
+  'sales.getSummary': 'Pulled the sales summary',
+  'customers.search': 'Searched customers',
+  'leads.getLeads': 'Pulled leads',
+  'employees.getEmployees': 'Looked up employees',
+  'lms.getSummary': 'Pulled the business summary',
+  'canva.search_designs': 'Searched Canva',
+  task__report_progress: 'Progress',
+  task__submit_result: 'Submitted the result',
+  task__request_info: 'Asked a question',
 };
 
 const AI_OUTCOME_TEXT = {
@@ -65,6 +106,7 @@ export function initTasksView({ toast, confirm, getUser }) {
     layout: readLayout(),
     drawerTaskId: null,
     drawerOpener: null,
+    aiTimer: null,
   };
 
   /* ---------------- helpers ---------------- */
@@ -326,6 +368,7 @@ export function initTasksView({ toast, confirm, getUser }) {
     scrim.hidden = true;
     document.body.classList.remove('work-drawer-open');
     state.drawerTaskId = null;
+    stopAiWatch();
     document.removeEventListener('keydown', drawerKeys);
     state.drawerOpener?.focus?.();
   }
@@ -421,19 +464,25 @@ export function initTasksView({ toast, confirm, getUser }) {
     $('tmDrawerTitle').textContent = t.title || 'Untitled';
     const by = t.assigned_by_id ? `Assigned by ${personName(t.assigned_by_id)}` : '';
     $('tmDrawerMeta').textContent = [t.task_code || t.id, by, t.created_at ? `created ${shortDate(t.created_at)}` : ''].filter(Boolean).join(', ');
-    const aiRunnable = t.assigned_to_type === 'ai' && canManage() && !['completed', 'cancelled'].includes(t.status);
+    stopAiWatch();
+    const aiRunnable = t.assigned_to_type === 'ai' && (canManage() || isRequester(t)) && !['completed', 'cancelled'].includes(t.status);
     $('tmDrawerBody').innerHTML = `
-      ${formHtml(t, { isNew: false })}
       ${aiRunnable ? `
-      <section class="tm-thread tm-ai" aria-labelledby="tmAiHead">
-        <h3 id="tmAiHead">AI employee</h3>
-        <p class="tm-ai-note">${esc(personName(t.assigned_to_id))} works with the apps you have connected. Anything that sends or creates something waits for your approval.</p>
+      <section class="tm-ai" aria-labelledby="tmAiHead">
+        <div class="tm-ai-head">
+          <span class="tm-ai-badge" aria-hidden="true">AI</span>
+          <h3 id="tmAiHead">${esc(personName(t.assigned_to_id))}</h3>
+          <span class="tm-ai-state" id="tmAiState"></span>
+        </div>
+        <p class="tm-ai-note">Works with the apps you have connected. Anything it sends or creates waits for your approval.</p>
         <div id="tmAiApproval"></div>
-        <div class="tm-ai-actions">
+        <div id="tmAiLive" aria-live="polite"></div>
+        <div id="tmAiReview"></div>
+        <div class="tm-ai-actions" id="tmAiActions">
           <button type="button" class="utility-primary" id="tmAiRun">Run with AI</button>
         </div>
-        <div id="tmAiResult" aria-live="polite"></div>
       </section>` : ''}
+      ${formHtml(t, { isNew: false })}
       <section class="tm-thread" aria-labelledby="tmCommentsHead">
         <h3 id="tmCommentsHead">Comments</h3>
         <ol class="tm-comments" id="tmComments"><li class="tm-loading">Loading comments…</li></ol>
@@ -454,30 +503,174 @@ export function initTasksView({ toast, confirm, getUser }) {
     loadThread(t.id);
   }
 
-  /* ---------------- AI employee runs (Phase 04.1) ---------------- */
+  /* ---------------- AI employee runs (Phase 04.1b) ---------------- */
+  function isRequester(t) {
+    const me = user().id;
+    return !!me && (t.assigned_by_id === me || t.initiating_user_id === me);
+  }
+
+  function stepLabel(tool) {
+    return TOOL_LABEL[tool] || String(tool || '').replace(/^task__/, '').replace(/[._]/g, ' ');
+  }
+
   function aiStepsHtml(steps) {
     if (!steps || !steps.length) return '';
     return `<ol class="tm-ai-steps">${steps.map((s) => `<li class="${s.ok ? 'is-ok' : 'is-err'}">
-      <span aria-hidden="true">${s.ok ? '✓' : '⚠'}</span> <code>${esc(s.tool)}</code> ${esc(s.text || '')}</li>`).join('')}</ol>`;
+      <span class="tm-ai-step-ico" aria-hidden="true">${s.ok ? '✓' : '!'}</span>
+      <span><strong>${esc(stepLabel(s.tool))}</strong>${s.text ? ` <span class="tm-ai-step-text">${esc(s.text)}</span>` : ''}</span></li>`).join('')}</ol>`;
   }
 
-  function showAiOutcome(data) {
-    const box = $('tmAiResult');
+  function setAiState(text, tone = '') {
+    const el = $('tmAiState');
+    if (!el) return;
+    el.textContent = text || '';
+    el.className = `tm-ai-state${tone ? ` is-${tone}` : ''}`;
+  }
+
+  function setRunButton({ hidden = false, label = 'Run with AI', primary = true } = {}) {
+    const btn = $('tmAiRun');
+    if (!btn) return;
+    btn.hidden = hidden;
+    btn.disabled = false;
+    btn.textContent = label;
+    btn.className = primary ? 'utility-primary' : 'utility-secondary';
+  }
+
+  function renderLive(run) {
+    const box = $('tmAiLive');
     if (!box) return;
-    const msg = AI_OUTCOME_TEXT[data.outcome] || 'Run finished.';
-    const err = data.outcome === 'failed' && data.error ? `<p class="tm-ai-error">${esc(data.error)}</p>` : '';
-    box.innerHTML = `<p class="tm-ai-outcome is-${esc(data.outcome || 'unknown')}">${esc(msg)}</p>${err}${aiStepsHtml(data.steps)}`;
+    if (run.status === 'running') {
+      box.innerHTML = `<div class="tm-ai-progress">
+          <p class="tm-ai-phase"><span class="tm-ai-spinner" aria-hidden="true"></span>${esc(run.phase || 'Working…')}</p>
+          ${aiStepsHtml(run.steps)}
+        </div>`;
+      return;
+    }
+    const msg = AI_OUTCOME_TEXT[run.outcome] || 'Run finished.';
+    const err = run.outcome === 'failed' && run.error ? `<p class="tm-ai-error">${esc(run.error)}</p>` : '';
+    box.innerHTML = `<p class="tm-ai-outcome is-${esc(run.outcome || 'unknown')}">${esc(msg)}</p>${err}
+      ${run.steps && run.steps.length ? `<details class="tm-ai-trace"><summary>What it did (${run.steps.length} step${run.steps.length === 1 ? '' : 's'})</summary>${aiStepsHtml(run.steps)}</details>` : ''}`;
   }
 
-  async function loadApproval(task) {
-    const slot = $('tmAiApproval');
-    const run = $('tmAiRun');
-    if (!slot) return;
+  function stopAiWatch() {
+    if (state.aiTimer) clearTimeout(state.aiTimer);
+    state.aiTimer = null;
+  }
+
+  /** Poll a background run and render each step as it lands. */
+  function watchRun(task, executionId) {
+    stopAiWatch();
+    setAiState('Working', 'busy');
+    setRunButton({ hidden: true });
+    $('tmAiReview') && ($('tmAiReview').innerHTML = '');
+    const tick = async () => {
+      if (state.drawerTaskId !== task.id) return stopAiWatch();
+      let run = null;
+      try { run = (await agentRun(executionId)).run; } catch { /* transient — retry */ }
+      if (state.drawerTaskId !== task.id) return stopAiWatch();
+      if (run) renderLive(run);
+      if (run && run.status === 'done') {
+        stopAiWatch();
+        if (run.outcome === 'submitted') toast('Result ready for review', 'success');
+        await afterAiRun(task);
+        return;
+      }
+      state.aiTimer = setTimeout(tick, 1200);
+    };
+    tick();
+  }
+
+  /** Paint the AI panel for the task's current state. */
+  async function refreshAi(task) {
+    if (!$('tmAiRun')) return;
     let pending = [];
-    try { pending = (await agentApprovals(task.id)).approvals || []; } catch { /* leave empty */ }
+    let latest = null;
+    try {
+      const [a, r] = await Promise.all([agentApprovals(task.id).catch(() => null), agentRunForTask(task.id).catch(() => null)]);
+      pending = (a && a.approvals) || [];
+      latest = r && r.run;
+    } catch { /* show defaults */ }
     if (state.drawerTaskId !== task.id) return;
-    const a = pending[0];
-    if (run) run.hidden = !!a || task.pending_reason === 'awaiting_approval';
+
+    if (latest && latest.status === 'running') { watchRun(task, latest.executionId); return; }
+    if (latest && !$('tmAiLive').innerHTML) renderLive(latest);
+
+    renderApproval(task, pending[0]);
+    renderReview(task);
+
+    if (pending[0] || task.pending_reason === 'awaiting_approval') {
+      setAiState('Needs your approval', 'warn');
+      setRunButton({ hidden: true });
+    } else if (task.status === 'under_review') {
+      setAiState('Ready for review', 'ok');
+      setRunButton({ label: 'Run again from scratch', primary: false });
+    } else if (task.pending_reason === 'waiting_for_info') {
+      setAiState('Asked a question', 'warn');
+      setRunButton({ label: 'Run again' });
+    } else if (task.pending_reason === 'blocked') {
+      setAiState('Stopped', 'err');
+      setRunButton({ label: 'Try again' });
+    } else {
+      setAiState('');
+      setRunButton({ label: latest ? 'Run again' : 'Run with AI' });
+    }
+  }
+
+  function renderReview(task) {
+    const box = $('tmAiReview');
+    if (!box) return;
+    if (task.status !== 'under_review') { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="tm-ai-review">
+        <p class="tm-ai-review-title">Is this result what you needed?</p>
+        <p class="tm-ai-note">The full result is in the comments below.</p>
+        <div class="tm-ai-actions">
+          <button type="button" class="utility-secondary" id="tmAiChanges">Ask for changes</button>
+          <button type="button" class="utility-primary" id="tmAiAccept">Accept result</button>
+        </div>
+        <form class="tm-ai-revise" id="tmAiReviseForm" hidden>
+          <label for="tmAiFeedback">What should change?</label>
+          <textarea id="tmAiFeedback" rows="3" maxlength="2000" placeholder="For example: make it shorter, only include clients, add a reply draft for the first email"></textarea>
+          <div class="tm-ai-actions">
+            <button type="button" class="utility-secondary" id="tmAiReviseCancel">Cancel</button>
+            <button type="submit" class="utility-primary">Send and run again</button>
+          </div>
+        </form>
+      </div>`;
+    $('tmAiAccept').addEventListener('click', async () => {
+      $('tmAiAccept').disabled = true;
+      try {
+        await agentAccept(task.id);
+        toast('Result accepted. Task completed.', 'success');
+        await refresh();
+        closeDrawer();
+      } catch (ex) {
+        toast(ex.message || 'Could not accept the result', 'error');
+        $('tmAiAccept').disabled = false;
+      }
+    });
+    const form = $('tmAiReviseForm');
+    $('tmAiChanges').addEventListener('click', () => { form.hidden = false; $('tmAiFeedback').focus(); });
+    $('tmAiReviseCancel').addEventListener('click', () => { form.hidden = true; });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const feedback = $('tmAiFeedback').value.trim();
+      if (!feedback) { $('tmAiFeedback').focus(); return; }
+      form.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      try {
+        const data = await agentRevise(task.id, feedback);
+        $('tmAiLive').innerHTML = '';
+        loadThread(task.id);
+        watchRun(task, data.executionId);
+      } catch (ex) {
+        toast(ex.message || 'Could not request changes', 'error');
+        form.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      }
+    });
+  }
+
+  function renderApproval(task, a) {
+    const slot = $('tmAiApproval');
+    if (!slot) return;
     if (!a) {
       slot.innerHTML = task.pending_reason === 'awaiting_approval'
         ? '<p class="tm-ai-note">An action is waiting for approval by the person who started this run.</p>'
@@ -499,15 +692,15 @@ export function initTasksView({ toast, confirm, getUser }) {
     slot.querySelectorAll('[data-ai-decide]').forEach((btn) => btn.addEventListener('click', async () => {
       const approve = btn.dataset.aiDecide === 'approve';
       slot.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-      $('tmAiResult').innerHTML = `<p class="tm-loading">${approve ? 'Running the approved action and continuing…' : 'Sending your feedback and continuing…'}</p>`;
       try {
         const data = await agentDecide(a.id, approve, $('tmAiReason')?.value || '');
-        showAiOutcome(data);
-        toast(approve ? 'Approved' : 'Rejected', 'success');
+        slot.innerHTML = '';
+        toast(approve ? 'Approved. Continuing…' : 'Rejected. Continuing…', 'success');
+        if (data.executionId) watchRun(task, data.executionId);
       } catch (ex) {
-        $('tmAiResult').innerHTML = `<p class="tm-ai-error">${esc(ex.message)}</p>`;
+        toast(ex.message || 'That decision could not be saved', 'error');
+        slot.querySelectorAll('button').forEach((b) => { b.disabled = false; });
       }
-      await afterAiRun(task);
     }));
   }
 
@@ -516,27 +709,25 @@ export function initTasksView({ toast, confirm, getUser }) {
     const fresh = state.tasks.find((x) => x.id === task.id);
     if (fresh) Object.assign(task, fresh);
     if (state.drawerTaskId !== task.id) return;
+    const statusSel = $('tmForm')?.querySelector('[name="status"]');
+    if (statusSel && fresh) statusSel.value = fresh.status;
     loadThread(task.id);
-    loadApproval(task);
+    refreshAi(task);
   }
 
   function wireAi(task) {
-    loadApproval(task);
+    refreshAi(task);
     $('tmAiRun')?.addEventListener('click', async () => {
       const btn = $('tmAiRun');
       btn.disabled = true;
-      btn.textContent = 'Working…';
-      $('tmAiResult').innerHTML = '<p class="tm-loading">The AI employee is working on this task. This can take a minute.</p>';
+      $('tmAiLive').innerHTML = '';
       try {
         const data = await agentExecute(task.assigned_to_id, task.id);
-        showAiOutcome(data);
+        watchRun(task, data.executionId);
       } catch (ex) {
-        $('tmAiResult').innerHTML = `<p class="tm-ai-error">${esc(ex.message)}</p>`;
-      } finally {
+        $('tmAiLive').innerHTML = `<p class="tm-ai-error">${esc(ex.message)}</p>`;
         btn.disabled = false;
-        btn.textContent = 'Run again';
       }
-      await afterAiRun(task);
     });
   }
 
@@ -553,7 +744,7 @@ export function initTasksView({ toast, confirm, getUser }) {
         ? comments.map((m) => `<li class="tm-comment">
             <span class="tm-avatar tm-avatar-${m.author_type === 'ai' ? 'ai' : 'human'}" aria-hidden="true">${esc(initials(personName(m.author_id)))}</span>
             <div><p class="tm-comment-head"><strong>${esc(personName(m.author_id))}</strong> <time datetime="${new Date(Number(m.created_at)).toISOString()}" title="${esc(dateTime(m.created_at))}">${esc(relativeTime(m.created_at))}</time></p>
-            <p class="tm-comment-body">${esc(m.content)}</p></div>
+            <div class="tm-comment-body md">${renderMarkdown(String(m.content || '').replace(/\[task:[\w-]+\]/g, '').trim())}</div></div>
           </li>`).join('')
         : '<li class="tm-loading">No comments yet.</li>';
     const activity = (a?.activity || []).slice().sort((x, y) => Number(y.created_at) - Number(x.created_at));
@@ -816,6 +1007,34 @@ export function initTasksView({ toast, confirm, getUser }) {
     if (menu?.open && !menu.contains(e.target)) menu.removeAttribute('open');
   });
 
+  /* ---------------- quick ask (Phase 04.1b) ---------------- */
+  $('tmAskForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('tmAskText');
+    const text = input.value.trim();
+    if (text.length < 3) { input.focus(); return; }
+    const btn = $('tmAskBtn');
+    btn.disabled = true;
+    try {
+      const data = await agentAsk({ text });
+      input.value = '';
+      toast('Task created. The Chief of Staff is working on it.', 'success');
+      await refresh();
+      await openTask(data.task.id, btn);
+    } catch (ex) {
+      toast(ex.message || 'Could not create the task', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /** Open a task by id from elsewhere (e.g. an Inbox task link). */
+  async function openTaskById(id) {
+    if (!state.tasks.some((t) => t.id === id)) await refresh();
+    if (!state.tasks.some((t) => t.id === id)) { toast('That task is not available to you.', 'error'); return; }
+    openTask(id);
+  }
+
   /** Show one person's tasks (used by Chief of Staff "View tasks"). */
   function showAssignee(id) {
     clearFilters();
@@ -824,5 +1043,5 @@ export function initTasksView({ toast, confirm, getUser }) {
     render();
   }
 
-  return { refresh, openTask, showAssignee };
+  return { refresh, openTask, openTaskById, showAssignee };
 }

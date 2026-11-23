@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet" />
   <link rel="stylesheet" href="css/aculyze-studio.css?v=20261121a" />
-  <link rel="stylesheet" href="css/work.css?v=20261121a" />
+  <link rel="stylesheet" href="css/work.css?v=20261123d" />
 </head>
 <body>
   <div id="app" class="app">
@@ -72,6 +72,10 @@
         <button class="sidebar-item" id="navChief" type="button" hidden>
           <span class="material-symbols-outlined item-ico" aria-hidden="true">account_tree</span>
           <span class="label">Chief of Staff</span>
+        </button>
+        <button class="sidebar-item" id="navExecutive" type="button" hidden>
+          <span class="material-symbols-outlined item-ico" aria-hidden="true">monitoring</span>
+          <span class="label">Executive Agent</span>
         </button>
         <button class="sidebar-item" id="navCustomer" type="button" hidden>
           <span class="material-symbols-outlined item-ico" aria-hidden="true">support_agent</span>
@@ -956,10 +960,10 @@
                 <div class="admin-table-wrap">
                   <table class="admin-table">
                     <thead>
-                      <tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+                      <tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Reports to</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
                     </thead>
                     <tbody id="adminUserRows">
-                      <tr><td colspan="5" class="admin-note">Loading users…</td></tr>
+                      <tr><td colspan="6" class="admin-note">Loading users…</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -1033,6 +1037,14 @@
                   </button>
                 </div>
               </header>
+
+              <form class="tm-ask" id="tmAskForm" autocomplete="off">
+                <span class="tm-ask-badge" aria-hidden="true">AI</span>
+                <label class="sr-only" for="tmAskText">Ask the Chief of Staff to do something</label>
+                <input id="tmAskText" type="text" maxlength="4000"
+                  placeholder="Ask the Chief of Staff… e.g. Summarize my important emails from the last 3 days">
+                <button type="submit" class="utility-primary" id="tmAskBtn">Ask</button>
+              </form>
 
               <section class="wl" aria-label="Open work by state">
                 <div id="tmBar"></div>
@@ -1144,13 +1156,14 @@
                   <p class="work-summary" id="csSummary" aria-live="polite">Checking on the team…</p>
                 </div>
                 <div class="work-head-actions">
-                  <button class="utility-primary" id="csNewBtn" type="button">
+                  <!-- Planning moved to Tasks (quick Ask + Run with AI); kept hidden so chief-view.js still finds it. -->
+                  <button class="utility-primary" id="csNewBtn" type="button" hidden>
                     <span class="material-symbols-outlined" aria-hidden="true">add</span>Plan new work
                   </button>
                 </div>
               </header>
 
-              <div class="cs-tabs" role="tablist" aria-label="Chief of Staff">
+              <div class="cs-tabs" role="tablist" aria-label="Chief of Staff" hidden>
                 <button type="button" role="tab" id="csTabTeam" data-cs-tab="team" aria-controls="csPanelTeam" aria-selected="true">Team</button>
                 <button type="button" role="tab" id="csTabPlan" data-cs-tab="plan" aria-controls="csPanelPlan" aria-selected="false" tabindex="-1">Plan work</button>
                 <button type="button" role="tab" id="csTabHistory" data-cs-tab="history" aria-controls="csPanelHistory" aria-selected="false" tabindex="-1">
@@ -1282,6 +1295,98 @@
           </section>
 
           <!-- ---------- CUSTOMER EXECUTIVE (Phase 03.4) ---------- -->
+          <section id="view-executive" class="agent-view" data-agent="executive">
+            <div class="work-page" id="executivePage">
+              <header class="work-head">
+                <div class="work-head-text">
+                  <h2>Executive Agent</h2>
+                  <p class="work-summary" id="exSummary" aria-live="polite">Collects the team's daily numbers in the Inbox and follows up on anyone who hasn't answered.</p>
+                </div>
+                <div class="work-head-actions">
+                  <button class="utility-secondary" id="exRefresh" type="button">Refresh</button>
+                  <button class="utility-primary" id="exNewBtn" type="button">
+                    <span class="material-symbols-outlined" aria-hidden="true">add</span>New daily check-in
+                  </button>
+                </div>
+              </header>
+
+              <div class="cs-tabs" role="tablist" aria-label="Executive Agent">
+                <button type="button" role="tab" id="exTabCheckins" data-ex-tab="checkins" aria-controls="exPanelCheckins" aria-selected="true">Daily check-ins</button>
+                <button type="button" role="tab" id="exTabPerf" data-ex-tab="performance" aria-controls="exPanelPerf" aria-selected="false" tabindex="-1">Team performance</button>
+              </div>
+
+              <!-- Daily check-ins -->
+              <section id="exPanelCheckins" role="tabpanel" aria-labelledby="exTabCheckins" data-ex-panel="checkins">
+                <form class="ex-form" id="exForm" hidden novalidate>
+                  <h3 id="exFormTitle">New daily check-in</h3>
+                  <div class="ex-form-grid">
+                    <label class="ex-field ex-wide">Name
+                      <input name="title" type="text" maxlength="120" placeholder="Daily sales and calls" required>
+                    </label>
+                    <label class="ex-field ex-wide">Question employees will get in the Inbox
+                      <textarea name="question" rows="2" maxlength="600" placeholder="How many sales did you close and how many calls did you make today?" required></textarea>
+                    </label>
+                    <label class="ex-field ex-wide">Numbers to collect <span class="ex-hint">(separate with commas)</span>
+                      <input name="fields" type="text" maxlength="200" value="Sales, Calls">
+                    </label>
+                    <label class="ex-field">Ask at
+                      <input name="askTime" type="time" value="15:00" required>
+                    </label>
+                    <label class="ex-field">Deadline
+                      <input name="deadlineTime" type="time" value="16:00" required>
+                    </label>
+                    <label class="ex-field">Who answers
+                      <select name="audienceRole">
+                        <option value="employee">Everyone with the Employee role</option>
+                        <option value="manager">Everyone with the Manager role</option>
+                        <option value="all">Everyone except founders</option>
+                      </select>
+                    </label>
+                    <fieldset class="ex-field ex-wide ex-days">
+                      <legend>Days</legend>
+                      <label><input type="checkbox" name="days" value="1" checked> Mon</label>
+                      <label><input type="checkbox" name="days" value="2" checked> Tue</label>
+                      <label><input type="checkbox" name="days" value="3" checked> Wed</label>
+                      <label><input type="checkbox" name="days" value="4" checked> Thu</label>
+                      <label><input type="checkbox" name="days" value="5" checked> Fri</label>
+                      <label><input type="checkbox" name="days" value="6" checked> Sat</label>
+                      <label><input type="checkbox" name="days" value="0"> Sun</label>
+                    </fieldset>
+                  </div>
+                  <p class="ex-note">At the deadline, anyone who hasn't answered gets a reminder, and the person they report to plus every manager gets the list.</p>
+                  <p class="tm-form-error" id="exFormError" role="alert" hidden></p>
+                  <div class="tm-ai-actions">
+                    <button type="button" class="utility-secondary" id="exFormCancel">Cancel</button>
+                    <button type="submit" class="utility-primary" id="exFormSave">Save check-in</button>
+                  </div>
+                </form>
+
+                <ul class="ex-checkins" id="exCheckins" aria-label="Daily check-ins"><li class="work-empty">Loading…</li></ul>
+
+                <section class="ex-report" id="exReport" hidden aria-labelledby="exReportTitle">
+                  <div class="cs-section-head">
+                    <h3 id="exReportTitle">Report</h3>
+                    <div class="ex-report-tools">
+                      <label class="sr-only" for="exReportDate">Day</label>
+                      <select id="exReportDate"></select>
+                      <button class="utility-primary" id="exXlsx" type="button">
+                        <span class="material-symbols-outlined" aria-hidden="true">download</span>Download Excel
+                      </button>
+                    </div>
+                  </div>
+                  <div class="ex-kpis" id="exReportKpis"></div>
+                  <div class="tm-table-wrap"><table class="tm-table ex-table" id="exReportTable"></table></div>
+                </section>
+              </section>
+
+              <!-- Team performance -->
+              <section id="exPanelPerf" role="tabpanel" aria-labelledby="exTabPerf" data-ex-panel="performance" hidden>
+                <div class="ex-kpis" id="exPerfKpis"></div>
+                <p class="ex-note" id="exPerfNote"></p>
+                <div class="tm-table-wrap"><table class="tm-table ex-table" id="exPerfTable"></table></div>
+              </section>
+            </div>
+          </section>
           <section id="view-customer" class="agent-view" data-agent="customer" hidden>
             <div class="tasks-page customer-page">
               <header class="tasks-header">
@@ -1575,7 +1680,7 @@
   <script type="module" src="js/voice.js"></script>
   <script type="module" src="js/api.js"></script>
   <script type="module" src="js/mascot.js"></script>
-  <script type="module" src="js/aculyze-studio.js?v=20261123a"></script>
+  <script type="module" src="js/aculyze-studio.js?v=20261123e"></script>
   <script type="module" src="js/voice-assistant.js?v=20261112f"></script>
 </body>
 </html>
