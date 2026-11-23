@@ -485,7 +485,7 @@
 .tm-ai-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--text); }
 .tm-ai-badge, .tm-ask-badge {
   display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px;
-  background: var(--accent); color: var(--accent-ink, #fff); font-size: 11px; font-weight: 800; letter-spacing: .04em;
+  background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 800; letter-spacing: .04em;
 }
 .tm-ai-state { margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 .tm-ai-state.is-busy { color: var(--accent); }
@@ -818,7 +818,7 @@ body.work-drawer-open .foppy-wrap { display: none; }
   border: 1px solid var(--accent); background: var(--accent-soft, transparent); color: var(--accent);
   font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
-.inbox-messages .msg-task-link:hover { background: var(--accent); color: var(--accent-ink, #fff); }
+.inbox-messages .msg-task-link:hover { background: var(--accent); color: var(--on-accent); }
 .inbox-messages .msg-make-task {
   display: block; margin: 6px 0 0 auto; padding: 3px 10px; border-radius: 999px;
   border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8;

@@ -1,0 +1,294 @@
+/* ==========================================================================
+   ACULYZE STUDIO: Aurora theme (loaded last)
+
+   - Background: a still aurora image (public/img/aurora-*.jpg; regenerate with
+     scripts/make-aurora-backgrounds.js). Colour sits at the edges, and the
+     centre stays calm so text over it keeps its contrast.
+   - Shell panels (sidebar, top bar, Zara panel) are lightly frosted; content
+     cards stay near-solid for legibility.
+   - Indigo primary. Status colours keep one meaning each: green done,
+     amber warning, red late/missing, sky "in review".
+   - Each AI employee has its own colour (--agent-*), used on avatars, nav
+     icons, task badges and Inbox threads, so "who did this" is visible at a glance.
+   ========================================================================== */
+
+:root {
+  --bg: #f4f6fc;
+  --bg-2: #eef1fa;
+  --surface: #ffffff;
+  --surface-2: #f3f5fb;
+  --text: #111633;
+  --text-2: #1b2145;
+  --text-sub: #3b4366;
+  --text-body: #4a5278;
+  --text-muted: #646b8a;
+  --border: #e2e6f2;
+  --border-strong: #cdd3e6;
+
+  --accent: #4f46e5;
+  --accent-soft: #eef0ff;
+  --accent-ink: #4338ca;
+  --on-accent: #ffffff;
+
+  --violet: #7c3aed;
+  --purple: #7c3aed;
+  --cyan: #0f766e;
+  --bright-cyan: #0f766e;
+  --pink: #c8372d;
+  --hot-pink: #c8372d;
+
+  --success: #16a34a;
+  --success-soft: #ecfdf3;
+  --warn: #b45309;
+  --warn-soft: #fff7e8;
+  --danger: #dc2626;
+  --danger-soft: #fef1f1;
+  --st-review: #0284c7;
+
+  /* AI employee identity colours (light: dark enough for white initials) */
+  --agent-zara: #7c3aed;
+  --agent-chief: #4f46e5;
+  --agent-exec: #0f766e;
+  --agent-customer: #b45309;
+  --agent-sales: #c8372d;
+  --on-agent: #ffffff;
+
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-2: rgba(255, 255, 255, 0.86);
+  --shadow-sm: 0 1px 2px rgba(17, 22, 51, 0.06);
+  --shadow: 0 6px 20px rgba(17, 22, 51, 0.08);
+  --shadow-lg: 0 16px 44px rgba(17, 22, 51, 0.14);
+}
+
+[data-theme="dark"] {
+  --bg: #0e1630;
+  --bg-2: #0b1230;
+  --surface: #151f42;
+  --surface-2: #1b2752;
+  --text: #eef1ff;
+  --text-2: #dde2f8;
+  --text-sub: #c3cae8;
+  --text-body: #a9b1d6;
+  --text-muted: #8e97c2;
+  --border: #28345f;
+  --border-strong: #36447a;
+
+  --accent: #818cf8;
+  --accent-soft: rgba(129, 140, 248, 0.16);
+  --accent-ink: #a5b4fc;
+  --on-accent: #0e1630;
+
+  --violet: #a78bfa;
+  --purple: #a78bfa;
+  --cyan: #2dd4bf;
+  --bright-cyan: #2dd4bf;
+  --pink: #fb7185;
+  --hot-pink: #fb7185;
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --st-review: #38bdf8;
+
+  --agent-zara: #a78bfa;
+  --agent-chief: #818cf8;
+  --agent-exec: #2dd4bf;
+  --agent-customer: #fbbf24;
+  --agent-sales: #fb7185;
+  --on-agent: #0e1630;
+
+  --glass: rgba(14, 22, 48, 0.72);
+  --glass-2: rgba(17, 25, 54, 0.86);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- background image + shell ---------- */
+.home-bg { display: none !important; } /* old video layer */
+html[data-theme="light"] body { background: #f4f6fc url("/img/aurora-light.jpg") center / cover no-repeat fixed; }
+html[data-theme="dark"] body { background: #0e1630 url("/img/aurora-dark.jpg") center / cover no-repeat fixed; }
+html[data-theme] .app,
+html[data-theme] .app-shell,
+html[data-theme] .workspace { background: transparent; }
+
+html[data-theme] .sidebar {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border: 0;
+  border-right: 1px solid var(--border);
+}
+html[data-theme] .topbar {
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+}
+html[data-theme] .copilot {
+  background: var(--glass-2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+  border: 0;
+  border-left: 1px solid var(--border);
+}
+html[data-theme] .copilot-head { background: transparent; }
+html[data-theme] .sidebar-foot { background: transparent; }
+
+/* Selected sidebar item: soft indigo pill. */
+html[data-theme] .sidebar-item.active,
+html[data-theme] .agent-item.active {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-ink);
+  border-radius: 10px;
+}
+html[data-theme] .sidebar-item.active .item-ico,
+html[data-theme] .agent-item.active .item-ico { color: var(--accent-ink); }
+
+/* ---------- home ---------- */
+html[data-theme] .home-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+html[data-theme] .home-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-lg); }
+.home-card::after { display: none !important; }            /* shimmer */
+.home-card::before { background: var(--agent, var(--accent)) !important; opacity: 1 !important; } /* identity strip */
+.home-card[data-open="zara"] { --agent: var(--agent-zara); }
+.home-card[data-open="sales"] { --agent: var(--agent-sales); }
+.home-card[data-open] .hc-ico { background: var(--agent, var(--accent)) !important; color: var(--on-agent) !important; box-shadow: none !important; }
+html[data-theme] .hc-tags span { background: var(--surface-2); color: var(--text-sub); }
+.home-card .hc-tags span:first-child { color: var(--agent, var(--accent-ink)) !important; background: color-mix(in srgb, var(--agent, var(--accent)) 12%, transparent) !important; }
+.home-hero h1 .greet-accent {
+  background: linear-gradient(100deg, var(--agent-exec), var(--agent-chief) 55%, var(--agent-zara));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ---------- primary controls ---------- */
+.btn-send, .ac-btn-primary, .store-btn.primary, .cc-mini-btn.primary, .auth-submit,
+.inbox-tab.active, .apps-category-pill.active, .snav-item.active,
+html[data-theme] #copilotNewChat, html[data-theme] #copilotNewChat:hover {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  border-color: var(--accent) !important;
+}
+.btn-send:hover, .ac-btn-primary:hover, .store-btn.primary:hover, .cc-mini-btn.primary:hover, .auth-submit:hover { filter: brightness(1.08); }
+
+/* Store / Command Centre icons: one hue per area, not the same purple everywhere */
+.store-ico-pulse, .cc-ico-sales { background: var(--agent-sales) !important; color: var(--on-agent) !important; }
+.store-ico-assets, .cc-ico-emp { background: var(--agent-exec) !important; color: var(--on-agent) !important; }
+.store-ico-crew, .cc-ico-plans { background: var(--agent-customer) !important; color: var(--on-agent) !important; }
+.cc-ico-zara { background: var(--agent-zara) !important; color: var(--on-agent) !important; }
+.voice-assistant-btn, .voice-assistant-greeting .va-greet-avatar, .user-menu-avatar { background: var(--accent) !important; color: var(--on-accent) !important; }
+
+/* ---------- headers that used a purple banner: calm card + identity edge ---------- */
+html[data-theme] .cc-card-header,
+html[data-theme] .page-header {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.cc-card-header::after, .page-header::after { display: none !important; }
+.cc-card-header h3, .page-header h1 { color: var(--text); }
+.cc-card-header p, .page-header p, .page-header-kicker { color: var(--text-muted) !important; }
+.voice-assistant-glow { opacity: .5; }
+.auth-shell { background: transparent !important; }
+
+/* ---------- AI employee identity ---------- */
+[data-agent="zara"] { --agent: var(--agent-zara); }
+[data-agent="chief"] { --agent: var(--agent-chief); }
+[data-agent="exec"] { --agent: var(--agent-exec); }
+[data-agent="customer"] { --agent: var(--agent-customer); }
+[data-agent="sales"] { --agent: var(--agent-sales); }
+
+/* Avatars: people are quiet grey, AI employees wear their colour. */
+.inbox-who, .inbox-detail-avatar, .chat-person-ava {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border);
+}
+.inbox-who[data-agent], .inbox-detail-avatar[data-agent], .tm-avatar[data-agent] {
+  background: var(--agent) !important;
+  color: var(--on-agent) !important;
+  border-color: transparent !important;
+}
+.inbox-row .inbox-who.channel { background: var(--accent-soft) !important; color: var(--accent-ink) !important; }
+
+/* Nav icons for agent pages */
+#navChief .item-ico { color: var(--agent-chief); }
+#navExecutive .item-ico { color: var(--agent-exec); }
+#navCustomer .item-ico { color: var(--agent-customer); }
+#agentSales .item-ico, .agent-item[data-agent="sales"] .item-ico { color: var(--agent-sales); }
+
+/* Inbox thread with an AI employee: its replies carry the colour on the edge. */
+.dm-thread[data-agent] .msg.agent .msg-body { box-shadow: inset 3px 0 0 var(--agent); }
+
+/* Task drawer AI panel follows the assigned employee's colour. */
+.tm-ai[data-agent] { border-color: color-mix(in srgb, var(--agent) 40%, var(--border)); background: color-mix(in srgb, var(--agent) 6%, var(--surface)); }
+.tm-ai[data-agent] .tm-ai-badge { background: var(--agent); color: var(--on-agent); }
+
+/* ---------- Inbox bubbles ---------- */
+html[data-theme="light"] {
+  --dm-out-bg: #4f46e5;
+  --dm-out-fg: #ffffff;
+  --dm-out-meta: #e0e3ff;
+  --dm-in-bg: #ffffff;
+  --dm-in-fg: #111633;
+  --dm-in-meta: #4a5278;
+  --dm-btn-bg: #3730a3;
+  --dm-btn-fg: #ffffff;
+}
+html[data-theme="dark"] {
+  --dm-out-bg: #818cf8;
+  --dm-out-fg: #0e1630;
+  --dm-out-meta: #1e2a5c;
+  --dm-in-bg: #1b2752;
+  --dm-in-fg: #eef1ff;
+  --dm-in-meta: #a9b1d6;
+  --dm-btn-bg: #c7d2fe;
+  --dm-btn-fg: #0e1630;
+}
+html[data-theme] .inbox-messages { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+
+/* ---------- Zara / Sales answers: Copy · Share · Regenerate ---------- */
+.msg.agent[data-idx] { flex-direction: column; align-items: flex-start; }
+.msg-actions { display: flex; gap: 2px; margin: 4px 0 6px 4px; }
+.msg-action {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.msg-action:hover { background: var(--accent-soft); color: var(--accent-ink); }
+.msg-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.msg-action.is-done { color: var(--success); }
+@media (hover: hover) {
+  .msg.agent[data-idx] .msg-actions { opacity: .55; transition: opacity .15s; }
+  .msg.agent[data-idx]:hover .msg-actions,
+  .msg.agent[data-idx] .msg-actions:focus-within,
+  .msg.agent[data-idx]:last-child .msg-actions { opacity: 1; }
+}
+.msg-content a { text-decoration: underline; text-underline-offset: 2px; }
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme] .sidebar, html[data-theme] .copilot, html[data-theme] .topbar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* ---------- after visual review ---------- */
+/* The greeting is one voice: no single highlighted word. */
+.home-hero h1 .greet-accent {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: inherit;
+}
+/* Card links take their card's identity colour. */
+.home-card[data-open] .hc-open { color: var(--agent, var(--accent-ink)); }

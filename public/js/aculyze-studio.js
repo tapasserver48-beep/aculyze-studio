@@ -1293,6 +1293,120 @@ function renderMessageBody(msg) {
   return (textHtml + attHtml) || '<div class="msg-content"></div>';
 }
 
+/* ---------- Answer actions: copy / share / regenerate ---------- */
+const ANSWER_ICONS = {
+  copy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
+  check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>',
+  share: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v14"/></svg>',
+  regenerate: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+};
+
+/** Copy / Share on every answer; Regenerate only on the latest one. */
+function answerActionsHtml(isLatest) {
+  const btn = (act, label) => `<button type="button" class="msg-action" data-msg-act="${act}" aria-label="${label}" title="${label}">${ANSWER_ICONS[act]}</button>`;
+  return `<div class="msg-actions" role="group" aria-label="Answer actions">${btn('copy', 'Copy')}${btn('share', 'Share')}${isLatest ? btn('regenerate', 'Regenerate') : ''}</div>`;
+}
+
+/** Plain text of a stored message (content may be a string or text/image parts). */
+function messagePlainText(msg) {
+  const c = msg && msg.content;
+  if (Array.isArray(c)) return c.filter((p) => p && p.type === 'text').map((p) => p.text).join('\n\n');
+  return c ? String(c) : '';
+}
+
+/** Conversation currently open in the detail panel (Zara or Sales). */
+function activeChatContext() {
+  const sales = state.activeAgent === 'sales';
+  const cache = sales ? salesState.conversationCache : state.conversationCache;
+  const id = sales ? salesState.selectedConversationId : state.selectedConversationId;
+  const busy = sales ? !!salesState.activeRequest : !!(state.activeRequest || state.abortCtrl);
+  return { sales, conv: cache.find((c) => c.id === id) || null, busy };
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+/** Put the action bar on a finished answer; only the newest keeps Regenerate. */
+function attachAnswerActions(bubble, index) {
+  if (!bubble || index < 0) return;
+  bubble.dataset.idx = String(index);
+  bubble.querySelector('.msg-actions')?.remove();
+  els.conversationMessages?.querySelectorAll('[data-msg-act="regenerate"]').forEach((b) => b.remove());
+  bubble.insertAdjacentHTML('beforeend', answerActionsHtml(true));
+}
+
+els.conversationMessages?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-msg-act]');
+  if (!btn) return;
+  const bubble = btn.closest('.msg');
+  const idx = Number(bubble && bubble.dataset.idx);
+  const { sales, conv, busy } = activeChatContext();
+  const msg = conv && Number.isInteger(idx) ? conv.messages[idx] : null;
+  if (!msg) return;
+  const text = messagePlainText(msg);
+  const act = btn.dataset.msgAct;
+
+  if (act === 'copy') {
+    if (await copyText(text)) {
+      btn.innerHTML = ANSWER_ICONS.check;
+      btn.classList.add('is-done');
+      setTimeout(() => { btn.innerHTML = ANSWER_ICONS.copy; btn.classList.remove('is-done'); }, 1500);
+      toast('Copied');
+    } else {
+      toast('Could not copy. Select the text and copy it manually.', 'error');
+    }
+    return;
+  }
+
+  if (act === 'share') {
+    const title = (conv && conv.title) || (sales ? 'Sales Agent answer' : 'Zara answer');
+    if (navigator.share) {
+      try { await navigator.share({ title, text }); } catch (err) { if (err && err.name !== 'AbortError') toast('Could not open sharing', 'error'); }
+      return;
+    }
+    if (await copyText(text)) toast('Copied. Paste it anywhere to share.');
+    else toast('Sharing is not available in this browser', 'error');
+    return;
+  }
+
+  if (act === 'regenerate') {
+    if (busy) { toast('Wait for the current answer to finish'); return; }
+    if (idx !== conv.messages.length - 1) return;
+    let u = idx - 1;
+    while (u >= 0 && conv.messages[u].role !== 'user') u -= 1;
+    if (u < 0) return;
+    const userMsg = conv.messages[u];
+    // Drop the question and its answer; sending re-adds the question.
+    conv.messages.splice(u);
+    conv.updatedAt = Date.now();
+    if (sales) {
+      saveSalesConversationCache();
+      showSalesConversationDetail(conv.id);
+    } else {
+      saveConversationCache();
+      showConversationDetail(conv.id);
+      state.attachments = Array.isArray(userMsg.attachments) ? userMsg.attachments.slice(0, 4) : [];
+    }
+    if (els.zaraInput) els.zaraInput.value = messagePlainText(userMsg);
+    if (sales) sendSalesMessage(); else sendZaraMessage();
+  }
+});
+
 function showConversationDetail(conversationId) {
   if (!els.conversationDetail) return;
   
@@ -1319,16 +1433,19 @@ function showConversationDetail(conversationId) {
       // Render messages
       const messagesEl = document.createElement('div');
       messagesEl.className = 'conversation-message-list';
-      for (const msg of conv.messages) {
+      const lastAnswer = conv.messages.map((m) => m.role).lastIndexOf('assistant');
+      conv.messages.forEach((msg, i) => {
         const msgEl = document.createElement('div');
         msgEl.className = `msg ${msg.role === 'assistant' ? 'agent' : msg.role}`;
+        if (msg.role === 'assistant') msgEl.dataset.idx = String(i);
         msgEl.innerHTML = `
           <div class="msg-body">
             ${renderMessageBody(msg)}
           </div>
+          ${msg.role === 'assistant' ? answerActionsHtml(i === lastAnswer && i === conv.messages.length - 1) : ''}
         `;
         messagesEl.appendChild(msgEl);
-      }
+      });
       els.conversationMessages.appendChild(messagesEl);
     } else if (els.conversationEmptyDetail) {
       els.conversationEmptyDetail.style.display = '';
@@ -1871,6 +1988,7 @@ async function sendZaraMessage() {
         bubble.classList.remove('streaming');
         const contentDiv = bubble.querySelector('.msg-content');
         if (contentDiv) contentDiv.innerHTML = renderMarkdown(finalText);
+        if (conv) attachAnswerActions(bubble, conv.messages.length - 1);
       }
       els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
     }
@@ -2150,16 +2268,19 @@ function showSalesConversationDetail(conversationId) {
     if (conv.messages && conv.messages.length > 0) {
       const messagesEl = document.createElement('div');
       messagesEl.className = 'conversation-message-list';
-      for (const msg of conv.messages) {
+      const lastAnswer = conv.messages.map((m) => m.role).lastIndexOf('assistant');
+      conv.messages.forEach((msg, i) => {
         const msgEl = document.createElement('div');
         msgEl.className = `msg ${msg.role === 'assistant' ? 'agent' : msg.role}`;
+        if (msg.role === 'assistant') msgEl.dataset.idx = String(i);
         msgEl.innerHTML = `
           <div class="msg-body">
             ${renderMessageBody(msg)}
           </div>
+          ${msg.role === 'assistant' ? answerActionsHtml(i === lastAnswer && i === conv.messages.length - 1) : ''}
         `;
         messagesEl.appendChild(msgEl);
-      }
+      });
       els.conversationMessages.appendChild(messagesEl);
     } else if (els.conversationEmptyDetail) {
       els.conversationEmptyDetail.style.display = '';
@@ -2322,6 +2443,7 @@ async function sendSalesMessage() {
         bubble.classList.remove('streaming');
         const contentDiv = bubble.querySelector('.msg-content');
         if (contentDiv) contentDiv.innerHTML = renderMarkdown(finalText);
+        if (conv) attachAnswerActions(bubble, conv.messages.length - 1);
       }
       els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
     }
@@ -2381,6 +2503,8 @@ function renderInboxList() {
     const who = document.createElement('span');
     who.className = 'inbox-who';
     who.textContent = initial;
+    const agentKey = agentKeyOf(user);
+    if (agentKey) who.dataset.agent = agentKey;
 
     const copy = document.createElement('span');
     copy.className = 'inbox-copy';
@@ -2399,7 +2523,12 @@ function renderInboxList() {
 
     const preview = document.createElement('small');
     preview.className = 'inbox-preview';
-    preview.textContent = user.lastMessage || 'No messages yet';
+    // Previews are plain text: drop markdown marks and task/report link tokens.
+    preview.textContent = String(user.lastMessage || '')
+      .replace(/\[(?:task|checkin):[^\]]+\]/g, '')
+      .replace(/[*_`#>|]+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'No messages yet';
 
     copy.append(nameRow, preview);
 
@@ -2460,7 +2589,7 @@ async function loadInboxUsers() {
   };
 
   for (const c of contacts) {
-    push({ id: c.id, name: c.name || 'Member', role: c.role || 'Local account', kind: 'account', status: 'offline' });
+    push({ id: c.id, name: c.name || 'Member', role: c.role || 'Local account', kind: 'account', status: 'offline', employee_code: c.employee_code || '' });
   }
 
   for (const u of merged) {
@@ -2510,6 +2639,9 @@ function showInboxUserDetail(userId) {
   if (els.inboxDetailRole) els.inboxDetailRole.textContent = user.role || 'User';
   if (els.inboxDetailAvatar) {
     els.inboxDetailAvatar.textContent = user.avatar || user.name.charAt(0).toUpperCase();
+    const agentKey = agentKeyOf(user);
+    if (agentKey) els.inboxDetailAvatar.dataset.agent = agentKey; else delete els.inboxDetailAvatar.dataset.agent;
+    if (els.inboxMessages) { if (agentKey) els.inboxMessages.dataset.agent = agentKey; else delete els.inboxMessages.dataset.agent; }
   }
   if (els.inboxDetailStatusDot && els.inboxDetailStatusText) {
     const isAi = String(user.id || '').startsWith('emp-ai-');
@@ -2819,6 +2951,18 @@ els.inboxMessages?.addEventListener('click', async (e) => {
     toast(err.message || 'Could not create the task', 'error');
   }
 });
+
+/** Identity colour key for an AI employee contact (see theme-aurora.css --agent-*). */
+function agentKeyOf(user) {
+  if (!user || !String(user.id || '').startsWith('emp-ai-')) return null;
+  const hay = `${user.employee_code || ''} ${user.name || ''}`.toLowerCase();
+  if (/chief/.test(hay)) return 'chief';
+  if (/customer/.test(hay)) return 'customer';
+  if (/exec/.test(hay)) return 'exec';
+  if (/sales/.test(hay)) return 'sales';
+  if (/zara/.test(hay)) return 'zara';
+  return 'chief';
+}
 
 function wireMessageActions(msgEl, msg) {
   const act = msgEl.querySelector('.msg-act');

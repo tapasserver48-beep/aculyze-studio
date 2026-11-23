@@ -115,6 +115,14 @@ export function initTasksView({ toast, confirm, getUser }) {
   const canDelete = () => DELETE_ROLES.includes(user().role);
   const person = (id) => state.people.get(id);
   const personName = (id) => person(id)?.name || 'Unknown person';
+  /** Identity colour key for an AI employee (theme-aurora.css --agent-*). */
+  const agentKey = (id) => {
+    const p = person(id);
+    if (!p || p.kind !== 'ai') return '';
+    const hay = `${p.code || ''} ${p.name || ''}`.toLowerCase();
+    return /chief/.test(hay) ? 'chief' : /customer/.test(hay) ? 'customer' : /exec/.test(hay) ? 'exec' : /sales/.test(hay) ? 'sales' : 'chief';
+  };
+  const agentAttr = (id) => (agentKey(id) ? ` data-agent="${agentKey(id)}"` : '');
 
   function readLayout() {
     try { return localStorage.getItem(LAYOUT_KEY) === 'board' ? 'board' : 'table'; } catch { return 'table'; }
@@ -236,7 +244,7 @@ export function initTasksView({ toast, confirm, getUser }) {
     const p = person(t.assigned_to_id);
     const kind = (p?.kind || t.assigned_to_type) === 'ai' ? 'AI employee' : 'Person';
     return `<span class="tm-who">
-      <span class="tm-avatar tm-avatar-${(p?.kind || t.assigned_to_type) === 'ai' ? 'ai' : 'human'}" aria-hidden="true">${esc(initials(p?.name))}</span>
+      <span class="tm-avatar tm-avatar-${(p?.kind || t.assigned_to_type) === 'ai' ? 'ai' : 'human'}"${agentAttr(t.assigned_to_id)} aria-hidden="true">${esc(initials(p?.name))}</span>
       <span class="tm-who-text"><span class="tm-who-name">${esc(personName(t.assigned_to_id))}</span><span class="tm-who-kind">${kind}</span></span>
     </span>`;
   }
@@ -468,7 +476,7 @@ export function initTasksView({ toast, confirm, getUser }) {
     const aiRunnable = t.assigned_to_type === 'ai' && (canManage() || isRequester(t)) && !['completed', 'cancelled'].includes(t.status);
     $('tmDrawerBody').innerHTML = `
       ${aiRunnable ? `
-      <section class="tm-ai" aria-labelledby="tmAiHead">
+      <section class="tm-ai"${agentAttr(t.assigned_to_id)} aria-labelledby="tmAiHead">
         <div class="tm-ai-head">
           <span class="tm-ai-badge" aria-hidden="true">AI</span>
           <h3 id="tmAiHead">${esc(personName(t.assigned_to_id))}</h3>
@@ -742,7 +750,7 @@ export function initTasksView({ toast, confirm, getUser }) {
       ? '<li class="tm-loading">Comments could not be loaded.</li>'
       : comments.length
         ? comments.map((m) => `<li class="tm-comment">
-            <span class="tm-avatar tm-avatar-${m.author_type === 'ai' ? 'ai' : 'human'}" aria-hidden="true">${esc(initials(personName(m.author_id)))}</span>
+            <span class="tm-avatar tm-avatar-${m.author_type === 'ai' ? 'ai' : 'human'}"${m.author_type === 'ai' ? agentAttr(m.author_id) : ''} aria-hidden="true">${esc(initials(personName(m.author_id)))}</span>
             <div><p class="tm-comment-head"><strong>${esc(personName(m.author_id))}</strong> <time datetime="${new Date(Number(m.created_at)).toISOString()}" title="${esc(dateTime(m.created_at))}">${esc(relativeTime(m.created_at))}</time></p>
             <div class="tm-comment-body md">${renderMarkdown(String(m.content || '').replace(/\[task:[\w-]+\]/g, '').trim())}</div></div>
           </li>`).join('')
