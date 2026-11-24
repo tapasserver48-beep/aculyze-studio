@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Customer Support — Aculyze AI Studio</title>
+<meta name="description" content="Contact the Aculyze support team, browse FAQs and get help with Aculyze AI Studio." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" />
+<style>
+  /* ============ Aculyze AI Studio — Customer Support ============ */
+  :root {
+    --bg: #0A0A0F;
+    --surface: #1A1A22;
+    --card: #21242E;
+    --border: #3F3F46;
+    --text: #F8FAFC;
+    --text-2: #D1D5DB;
+    --muted: #9CA3AF;
+    --primary: #00D4AA;
+    --primary-dark: #00a896;
+    --warning: #F59E0B;
+    --info: #3B82F6;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --maxw: 820px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 10, 15, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    max-width: var(--maxw); margin: 0 auto;
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 800; letter-spacing: 0.04em; font-size: 15px; color: var(--text); }
+  .brand small { font-size: 10px; font-weight: 600; color: var(--primary); letter-spacing: 0.18em; }
+  .back-link {
+    font-size: 14px; font-weight: 600; color: var(--text-2);
+    padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  .back-link:hover { border-color: var(--primary); color: var(--primary); text-decoration: none; }
+
+  /* ---------- Content ---------- */
+  main { max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 32px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--primary); margin: 0 0 10px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; }
+  .lede { font-size: 17px; color: var(--text-2); margin: 0 0 40px; }
+
+  h2 { font-size: 21px; letter-spacing: -0.01em; margin: 44px 0 16px; scroll-margin-top: 72px; }
+  h2 .num { color: var(--primary); font-weight: 800; margin-right: 8px; }
+  p { margin: 0 0 14px; color: var(--text-2); }
+  strong { color: var(--text); }
+
+  /* ---------- Contact cards ---------- */
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+    margin: 8px 0 8px;
+  }
+  .contact-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: border-color .15s ease;
+  }
+  .contact-card:hover { border-color: var(--primary); }
+  .contact-card .ico {
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 212, 170, 0.1);
+    border-radius: var(--radius-md);
+    color: var(--primary);
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+  .contact-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 6px; font-weight: 700; }
+  .contact-card .value { font-size: 16px; font-weight: 600; color: var(--text); display: block; margin-bottom: 4px; word-break: break-word; }
+  .contact-card .hint { font-size: 13px; color: var(--muted); margin: 0; }
+
+  /* ---------- Support categories ---------- */
+  .cat-list { display: grid; gap: 12px; margin-top: 8px; }
+  .cat {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+  }
+  .cat .badge {
+    flex: 0 0 auto;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 4px 10px; border-radius: 999px; margin-top: 2px;
+  }
+  .badge-tech { background: rgba(59, 130, 246, 0.15); color: #60A5FA; }
+  .badge-billing { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+  .badge-ai { background: rgba(0, 212, 170, 0.15); color: var(--primary); }
+  .cat h3 { font-size: 15.5px; margin: 0 0 4px; }
+  .cat p { font-size: 14px; margin: 0; color: var(--muted); }
+
+  /* ---------- SLA row ---------- */
+  .sla-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 8px;
+  }
+  .sla {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    text-align: center;
+  }
+  .sla .time { font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: -0.02em; }
+  .sla .what { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* ---------- FAQ accordion ---------- */
+  .faq { display: grid; gap: 10px; margin-top: 8px; }
+  .faq details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color .15s ease;
+  }
+  .faq details[open] { border-color: var(--primary); }
+  .faq summary {
+    cursor: pointer;
+    padding: 15px 18px;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text);
+    list-style: none;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: "+";
+    font-size: 20px; font-weight: 400; color: var(--primary);
+    flex: 0 0 auto;
+    transition: transform .15s ease;
+    line-height: 1;
+  }
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq .answer { padding: 0 18px 16px; font-size: 14.5px; color: var(--text-2); }
+  .faq .answer p { margin: 0; font-size: 14.5px; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    margin-top: 56px;
+  }
+  .footer-inner {
+    max-width: var(--maxw); margin: 0 auto;
+    padding: 28px 24px 36px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .footer-links { display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; }
+  .footer-links a { color: var(--text-2); font-weight: 500; }
+  .footer-links a:hover { color: var(--primary); text-decoration: none; }
+  .claim { font-size: 13.5px; color: var(--muted); letter-spacing: 0.02em; }
+  .claim strong { color: var(--text-2); font-weight: 700; }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">ACULYZE <small>AI STUDIO</small></span>
+    <a class="back-link" href="/">← Back to Studio</a>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Help centre</p>
+  <h1>Customer Support</h1>
+  <p class="lede">Questions about Aculyze AI Studio, billing, or an issue in your workspace? Reach us through any channel below — a real person replies.</p>
+
+  <!-- ===================== CONTACT CHANNELS ===================== -->
+  <h2 id="contact"><span class="num">1.</span>Contact channels</h2>
+  <div class="contact-grid">
+    <div class="contact-card">
+      <div class="ico" aria-hidden="true">✉</div>
+      <h3>Email</h3>
+      <a class="value" href="mailto:admin@aculyze.in">admin@aculyze.in</a>
+      <p class="hint">Best for account, billing and detailed issues</p>
+    </div>
+    <div class="contact-card">
+      <div class="ico" aria-hidden="true">☎</div>
+      <h3>India</h3>
+      <a class="value" href="tel:+918089571224">+91 80895 71224</a>
+      <p class="hint">Mon–Sat, 9:30–18:30 IST</p>
+    </div>
+    <div class="contact-card">
+      <div class="ico" aria-hidden="true">☎</div>
+      <h3>UAE</h3>
+      <a class="value" href="tel:+971564879798">+971 56487 9798</a>
+      <p class="hint">Sun–Thu, 9:00–18:00 GST</p>
+    </div>
+    <div class="contact-card">
+      <div class="ico" aria-hidden="true">⌂</div>
+      <h3>Offices</h3>
+      <span class="value">Coimbatore · Ajman</span>
+      <p class="hint">India &amp; United Arab Emirates</p>
+    </div>
+  </div>
+
+  <!-- ===================== SUPPORT CATEGORIES ===================== -->
+  <h2 id="categories"><span class="num">2.</span>What can we help with?</h2>
+  <div class="cat-list">
+    <div class="cat">
+      <span class="badge badge-tech">Technical</span>
+      <div>
+        <h3>App &amp; workspace issues</h3>
+        <p>Sign-in problems, inbox not loading, tasks or plans failing, crawl jobs stuck, chatbot embedding questions, and browser or performance issues.</p>
+      </div>
+    </div>
+    <div class="cat">
+      <span class="badge badge-billing">Billing</span>
+      <div>
+        <h3>Plans, invoices &amp; Store</h3>
+        <p>Subscription questions, invoice requests, plan changes, free trials and purchases made through the Aculyze Store.</p>
+      </div>
+    </div>
+    <div class="cat">
+      <span class="badge badge-ai">AI setup</span>
+      <div>
+        <h3>Models &amp; configuration</h3>
+        <p>AI provider configuration, model selection, response settings, web research toggles, and questions about how prompts are processed.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== RESPONSE TIMES ===================== -->
+  <h2 id="response"><span class="num">3.</span>What to expect</h2>
+  <div class="sla-grid">
+    <div class="sla"><div class="time">&lt; 4 h</div><div class="what">Critical outage or data issue</div></div>
+    <div class="sla"><div class="time">&lt; 1 business day</div><div class="what">General technical questions</div></div>
+    <div class="sla"><div class="time">&lt; 2 business days</div><div class="what">Billing &amp; account requests</div></div>
+  </div>
+  <p style="margin-top:14px;">Response times apply during office hours in the regions above. Include your workspace name, email and a short description when you write — it helps us resolve things in one pass.</p>
+
+  <!-- ===================== FAQ ===================== -->
+  <h2 id="faq"><span class="num">4.</span>Frequently asked questions</h2>
+  <div class="faq">
+    <details>
+      <summary>Where is my data stored?</summary>
+      <div class="answer"><p>Chats with Zara and the Sales Agent stay in your browser's local storage. Inbox messages, tasks, plans and crawled knowledge are stored server-side in your workspace (or PostgreSQL when a database is configured). Workspace data is isolated per tenant — details are in the <a href="/privacy-policy.html">Privacy Policy</a>.</p></div>
+    </details>
+    <details>
+      <summary>Which AI provider does Aculyze use?</summary>
+      <div class="answer"><p>This deployment uses NVIDIA models exclusively. Prompts are sent to the NVIDIA API for inference, and API keys are kept server-side only — they are never exposed to your browser.</p></div>
+    </details>
+    <details>
+      <summary>How do I clear my conversations or local data?</summary>
+      <div class="answer"><p>Open <strong>Settings → Security → Clear local data</strong>. This removes locally stored conversations and preferences from your browser. Server-side inbox items can be deleted individually from the Inbox.</p></div>
+    </details>
+    <details>
+      <summary>Can I crawl my own website into the knowledge base?</summary>
+      <div class="answer"><p>Yes. Use the Customer Executive workspace to create a crawl job for your site. Pages are fetched with security checks (private networks are blocked), and extracted content is stored as versioned, tenant-isolated knowledge your chatbot can answer from.</p></div>
+    </details>
+    <details>
+      <summary>How does the public chatbot approval gate work?</summary>
+      <div class="answer"><p>Nothing generated from a crawl goes live automatically. A draft must be reviewed and approved by a human in your workspace before it is published to the public chatbot endpoint.</p></div>
+    </details>
+    <details>
+      <summary>Do I need an API key to use the studio?</summary>
+      <div class="answer"><p>No key is required in your browser. Provider keys are configured server-side by your administrator. If AI replies are unavailable, the provider key may be missing or expired — contact support and we'll check.</p></div>
+    </details>
+    <details>
+      <summary>How do I change my theme or voice replies?</summary>
+      <div class="answer"><p>Everything lives in <strong>Settings → Account</strong>: light/dark theme, compact mode, animations and voice replies. Changes apply immediately and persist in your browser.</p></div>
+    </details>
+    <details>
+      <summary>How do I report a bug or request a feature?</summary>
+      <div class="answer"><p>Email <a href="mailto:admin@aculyze.in">admin@aculyze.in</a> with the subject "Bug report" or "Feature request". Include what you were doing, what you expected, and a screenshot if you can — it gets to the team faster.</p></div>
+    </details>
+  </div>
+
+  <!-- ===================== STILL STUCK ===================== -->
+  <h2 id="escalate"><span class="num">5.</span>Still stuck?</h2>
+  <p>If none of the above solves it, email us directly with your workspace name and a description of the problem. For outages, call the regional line closest to you and mark the subject line as <strong>Urgent</strong>.</p>
+  <p><a href="mailto:admin@aculyze.in?subject=Aculyze%20Support%20Request">✉ Email support →</a></p>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/privacy-policy.html">Privacy Policy</a>
+      <a href="/customer-support.html" aria-current="page">Customer Support</a>
+    </nav>
+    <span class="claim">© <strong>Aculyze</strong> 2026 · All rights claimed</span>
+  </div>
+</footer>
+
+</body>
+</html>

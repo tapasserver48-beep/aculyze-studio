@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Privacy Policy — Aculyze AI Studio</title>
+<meta name="description" content="How Aculyze AI Studio collects, stores, uses and protects your data." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet" />
+<style>
+  /* ============ Aculyze AI Studio — Privacy Policy ============ */
+  :root {
+    --bg: #0A0A0F;
+    --surface: #1A1A22;
+    --card: #21242E;
+    --border: #3F3F46;
+    --text: #F8FAFC;
+    --text-2: #D1D5DB;
+    --muted: #9CA3AF;
+    --primary: #00D4AA;
+    --primary-dark: #00a896;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --maxw: 820px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(10, 10, 15, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    max-width: var(--maxw); margin: 0 auto;
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 800; letter-spacing: 0.04em; font-size: 15px; color: var(--text); }
+  .brand small { font-size: 10px; font-weight: 600; color: var(--primary); letter-spacing: 0.18em; }
+  .back-link {
+    font-size: 14px; font-weight: 600; color: var(--text-2);
+    padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px;
+    transition: border-color .15s ease, color .15s ease;
+  }
+  .back-link:hover { border-color: var(--primary); color: var(--primary); text-decoration: none; }
+
+  /* ---------- Content ---------- */
+  main { max-width: var(--maxw); margin: 0 auto; padding: 48px 24px 32px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--primary); margin: 0 0 10px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 12px; }
+  .lede { font-size: 17px; color: var(--text-2); margin: 0 0 8px; }
+  .updated { font-size: 13px; color: var(--muted); margin: 0 0 40px; }
+
+  h2 {
+    font-size: 21px; letter-spacing: -0.01em; margin: 44px 0 12px;
+    padding-top: 8px; scroll-margin-top: 72px;
+  }
+  h2 .num { color: var(--primary); font-weight: 800; margin-right: 8px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: var(--text); }
+  p { margin: 0 0 14px; color: var(--text-2); }
+  ul { margin: 0 0 16px; padding-left: 22px; color: var(--text-2); }
+  li { margin-bottom: 8px; }
+  strong { color: var(--text); }
+
+  .callout {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+    margin: 20px 0;
+    font-size: 15px;
+    color: var(--text-2);
+  }
+  .callout strong { color: var(--primary); }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--surface); color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700; }
+  td { color: var(--text-2); }
+  td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin: 28px 0 8px;
+  }
+  .toc p { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); font-weight: 700; margin-bottom: 10px; }
+  .toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  .toc li { margin-bottom: 6px; font-size: 14.5px; }
+  @media (max-width: 560px) { .toc ol { columns: 1; } }
+
+  /* ---------- Footer ---------- */
+  footer {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    margin-top: 56px;
+  }
+  .footer-inner {
+    max-width: var(--maxw); margin: 0 auto;
+    padding: 28px 24px 36px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .footer-links { display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; }
+  .footer-links a { color: var(--text-2); font-weight: 500; }
+  .footer-links a:hover { color: var(--primary); text-decoration: none; }
+  .claim { font-size: 13.5px; color: var(--muted); letter-spacing: 0.02em; }
+  .claim strong { color: var(--text-2); font-weight: 700; }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <span class="brand">ACULYZE <small>AI STUDIO</small></span>
+    <a class="back-link" href="/">← Back to Studio</a>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Legal</p>
+  <h1>Privacy Policy</h1>
+  <p class="lede">This policy explains what information Aculyze AI Studio collects, why we collect it, where it is stored, and the choices you have.</p>
+  <p class="updated">Last updated: 24 November 2026</p>
+
+  <nav class="toc" aria-label="Table of contents">
+    <p>On this page</p>
+    <ol>
+      <li><a href="#collect">Information we collect</a></li>
+      <li><a href="#use">How we use your information</a></li>
+      <li><a href="#ai">AI processing</a></li>
+      <li><a href="#storage">Data storage &amp; retention</a></li>
+      <li><a href="#third">Third-party services</a></li>
+      <li><a href="#sharing">Sharing &amp; disclosure</a></li>
+      <li><a href="#security">Data security</a></li>
+      <li><a href="#rights">Your rights</a></li>
+      <li><a href="#children">Children's privacy</a></li>
+      <li><a href="#changes">Changes to this policy</a></li>
+      <li><a href="#contact">Contact us</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="collect"><span class="num">1.</span>Information we collect</h2>
+  <p>Aculyze AI Studio is a workspace application for research, sales intelligence and task management. We collect only the information needed to run the product.</p>
+
+  <h3>Information you provide</h3>
+  <ul>
+    <li><strong>Account details</strong> — workspace name and profile information you enter when setting up the studio.</li>
+    <li><strong>Messages and prompts</strong> — the questions you ask Zara (research assistant) and the Sales Agent, and the replies you receive.</li>
+    <li><strong>Inbox items</strong> — emails and notes you send to your Aculyze inbox.</li>
+    <li><strong>Task and plan data</strong> — tasks, Chief of Staff plans, approvals and notes you create in the workspace.</li>
+    <li><strong>Contact details</strong> — email address or phone number you share when you contact support or use the Store contact form.</li>
+  </ul>
+
+  <h3>Information collected automatically</h3>
+  <ul>
+    <li><strong>Usage data</strong> — pages visited, features used and timestamps, kept to diagnose problems and improve the product.</li>
+    <li><strong>Device data</strong> — browser type, operating system and screen size used to render the interface correctly.</li>
+    <li><strong>Diagnostic logs</strong> — server-side error and request logs used to keep the service reliable.</li>
+  </ul>
+
+  <div class="callout"><strong>In short:</strong> we do not sell your data, we do not use your conversations for advertising, and your chat history stays in your workspace — not in a shared pool.</div>
+
+  <h2 id="use"><span class="num">2.</span>How we use your information</h2>
+  <ul>
+    <li><strong>Provide the service</strong> — answer your prompts, run crawls, generate plans, and display your tasks and inbox.</li>
+    <li><strong>Personalise your workspace</strong> — remember theme, compact mode, animation and voice-reply preferences in your browser.</li>
+    <li><strong>Secure the product</strong> — detect abuse, protect accounts and keep unauthorised users out of tenant data.</li>
+    <li><strong>Support you</strong> — respond to support requests and troubleshoot issues you report.</li>
+    <li><strong>Improve the product</strong> — understand which features are used and where the experience breaks down, using aggregated or de-identified signals where possible.</li>
+  </ul>
+
+  <h2 id="ai"><span class="num">3.</span>AI processing</h2>
+  <p>When you send a prompt, the relevant text is forwarded to the configured AI provider so a reply can be generated.</p>
+  <ul>
+    <li><strong>Provider:</strong> NVIDIA (NVIDIA API / NIM endpoints) is the AI provider for this deployment. Model requests, including prompt text and conversation context needed for the reply, are processed by NVIDIA.</li>
+    <li><strong>API keys:</strong> provider keys are stored server-side only. They are never sent to, or readable from, your browser.</li>
+    <li><strong>Context window:</strong> only the conversation context required for the current reply is sent with each request.</li>
+    <li><strong>Web research:</strong> if you enable web research, fetched page content may be included in the prompt to produce a sourced answer.</li>
+    <li><strong>No training on your data:</strong> we do not submit your workspace content for model training.</li>
+  </ul>
+  <div class="callout">Prompts are sent only to the AI provider configured for this workspace. Conversations are stored in your workspace so you can resume them — they are not shared across tenants.</div>
+
+  <h2 id="storage"><span class="num">4.</span>Data storage &amp; retention</h2>
+  <table>
+    <thead>
+      <tr><th>Data</th><th>Where it is stored</th><th>Retention</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Chats (Zara / Sales)</td><td>Your browser's local storage</td><td>Until you clear it via Settings → Security → Clear local data</td></tr>
+      <tr><td>Inbox messages</td><td>Server-side inbox store (<code>data/inbox</code>, or PostgreSQL when a database is configured)</td><td>Until you delete the message</td></tr>
+      <tr><td>Tasks &amp; plans</td><td>Server-side workspace store</td><td>Until you delete the task or plan</td></tr>
+      <tr><td>Crawled knowledge</td><td>Server-side knowledge store, versioned per workspace</td><td>Until you remove the crawl or entry</td></tr>
+      <tr><td>Diagnostic logs</td><td>Server logs</td><td>Short operational window, purged on rotation</td></tr>
+      <tr><td>Support requests</td><td>Email and support inbox</td><td>As long as needed to resolve the request</td></tr>
+    </tbody>
+  </table>
+  <p>Workspace data is isolated per tenant. One workspace's data is never used to serve another workspace's users.</p>
+
+  <h2 id="third"><span class="num">5.</span>Third-party services</h2>
+  <table>
+    <thead>
+      <tr><th>Service</th><th>Purpose</th><th>What it receives</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>NVIDIA API</td><td>AI model inference</td><td>Prompt text and required conversation context</td></tr>
+      <tr><td>Google Fonts</td><td>Serving the Public Sans typeface</td><td>Standard browser request (IP, user agent)</td></tr>
+      <tr><td>Aculyze LMS</td><td>Sales / business data for the Sales Agent</td><td>API requests authorised server-side</td></tr>
+      <tr><td>Hosting provider</td><td>Running the application</td><td>All traffic handled by the service</td></tr>
+    </tbody>
+  </table>
+  <p>Third parties process data under their own terms and privacy policies. We only send them what their function requires.</p>
+
+  <h2 id="sharing"><span class="num">6.</span>Sharing &amp; disclosure</h2>
+  <p>We do not sell your personal information. We share data only in these situations:</p>
+  <ul>
+    <li><strong>Service providers</strong> — the AI and hosting providers above, strictly to operate the product.</li>
+    <li><strong>Legal requirements</strong> — when disclosure is required by law, regulation or valid legal process.</li>
+    <li><strong>Protection of rights</strong> — to protect the security of the service, our users, or the public.</li>
+    <li><strong>Business transfers</strong> — in connection with a merger, acquisition or sale of assets, with notice to you.</li>
+  </ul>
+
+  <h2 id="security"><span class="num">7.</span>Data security</h2>
+  <ul>
+    <li>API keys and credentials are held server-side and never exposed to the browser.</li>
+    <li>Tenant authorisation checks guard every workspace-scoped endpoint.</li>
+    <li>Website crawling runs behind SSRF protections (blocked private networks, DNS-rebinding checks) so crawler access cannot be turned against internal systems.</li>
+    <li>Public chatbot endpoints require a human approval gate before anything is published.</li>
+    <li>You can wipe local conversations at any time from <strong>Settings → Security → Clear local data</strong>.</li>
+  </ul>
+  <p>No system is perfectly secure. If we become aware of a breach affecting your data, we will notify you and the relevant authorities as required.</p>
+
+  <h2 id="rights"><span class="num">8.</span>Your rights</h2>
+  <ul>
+    <li><strong>Access</strong> — ask what personal data we hold about you.</li>
+    <li><strong>Correction</strong> — ask us to correct inaccurate data.</li>
+    <li><strong>Deletion</strong> — ask us to delete your data, subject to legal retention needs.</li>
+    <li><strong>Export</strong> — request a copy of your data in a portable format.</li>
+    <li><strong>Objection</strong> — object to processing based on legitimate interests.</li>
+    <li><strong>Withdraw consent</strong> — where processing is consent-based, withdraw it at any time.</li>
+  </ul>
+  <p>To exercise any of these rights, contact us using the details below. We respond within a reasonable period, and within 30 days where applicable law requires it.</p>
+
+  <h2 id="children"><span class="num">9.</span>Children's privacy</h2>
+  <p>Aculyze AI Studio is a business product and is not directed at children under 16. We do not knowingly collect personal information from children. If you believe a child has provided us with data, contact us and we will delete it.</p>
+
+  <h2 id="changes"><span class="num">10.</span>Changes to this policy</h2>
+  <p>We may update this policy to reflect changes in the product or the law. When we make material changes, we will update the "Last updated" date above and, where appropriate, notify you in the product. Continued use of the service after an update means you accept the revised policy.</p>
+
+  <h2 id="contact"><span class="num">11.</span>Contact us</h2>
+  <p>Questions about this policy or your data? Reach the Aculyze team:</p>
+  <ul>
+    <li><strong>Email:</strong> <a href="mailto:admin@aculyze.in">admin@aculyze.in</a></li>
+    <li><strong>India:</strong> <a href="tel:+918089571224">+91 80895 71224</a></li>
+    <li><strong>UAE:</strong> <a href="tel:+971564879798">+971 56487 9798</a></li>
+    <li><strong>Offices:</strong> Coimbatore, India · Ajman, UAE</li>
+  </ul>
+  <p>For product issues, the <a href="/customer-support.html">Customer Support page</a> has FAQs and support channels.</p>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">Home</a>
+      <a href="/privacy-policy.html" aria-current="page">Privacy Policy</a>
+      <a href="/customer-support.html">Customer Support</a>
+    </nav>
+    <span class="claim">© <strong>Aculyze</strong> 2026 · All rights claimed</span>
+  </div>
+</footer>
+
+</body>
+</html>
