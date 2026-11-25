@@ -1171,6 +1171,40 @@ export function agentAsk({ text, employeeId, source, priority } = {}) {
   return postJson('/api/agents/ask', { text, employeeId, source, priority });
 }
 
+/* ---------------- Zara documents (PDF / DOCX / PPTX) ---------------- */
+/** POST JSON with error messages that say what actually failed (not "Something went wrong"). */
+async function documentsPost(url, body, signal) {
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body), signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
+    throw new Error('Could not reach the server. Check that it is running.');
+  }
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (res.ok && data) return data;
+  let msg = data && data.error;
+  if (!msg) {
+    if (res.status === 404) msg = 'The document service is not available on this server. Restart the server (or redeploy) so it loads the new /api/documents routes.';
+    else if (res.status === 401) msg = 'Please sign in again.';
+    else if (res.status === 413) msg = 'The file is too large to upload.';
+    else if (res.status === 502 || res.status === 503 || res.status === 504) msg = `The server timed out or is restarting (HTTP ${res.status}). Try again in a moment.`;
+    else msg = `Server error (HTTP ${res.status}).`;
+  }
+  const err = new Error(msg);
+  err.status = res.status;
+  throw err;
+}
+/** AI writes the content, server renders it. → { filename, mime, size, title, data(base64) } */
+export const documentsCreate = ({ format, prompt, history, title, sourceText, signal }) =>
+  documentsPost('/api/documents/create', { format, prompt, history, title, sourceText }, signal);
+/** Render given text / Markdown / file as-is (no AI). */
+export const documentsConvert = ({ format, markdown, text, file, title, signal }) =>
+  documentsPost('/api/documents/convert', { format, markdown, text, file, title }, signal);
+/** Markdown text of an uploaded .docx / .pptx / .txt / .md file. */
+export const documentsExtract = (file) => documentsPost('/api/documents/extract', { file });
+
 /* ---------------- Automations (when X → AI employee does Y) ---------------- */
 export const automationsList = () => agentJson('/api/automations');
 export const automationsOptions = () => agentJson('/api/automations/options');

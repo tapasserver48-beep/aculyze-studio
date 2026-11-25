@@ -12,12 +12,18 @@
     "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.1.1",
     "cors": "^2.8.5",
+    "docx": "^9.0.2",
     "dotenv": "^16.4.5",
     "duck-duck-scrape": "^2.2.7",
     "express": "^4.19.2",
+    "jszip": "^3.10.1",
     "langfuse": "^3.39.2",
+    "mammoth": "^1.8.0",
+    "pdfkit": "^0.15.0",
     "pg": "^8.23.1",
     "playwright": "^1.64.1",
+    "pptxgenjs": "^3.12.0",
+    "unpdf": "^1.9.1",
     "ws": "^8.23.0"
   },
   "engines": {

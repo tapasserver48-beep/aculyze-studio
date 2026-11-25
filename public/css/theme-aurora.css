@@ -292,3 +292,68 @@ html[data-theme] .inbox-messages { background: color-mix(in srgb, var(--surface)
 }
 /* Card links take their card's identity colour. */
 .home-card[data-open] .hc-open { color: var(--agent, var(--accent-ink)); }
+
+/* ---------- Zara documents: Create menu, file chips, download cards ---------- */
+.doc-tools { position: relative; display: inline-flex; }
+.doc-tools-menu {
+  position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40;
+  min-width: 200px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
+}
+.doc-tools-menu[hidden] { display: none; }
+.doc-tools-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-2);
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.doc-tools-menu button:hover, .doc-tools-menu button:focus-visible { background: var(--accent-soft); color: var(--accent-ink); outline: none; }
+
+.doc-badge {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; height: 20px; padding: 0 5px; border-radius: 5px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; color: #fff; background: #64748b;
+}
+.doc-badge.doc-pdf { background: #dc2626; }
+.doc-badge.doc-docx { background: #2563eb; }
+.doc-badge.doc-pptx { background: #ea580c; }
+.doc-badge.doc-txt, .doc-badge.doc-md { background: #475569; }
+.doc-badge.doc-csv { background: #16a34a; }
+.doc-badge.doc-html { background: #7c3aed; }
+
+.chip-file .doc-badge { height: 26px; min-width: 34px; }
+.msg-file-chip {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 5px 10px 5px 6px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+  font-size: 12px; color: var(--text-2); max-width: 100%;
+}
+.msg-file-chip span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.doc-card {
+  display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 12px;
+  max-width: 420px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.doc-card .doc-badge { min-width: 42px; height: 48px; border-radius: 8px; font-size: 11px; }
+.doc-card-meta { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.doc-card-meta strong { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-card-meta small { font-size: 12px; color: var(--text-muted); }
+.doc-card-dl {
+  flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: 8px;
+  background: var(--accent); color: var(--on-accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.doc-card-dl:hover { filter: brightness(1.08); }
+
+.msg-export { position: relative; display: inline-flex; }
+.msg-export-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 30;
+  display: flex; flex-direction: column; min-width: 130px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+}
+.msg-export-menu[hidden] { display: none; }
+.msg-export-menu button {
+  padding: 7px 10px; border: 0; border-radius: 6px; background: transparent;
+  color: var(--text-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.msg-export-menu button:hover { background: var(--accent-soft); color: var(--accent-ink); }
+/* A reply that already is a file has nothing to export. */
+.msg:has(.doc-card) .msg-export { display: none; }

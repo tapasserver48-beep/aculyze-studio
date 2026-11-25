@@ -13,7 +13,7 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, agentAsk } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, agentAsk, documentsCreate, documentsConvert, documentsExtract } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { initTasksView } from './tasks-view.js';
 import { initChiefView } from './chief-view.js';
@@ -355,6 +355,8 @@ const els = {
   zaraAttachments: document.getElementById('zaraAttachments'),
   zaraFileInput: document.getElementById('zaraFileInput'),
   zaraAttach: document.getElementById('zaraAttach'),
+  zaraDocTools: document.getElementById('zaraDocTools'),
+  zaraDocMenu: document.getElementById('zaraDocMenu'),
   zaraWebToggle: document.getElementById('zaraWebToggle'),
   zaraMic: document.getElementById('zaraMic'),
   zaraStatusText: document.getElementById('zaraStatusText'),
@@ -1284,6 +1286,9 @@ async function deleteConversation(id) {
  *  when the message carried image attachments — renderMarkdown() only takes strings. */
 function renderMessageBody(msg) {
   const content = msg && msg.content;
+  const atts = Array.isArray(msg && msg.attachments) ? msg.attachments : [];
+  const fileChips = atts.filter((a) => a && a.kind === 'file').map(fileChipHtml).join('');
+  const docCard = msg && msg.file ? docCardHtml(msg.file) : '';
   if (Array.isArray(content)) {
     let html = '';
     for (const part of content) {
@@ -1294,15 +1299,236 @@ function renderMessageBody(msg) {
         html += `<div class="msg-content">${renderMarkdown(String(part.text))}</div>`;
       }
     }
-    return html || '<div class="msg-content"></div>';
+    return (html + fileChips + docCard) || '<div class="msg-content"></div>';
   }
   const text = content ? String(content) : '';
   const textHtml = text ? `<div class="msg-content">${renderMarkdown(text)}</div>` : '';
-  const atts = Array.isArray(msg && msg.attachments) ? msg.attachments : [];
   const attHtml = atts
-    .map((a) => (a && a.dataUrl ? `<img class="msg-att" src="${a.dataUrl}" alt="Attached image">` : ''))
+    .map((a) => (a && a.kind !== 'file' && a.dataUrl ? `<img class="msg-att" src="${a.dataUrl}" alt="Attached image">` : ''))
     .join('');
-  return (textHtml + attHtml) || '<div class="msg-content"></div>';
+  return (textHtml + attHtml + fileChips + docCard) || '<div class="msg-content"></div>';
+}
+
+/* ---------- Zara documents: PDF / DOCX / PPTX ---------- */
+const DOC_LABEL = { pdf: 'PDF document', docx: 'Word document', pptx: 'PowerPoint presentation' };
+const DOC_BADGE = { pdf: 'PDF', docx: 'DOC', pptx: 'PPT', txt: 'TXT', md: 'MD', csv: 'CSV', html: 'HTM' };
+// Generated files too big for localStorage stay here for this page session.
+const docFileMemory = new Map();
+const DOC_PERSIST_MAX_CHARS = 700_000; // ~500 KB file
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fileExt(name) {
+  const m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : '';
+}
+function formatBytes(n) {
+  if (!n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+function docBadgeHtml(ext) {
+  const key = ext === 'markdown' ? 'md' : ext === 'htm' ? 'html' : ext;
+  return `<span class="doc-badge doc-${escHtml(key)}">${escHtml(DOC_BADGE[key] || (key || 'FILE').toUpperCase().slice(0, 4))}</span>`;
+}
+function fileChipHtml(a) {
+  return `<div class="msg-file-chip">${docBadgeHtml(fileExt(a.name))}<span>${escHtml(a.name)}</span></div>`;
+}
+function docCardHtml(f) {
+  return `<div class="doc-card">
+    ${docBadgeHtml(f.format)}
+    <div class="doc-card-meta"><strong>${escHtml(f.name)}</strong><small>${escHtml(DOC_LABEL[f.format] || 'File')}${f.size ? ' · ' + formatBytes(f.size) : ''}</small></div>
+    <button type="button" class="doc-card-dl" data-doc-download="${escHtml(f.id)}">Download</button>
+  </div>`;
+}
+
+function downloadDataUrl(dataUrl, name) {
+  const [head, b64] = String(dataUrl).split(',');
+  const mime = (head.match(/^data:([^;]+)/) || [])[1] || 'application/octet-stream';
+  const bin = atob(b64 || '');
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name || 'document';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/** API result → file record stored on the assistant message. */
+function fileFromResult(r) {
+  const id = uid();
+  const dataUrl = `data:${r.mime};base64,${r.data}`;
+  docFileMemory.set(id, dataUrl);
+  const file = { id, name: r.filename, format: r.format, size: r.size, title: r.title };
+  if (dataUrl.length <= DOC_PERSIST_MAX_CHARS) file.dataUrl = dataUrl;
+  return file;
+}
+
+function downloadStoredFile(file) {
+  const dataUrl = (file && (file.dataUrl || docFileMemory.get(file.id))) || null;
+  if (!dataUrl) {
+    toast('This file is no longer saved in the browser. Ask Zara to create it again.', 'error');
+    return;
+  }
+  downloadDataUrl(dataUrl, file.name);
+}
+
+const DOC_FORMATS = [
+  ['pptx', /\b(pptx?|power\s?points?|slides?|slide\s?decks?|decks?|presentations?)\b/i],
+  ['docx', /\b(docx?|docs|word\s+(?:docs?|documents?|files?)|ms\s+word|word)\b/i],
+  ['pdf', /\bpdfs?\b/i],
+];
+const DOC_TARGET_RE = /\b(?:to|into|as|in)\s+(?:an?\s+|the\s+)?(pdfs?|docx?|docs|word|ms\s+word|pptx?|power\s?points?|slides?|slide\s?decks?|decks?|presentations?)\b/i;
+const DOC_VERB_RE = /\b(create|make|generate|build|write|prepare|draft|design|produce|convert|turn|export|save|download|change|transform|give|need|want|send)\b/i;
+const DOC_CONVERT_RE = /\b(convert|turn|export|save|download|change|transform)\b/i;
+const DOC_QUESTION_RE = /^(how|what|why|when|where|which|who|is|are|does|explain)\b/i;
+const DOC_PREV_RE = /\b(above|previous|last|that|this)\b[\s\w]{0,20}\b(answer|response|reply|message|output|content|text|chat|conversation|summary|explanation|plan)\b|\b(make|turn|convert|export|save|change|put)\s+(this|that|it|the above)\b/i;
+const DOC_FILE_EXTS = ['pdf', 'docx', 'pptx', 'txt', 'md', 'markdown', 'csv', 'html', 'htm'];
+
+function docFormatOf(word) {
+  const w = String(word || '').toLowerCase();
+  for (const [fmt, re] of DOC_FORMATS) if (re.test(w)) return fmt;
+  return null;
+}
+
+/**
+ * Decide whether a Zara message asks for a document file.
+ * → null, or { mode: 'create' | 'convertFile' | 'convertText' | 'convertPrev', format, ... }
+ */
+function detectDocumentRequest(text, attachments, conv) {
+  const t = String(text || '').trim();
+  const firstLine = t.split('\n')[0];
+  const files = (attachments || []).filter((a) => a.kind === 'file');
+  const head = firstLine.slice(0, 300);
+
+  // Target format: "... to/as/into <format>" wins, else the first format named
+  // that isn't just the attached file's own type.
+  let format = null;
+  const target = head.match(DOC_TARGET_RE);
+  if (target) format = docFormatOf(target[1]);
+  if (!format) {
+    const fileExts = files.map((f) => fileExt(f.name));
+    const named = DOC_FORMATS
+      .map(([fmt, re]) => ({ fmt, at: head.search(re) }))
+      .filter((x) => x.at >= 0 && !fileExts.includes(x.fmt))
+      .sort((a, b) => a.at - b.at);
+    if (named.length) format = named[0].fmt;
+  }
+  if (!format) return null;
+  // "word" alone is too common ("in a word", "word count") — only when asked to make one.
+  if (format === 'docx' && !/\b(docx?|docs|word\s+(docs?|documents?|files?)|ms\s+word|(to|into|as|in)\s+(a\s+)?word)\b/i.test(head)) return null;
+  if (DOC_QUESTION_RE.test(head) && !files.length) return null;
+  if (!DOC_VERB_RE.test(head) && !files.length) return null;
+
+  if (files.length) {
+    const asIs = DOC_CONVERT_RE.test(head) || head.split(/\s+/).length <= 3;
+    return { mode: asIs ? 'convertFile' : 'createFromFile', format, file: files[0] };
+  }
+
+  // Inline text after a colon or on the following lines: convert that text as-is.
+  const colon = t.indexOf(':');
+  const inline = t.includes('\n') ? t.slice(t.indexOf('\n') + 1).trim()
+    : colon > 0 && colon < 120 ? t.slice(colon + 1).trim() : '';
+  if (inline.length >= 40 && DOC_CONVERT_RE.test(head)) return { mode: 'convertText', format, text: inline };
+
+  const prev = conv ? [...conv.messages].reverse().find((m) => m.role === 'assistant' && !m.file && messagePlainText(m).trim()) : null;
+  if (prev && DOC_PREV_RE.test(head)) return { mode: 'convertPrev', format, markdown: messagePlainText(prev) };
+
+  return { mode: 'create', format };
+}
+
+/** Run a detected document request and add Zara's reply with the file card. */
+async function runDocumentJob(job, conv, text) {
+  const label = DOC_LABEL[job.format];
+  const signal = state.abortCtrl?.signal;
+  const history = conv ? conv.messages.slice(0, -1).slice(-8).map((m) => ({ role: m.role, content: messagePlainText(m) })) : [];
+  const titleHint = conv && conv.title && conv.title !== 'New conversation' ? conv.title : undefined;
+  let r;
+  if (job.mode === 'convertFile' && fileExt(job.file.name) === job.format) {
+    const other = job.format === 'pdf' ? 'Word or PowerPoint' : job.format === 'docx' ? 'PDF or PowerPoint' : 'PDF or Word';
+    appendZaraReply(conv, { role: 'assistant', content: `**${job.file.name}** is already a ${DOC_BADGE[job.format]} file. I can convert it to ${other}, or summarise it for you.` });
+    return;
+  }
+  try {
+    if (job.mode === 'convertFile') {
+      setThinking(`Converting ${job.file.name} to ${job.format.toUpperCase()}…`);
+      r = await documentsConvert({ format: job.format, file: { name: job.file.name, dataUrl: job.file.dataUrl }, signal });
+    } else if (job.mode === 'createFromFile') {
+      setThinking(`Reading ${job.file.name}…`);
+      const ex = await documentsExtract({ name: job.file.name, dataUrl: job.file.dataUrl });
+      setThinking(`Writing your ${label}…`);
+      r = await documentsCreate({ format: job.format, prompt: text, history, sourceText: ex.markdown, signal });
+    } else if (job.mode === 'convertText') {
+      setThinking(`Making your ${label}…`);
+      r = await documentsConvert({ format: job.format, text: job.text, title: titleHint, signal });
+    } else if (job.mode === 'convertPrev' && job.format !== 'pptx') {
+      setThinking(`Making your ${label}…`);
+      r = await documentsConvert({ format: job.format, markdown: job.markdown, title: titleHint || 'Zara answer', signal });
+    } else if (job.mode === 'convertPrev') {
+      setThinking('Turning it into slides…');
+      r = await documentsCreate({ format: 'pptx', prompt: 'Turn the source material into a presentation.', sourceText: job.markdown, signal });
+    } else {
+      setThinking(`Writing your ${label}…`);
+      r = await documentsCreate({ format: job.format, prompt: text, history, signal });
+    }
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    const reason = String(err.message || 'something went wrong').replace(/\.\s*$/, '');
+    const reply = `I couldn't create the ${label}: ${reason}.`;
+    appendZaraReply(conv, { role: 'assistant', content: reply });
+    toast(err.message || 'Document failed', 'error');
+    return;
+  }
+  const file = fileFromResult(r);
+  appendZaraReply(conv, { role: 'assistant', content: `Here is your ${label}: **${r.title}**.`, file });
+  toast(`${DOC_BADGE[r.format]} ready: ${r.filename}`);
+}
+
+/** Save an assistant message and show it in the open conversation. */
+function appendZaraReply(conv, message) {
+  removeThinking();
+  if (conv) {
+    conv.messages.push(message);
+    conv.updatedAt = Date.now();
+    // A new chat that made a file is named after the document, not "Here is your…".
+    if (message.file && message.file.title && isPlaceholderTitle(conv.title)) {
+      conv.title = message.file.title;
+      if (els.conversationTitle) els.conversationTitle.textContent = conv.title;
+    }
+    autoTitleConversation(conv);
+    saveConversationCache();
+    renderConversationList();
+  }
+  if (els.conversationDetail && !els.conversationDetail.hidden && els.conversationMessages) {
+    const bubble = document.createElement('div');
+    bubble.className = 'msg agent';
+    bubble.innerHTML = `<div class="msg-body">${renderMessageBody(message)}</div>`;
+    els.conversationMessages.appendChild(bubble);
+    if (conv) attachAnswerActions(bubble, conv.messages.length - 1);
+    els.conversationMessages.scrollTop = els.conversationMessages.scrollHeight;
+  }
+}
+
+/** Answer action: turn one answer into a file and download it straight away. */
+async function exportAnswer(msg, format, title) {
+  const text = messagePlainText(msg);
+  if (!text.trim()) { toast('Nothing to export', 'error'); return; }
+  toast(`Making ${DOC_BADGE[format]}…`);
+  try {
+    const r = format === 'pptx'
+      ? await documentsCreate({ format, prompt: 'Turn the source material into a presentation.', sourceText: text })
+      : await documentsConvert({ format, markdown: text, title: title || 'Zara answer' });
+    downloadDataUrl(`data:${r.mime};base64,${r.data}`, r.filename);
+    toast(`Downloaded ${r.filename}`);
+  } catch (err) {
+    toast(err.message || 'Export failed', 'error');
+  }
 }
 
 /* ---------- Answer actions: copy / share / regenerate ---------- */
@@ -1311,12 +1537,14 @@ const ANSWER_ICONS = {
   check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>',
   share: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v14"/></svg>',
   regenerate: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+  download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/></svg>',
 };
 
 /** Copy / Share on every answer; Regenerate only on the latest one. */
 function answerActionsHtml(isLatest) {
   const btn = (act, label) => `<button type="button" class="msg-action" data-msg-act="${act}" aria-label="${label}" title="${label}">${ANSWER_ICONS[act]}</button>`;
-  return `<div class="msg-actions" role="group" aria-label="Answer actions">${btn('copy', 'Copy')}${btn('share', 'Share')}${isLatest ? btn('regenerate', 'Regenerate') : ''}</div>`;
+  const exportMenu = `<span class="msg-export"><button type="button" class="msg-action" data-msg-act="export" aria-haspopup="menu" aria-label="Download as file" title="Download as PDF, Word or PowerPoint">${ANSWER_ICONS.download}</button><span class="msg-export-menu" role="menu" hidden><button type="button" role="menuitem" data-export-fmt="pdf">PDF</button><button type="button" role="menuitem" data-export-fmt="docx">Word</button><button type="button" role="menuitem" data-export-fmt="pptx">PowerPoint</button></span></span>`;
+  return `<div class="msg-actions" role="group" aria-label="Answer actions">${btn('copy', 'Copy')}${btn('share', 'Share')}${exportMenu}${isLatest ? btn('regenerate', 'Regenerate') : ''}</div>`;
 }
 
 /** Plain text of a stored message (content may be a string or text/image parts). */
@@ -1363,8 +1591,35 @@ function attachAnswerActions(bubble, index) {
 }
 
 els.conversationMessages?.addEventListener('click', async (e) => {
+  // Generated document: Download button on the file card
+  const dl = e.target.closest('[data-doc-download]');
+  if (dl) {
+    const { conv } = activeChatContext();
+    const id = dl.dataset.docDownload;
+    const msg = conv && conv.messages.find((m) => m.file && m.file.id === id);
+    if (msg) downloadStoredFile(msg.file);
+    return;
+  }
+  // Export menu: PDF / Word / PowerPoint of this answer
+  const exp = e.target.closest('[data-export-fmt]');
+  if (exp) {
+    const bubble = exp.closest('.msg');
+    const idx = Number(bubble && bubble.dataset.idx);
+    const { conv, sales } = activeChatContext();
+    const msg = conv && Number.isInteger(idx) ? conv.messages[idx] : null;
+    exp.closest('.msg-export-menu').hidden = true;
+    if (msg) exportAnswer(msg, exp.dataset.exportFmt, (conv && conv.title) || (sales ? 'Sales Agent answer' : 'Zara answer'));
+    return;
+  }
   const btn = e.target.closest('[data-msg-act]');
   if (!btn) return;
+  if (btn.dataset.msgAct === 'export') {
+    const menu = btn.parentElement.querySelector('.msg-export-menu');
+    const open = menu.hidden;
+    els.conversationMessages.querySelectorAll('.msg-export-menu').forEach((m) => { m.hidden = true; });
+    menu.hidden = !open;
+    return;
+  }
   const bubble = btn.closest('.msg');
   const idx = Number(bubble && bubble.dataset.idx);
   const { sales, conv, busy } = activeChatContext();
@@ -1412,7 +1667,7 @@ els.conversationMessages?.addEventListener('click', async (e) => {
     } else {
       saveConversationCache();
       showConversationDetail(conv.id);
-      state.attachments = Array.isArray(userMsg.attachments) ? userMsg.attachments.slice(0, 4) : [];
+      state.attachments = Array.isArray(userMsg.attachments) ? userMsg.attachments.filter((a) => a && a.dataUrl).slice(0, 4) : [];
     }
     if (els.zaraInput) els.zaraInput.value = messagePlainText(userMsg);
     if (sales) sendSalesMessage(); else sendZaraMessage();
@@ -1784,7 +2039,8 @@ function removeThinking() {
  * Attachments limited to 4 images max.
  */
 function buildUserContent(text, attachments = []) {
-  if (!attachments || attachments.length === 0) {
+  // Document attachments are read separately; only images become content parts.
+  if (!attachments || !attachments.some((a) => a && a.kind !== 'file' && String(a.dataUrl || '').startsWith('data:image/'))) {
     return { role: 'user', content: text || '' };
   }
 
@@ -1844,7 +2100,8 @@ async function sendZaraMessage() {
     conv.messages.push({
       role: 'user',
       content: userContent.content,
-      attachments: state.attachments.slice(0, 4),
+      // Documents keep only their name in history (their bytes would fill localStorage).
+      attachments: state.attachments.slice(0, 4).map((a) => (a.kind === 'file' ? { kind: 'file', name: a.name, type: a.type } : a)),
     });
     conv.updatedAt = Date.now();
     saveConversationCache();
@@ -1866,6 +2123,37 @@ async function sendZaraMessage() {
 
   // Live status: show a "thinking" bubble right away so the wait is visible
   showThinking('Thinking…');
+
+  // ---- Documents: "create a PDF / Word doc / PowerPoint", "convert this to PDF",
+  //      or an attached .docx/.pptx/.txt to convert. Handled without the chat stream.
+  const docJob = detectDocumentRequest(text, state.attachments, conv);
+  if (docJob) {
+    state.abortCtrl = new AbortController();
+    await runDocumentJob(docJob, conv, text);
+    clearAttachments();
+    return; // finally{} restores the composer
+  }
+
+  // Attached documents (not images) on a normal question: read them so Zara can answer about them.
+  let fileContext = null;
+  const docAtts = state.attachments.filter((a) => a.kind === 'file' && a.dataUrl);
+  if (docAtts.length) {
+    setThinking(`Reading ${docAtts.map((a) => a.name).join(', ')}…`);
+    const parts = [];
+    for (const a of docAtts) {
+      try {
+        const ex = await documentsExtract({ name: a.name, dataUrl: a.dataUrl });
+        const full = String(ex.markdown);
+        const LIMIT = 40000;
+        const cut = full.length > LIMIT;
+        parts.push(`=== ${a.name}${ex.pages ? ` (${ex.pages} pages)` : ''} ===\n${full.slice(0, LIMIT)}${cut ? `\n[… file cut here: only the first ${Math.round((LIMIT / full.length) * 100)}% was included. Say so if the answer may be in the rest.]` : ''}`);
+        addToolStep(`Read ${a.name}${ex.pages ? ` · ${ex.pages} pages` : ''}${cut ? ' (first part)' : ''}`);
+      } catch (err) {
+        addToolStep(`Could not read ${a.name}: ${err.message}`);
+      }
+    }
+    if (parts.length) fileContext = `The user attached these files. Use their content to answer:\n\n${parts.join('\n\n')}`;
+  }
 
   // ---- Connected apps (Gmail, Calendar, LMS…): plan tools, run reads,
   //      confirm writes (§10–§12). Never silent — write actions need approval.
@@ -1933,6 +2221,7 @@ async function sendZaraMessage() {
     const chatMessages = [
       { role: 'system', content: SYSTEM_PROMPTS.zara },
       ...(integrationSystem ? [{ role: 'system', content: integrationSystem }] : []),
+      ...(fileContext ? [{ role: 'system', content: fileContext }] : []),
     ];
 
     // Add history with proper content format
@@ -2082,8 +2371,10 @@ function appendAttachmentChip(att) {
   if (!els.zaraAttachments) return;
   els.zaraAttachments.hidden = false;
   const chip = document.createElement('div');
-  chip.className = 'chip-image';
-  chip.innerHTML = `<img src="${att.dataUrl}" alt=""><small></small><button class="chip-del" type="button" aria-label="Remove attachment">&times;</button>`;
+  chip.className = att.kind === 'file' ? 'chip-image chip-file' : 'chip-image';
+  chip.innerHTML = att.kind === 'file'
+    ? `${docBadgeHtml(fileExt(att.name))}<small></small><button class="chip-del" type="button" aria-label="Remove attachment">&times;</button>`
+    : `<img src="${att.dataUrl}" alt=""><small></small><button class="chip-del" type="button" aria-label="Remove attachment">&times;</button>`;
   chip.querySelector('small').textContent = att.name;
   chip.querySelector('.chip-del')?.addEventListener('click', () => {
     state.attachments = state.attachments.filter((a) => a !== att);
@@ -2096,9 +2387,10 @@ function appendAttachmentChip(att) {
 
 /** Read a list of File objects, keeping images only (max 4 per message). */
 function addImageFiles(files) {
-  const images = Array.from(files || []).filter((f) => f && f.type.startsWith('image/'));
-  if (!images.length) return 0;
-  let added = 0;
+  const all = Array.from(files || []).filter(Boolean);
+  const images = all.filter((f) => f.type.startsWith('image/'));
+  let added = addDocumentFiles(all.filter((f) => !f.type.startsWith('image/')));
+  if (!images.length) return added;
   for (const file of images) {
     if (state.attachments.length >= MAX_ATTACHMENTS) {
       toast(`Up to ${MAX_ATTACHMENTS} images per message`, 'error');
@@ -2116,8 +2408,69 @@ function addImageFiles(files) {
   return added;
 }
 
+/** Documents (.docx/.pptx/.txt/.md/.csv/.html) to read or convert. */
+const MAX_DOC_BYTES = 15 * 1024 * 1024;
+function addDocumentFiles(files) {
+  let added = 0;
+  for (const file of files) {
+    const ext = fileExt(file.name);
+    if (!DOC_FILE_EXTS.includes(ext)) {
+      toast(`Can't attach .${ext || '?'} files. Use PDF, Word, PowerPoint, text, Markdown or CSV.`, 'error');
+      continue;
+    }
+    if (file.size > MAX_DOC_BYTES) { toast(`${file.name} is larger than 15 MB`, 'error'); continue; }
+    if (state.attachments.length >= MAX_ATTACHMENTS) { toast(`Up to ${MAX_ATTACHMENTS} attachments per message`, 'error'); break; }
+    added++;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      appendAttachmentChip({ kind: 'file', name: file.name, type: file.type || ext, dataUrl: ev.target.result });
+      // "Convert a file…" prefilled "Convert to PDF": a PDF goes to Word instead.
+      if (ext === 'pdf' && els.zaraInput && els.zaraInput.value.trim() === 'Convert to PDF') els.zaraInput.value = 'Convert to Word';
+      syncSendButton();
+    };
+    reader.onerror = () => toast(`Could not read ${file.name}`, 'error');
+    reader.readAsDataURL(file);
+  }
+  return added;
+}
+
 els.zaraAttach?.addEventListener('click', () => {
   els.zaraFileInput?.click();
+});
+
+/* Create menu in the composer: prefill a document request or pick a file to convert */
+els.zaraDocTools?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = els.zaraDocMenu.hidden;
+  els.zaraDocMenu.hidden = !open;
+  els.zaraDocTools.setAttribute('aria-expanded', String(open));
+});
+els.zaraDocMenu?.addEventListener('click', (e) => {
+  const item = e.target.closest('button');
+  if (!item) return;
+  els.zaraDocMenu.hidden = true;
+  els.zaraDocTools.setAttribute('aria-expanded', 'false');
+  if (item.dataset.docAttach) {
+    if (els.zaraInput && !els.zaraInput.value.trim()) els.zaraInput.value = 'Convert to PDF';
+    els.zaraFileInput?.click();
+    return;
+  }
+  if (els.zaraInput) {
+    els.zaraInput.value = item.dataset.docPrefill || '';
+    els.zaraInput.focus();
+    els.zaraInput.setSelectionRange(els.zaraInput.value.length, els.zaraInput.value.length);
+    autoGrowTextarea();
+    syncSendButton();
+  }
+});
+document.addEventListener('click', (e) => {
+  if (els.zaraDocMenu && !els.zaraDocMenu.hidden && !e.target.closest('.doc-tools')) {
+    els.zaraDocMenu.hidden = true;
+    els.zaraDocTools?.setAttribute('aria-expanded', 'false');
+  }
+  if (!e.target.closest('.msg-export')) {
+    document.querySelectorAll('.msg-export-menu').forEach((m) => { m.hidden = true; });
+  }
 });
 
 els.zaraFileInput?.addEventListener('change', (e) => {
@@ -2179,8 +2532,8 @@ function wireImageDrop(el) {
     depth = 0;
     el.classList.remove('drag-over');
     const added = addImageFiles(e.dataTransfer.files);
-    if (added) toast(added === 1 ? 'Image attached' : `${added} images attached`);
-    else toast('Drop image files (PNG, JPEG, WebP or GIF)', 'error');
+    if (added) toast(added === 1 ? 'File attached' : `${added} files attached`);
+    else toast('Drop images, or .docx, .pptx, .txt, .md or .csv files', 'error');
   });
 }
 wireImageDrop(document.querySelector('.composer.zara-composer'));

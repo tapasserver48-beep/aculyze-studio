@@ -1230,6 +1230,9 @@ app.use('/api/computer', createComputerRouter({ dataDir: path.join(__dirname, 'd
 // the SAME existing search provider and synthesizes via the existing LLM provider.
 app.use('/api/orchestrator', createOrchestratorRouter({ searchProvider, llm: provider }));
 
+// ============ ZARA DOCUMENTS (PDF / DOCX / PPTX create + convert) ============
+app.use('/api/documents', require('./src/documents/routes').createDocumentsRouter({ llm: provider }));
+
 /**
  * GET /api/debug/status — quick check of external service connectivity.
  *
