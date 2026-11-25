@@ -357,3 +357,34 @@ html[data-theme] .inbox-messages { background: color-mix(in srgb, var(--surface)
 .msg-export-menu button:hover { background: var(--accent-soft); color: var(--accent-ink); }
 /* A reply that already is a file has nothing to export. */
 .msg:has(.doc-card) .msg-export { display: none; }
+
+/* ---------- Memory (Phase 04.4 Stage B) ---------- */
+.mem-note {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-ink); font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; max-width: 100%; text-align: left;
+}
+.mem-note .material-symbols-outlined { font-size: 16px; }
+.mem-note:hover { filter: brightness(1.03); }
+.mem-intro { margin: 0 0 14px; color: var(--text-sub); font-size: 14px; line-height: 1.5; max-width: 640px; }
+.mem-add { display: flex; gap: 8px; margin: 16px 0 12px; }
+.mem-add input, .mem-edit {
+  flex: 1 1 auto; min-width: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px;
+}
+.mem-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg, 14px); background: var(--surface); overflow: hidden; }
+.mem-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.mem-item:last-child { border-bottom: 0; }
+.mem-item.is-editing { flex-wrap: wrap; }
+.mem-text { flex: 1 1 auto; min-width: 0; }
+.mem-text p { margin: 0 0 2px; color: var(--text); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.mem-text small { color: var(--text-muted); font-size: 12px; }
+.mem-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.mem-actions .material-symbols-outlined { font-size: 18px; }
+.mem-empty { padding: 18px 14px; color: var(--text-muted); font-size: 14px; }
+.mem-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--text-muted); }
+.mem-danger { color: var(--danger) !important; }
+.mem-hint { margin: 14px 0 0; font-size: 13px; color: var(--text-muted); }
+.mem-hint q { color: var(--text-sub); font-weight: 600; }
+.spanel[data-page="memory"] .settings-row small { word-break: normal; overflow-wrap: break-word; }

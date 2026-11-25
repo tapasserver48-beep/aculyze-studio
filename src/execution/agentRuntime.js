@@ -535,12 +535,17 @@ async function executeTask(dataDir, opts) {
   await updateTask(dataDir, taskId, { status: 'in_progress', pending_reason: null });
   await log(dataDir, taskId, employeeId, 'execution_started', { executionId, provider: sel.providerName, model: sel.model, initiatingUserId });
 
+  // What the person who asked for this work told us before (their preferences, role…).
+  const messages = buildPrompt(employee, task, comments, people);
+  const memory = initiatingUserId ? require('../memory/store').contextFor(dataDir, initiatingUserId, `${task.title} ${task.description || ''}`, { limit: 12 }) : '';
+  if (memory) messages.splice(1, 0, { role: 'system', content: memory });
+
   const out = await runLoop({
     dataDir, employee, task, manager,
     uid: initiatingUserId, initiatingUserId,
     provider: sel.provider, model: sel.model, providerKey: sel.providerKey,
     executionId, maxSteps,
-    messages: buildPrompt(employee, task, comments, people),
+    messages,
     people,
     steps: opts.steps || [], round: 0,
     onPhase: opts.onPhase,

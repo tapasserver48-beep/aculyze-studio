@@ -17,6 +17,7 @@ The right-side panel on every page.
 - **Documents**: "Create a PDF about our Q4 plan", "Make a PowerPoint on AI agents", "Convert this to Word". It creates **PDF, Word and PowerPoint** files and reads PDF, Word, PowerPoint, text and CSV files you attach.
 - **Images**: attach screenshots and photos for the vision model to read.
 - **Voice**: talk to Zara and hear the answer.
+- **Memory**: remembers your role, team and how you like answers, so you don't repeat yourself. See and edit everything in Settings → Memory.
 
 ### AI employees
 Each AI employee has a role, permissions and its own colour, and does real work on tasks:
@@ -93,6 +94,7 @@ node test/executive.test.js
 | 04.2a Executive Agent | [docs/phase-04.2a-executive-agent.md](docs/phase-04.2a-executive-agent.md) |
 | 04.3 Zara documents (PDF, Word, PowerPoint) | [docs/phase-04.3-documents.md](docs/phase-04.3-documents.md) |
 | 04.4 Customer Executive website assistant | [docs/phase-04.4-customer-executive.md](docs/phase-04.4-customer-executive.md) |
+| 04.4 Memory (Zara and AI employees remember you) | [docs/phase-04.4b-memory.md](docs/phase-04.4b-memory.md) |
 | Next: new AI employees from awesome-llm-apps | [docs/plan-awesome-llm-apps.md](docs/plan-awesome-llm-apps.md) |
 | Next: Travel Planner | [docs/plan-travel-planner.md](docs/plan-travel-planner.md) |
 

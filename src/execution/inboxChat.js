@@ -45,12 +45,17 @@ async function replyInThread(dataDir, { employeeId, userId, provider = null }) {
     const recent = (messages || []).filter((m) => !m.deleted && m.body).slice(-HISTORY);
     if (!recent.length || recent[recent.length - 1].from !== me) return null; // nothing new from the person
 
+    const latest = String(recent[recent.length - 1].body || '');
+    const memory = require('../memory/store').contextFor(dataDir, userId, latest);
     const chat = [
       { role: 'system', content: `${personaOf(employee)}\n${CHAT_RULES}` },
+      ...(memory ? [{ role: 'system', content: memory }] : []),
       ...recent.map((m) => ({ role: m.from === me ? 'user' : 'assistant', content: String(m.body).slice(0, 2000) })),
     ];
 
     const llm = provider || createRouterFromEnv(process.env).active;
+    // Learn lasting facts from what the person wrote (in the background, never blocks the reply).
+    require('../memory/learn').learnFromExchange({ dataDir, userId, userText: latest, llm, source: 'inbox', employeeId: employee.id }).catch(() => {});
     let text = '';
     try {
       const res = await llm.sendMessage({ messages: chat, temperature: 0.4, max_tokens: REPLY_MAX_TOKENS, thinking: false, timeoutMs: 45000 });

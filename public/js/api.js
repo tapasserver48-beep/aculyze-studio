@@ -1171,6 +1171,20 @@ export function agentAsk({ text, employeeId, source, priority } = {}) {
   return postJson('/api/agents/ask', { text, employeeId, source, priority });
 }
 
+/* ---------------- Memory (what Zara + AI employees remember about you) ---------------- */
+const memorySend = (method, url, body) => agentJson(`/api/memory${url}`, {
+  method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
+});
+export const memoryList = () => agentJson('/api/memory');
+export const memoryAdd = (text) => memorySend('POST', '', { text });
+export const memoryUpdate = (id, text) => memorySend('PATCH', `/${encodeURIComponent(id)}`, { text });
+export const memoryRemove = (id) => memorySend('DELETE', `/${encodeURIComponent(id)}`);
+export const memoryClear = () => memorySend('DELETE', '');
+export const memorySettings = (settings) => memorySend('PUT', '/settings', settings);
+export const memoryContext = (q) => agentJson(`/api/memory/context?q=${encodeURIComponent(String(q || '').slice(0, 1500))}`);
+export const memoryCommand = (text) => memorySend('POST', '/command', { text });
+export const memoryLearn = (userText, assistantText) => memorySend('POST', '/learn', { userText, assistantText });
+
 /* ---------------- Customer Executive (website chatbots) ---------------- */
 const customerSend = (method, url, body) => agentJson(`/api/customer${url}`, {
   method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,

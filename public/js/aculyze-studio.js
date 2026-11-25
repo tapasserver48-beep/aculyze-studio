@@ -13,13 +13,14 @@ import {
   isSpeaking,
   toSpokenText,
 } from './voice.js';
-import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, agentAsk, documentsCreate, documentsConvert, documentsExtract } from './api.js';
+import { streamChat, salesChat, resolveIntegrations, classifyOrchestrator, runOrchestrator, classifyResearch, researchQuestion, listIntegrations, integrationDetail, integrationConnect, integrationTest, integrationDisconnect, executeIntegration, gmailSearch, gmailGetMessage, gmailCreateDraft, gmailSendMessage, fetchStatus, fetchConfig, fetchModels, salesQuery, salesStatus, salesConnect, lmsStatus, loadEmployees as apiLoadEmployees, loadTokenUsage, authMe, authLogin, authRegister, authLogout, authSetupStatus, authSetup, adminListUsers, adminPages, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetPermissions, adminSetPermissions, inboxThreads, inboxContacts, inboxMessages, inboxSend, inboxRead, inboxDelete, chatDepartments, chatCreateDepartment, chatJoinDepartment, chatLeaveDepartment, chatChannels, chatCreateChannel, chatChannel, chatJoinChannel, chatLeaveChannel, chatMessages, chatSend, chatRead, chatPeople, chatUnread, chatAddMember, chatRemoveMember, chatFind, employeesList, employeesGet, employeesStatus, employeesProfile, employeesInitialize, employeesUpdate, employeesUpdatePermissions, employeesDelete, agentAsk, documentsCreate, documentsConvert, documentsExtract, memoryCommand, memoryContext, memoryLearn } from './api.js';
 import { renderMarkdown, enhanceCodeBlocks } from './markdown.js';
 import { initTasksView } from './tasks-view.js';
 import { initChiefView } from './chief-view.js';
 import { initExecutiveView } from './executive-view.js';
 import { initAutomationsView } from './automations-view.js';
 import { initCustomerView } from './customer-view.js';
+import { initMemorySettings } from './memory-view.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
 
@@ -1300,7 +1301,7 @@ function renderMessageBody(msg) {
   const content = msg && msg.content;
   const atts = Array.isArray(msg && msg.attachments) ? msg.attachments : [];
   const fileChips = atts.filter((a) => a && a.kind === 'file').map(fileChipHtml).join('');
-  const docCard = msg && msg.file ? docCardHtml(msg.file) : '';
+  const docCard = (msg && msg.file ? docCardHtml(msg.file) : '') + (msg && msg.memoryNote ? memoryNoteHtml(msg.memoryNote) : '');
   if (Array.isArray(content)) {
     let html = '';
     for (const part of content) {
@@ -1401,6 +1402,14 @@ const DOC_VERB_RE = /\b(create|make|generate|build|write|prepare|draft|design|pr
 const DOC_CONVERT_RE = /\b(convert|turn|export|save|download|change|transform)\b/i;
 const DOC_QUESTION_RE = /^(how|what|why|when|where|which|who|is|are|does|explain)\b/i;
 const DOC_PREV_RE = /\b(above|previous|last|that|this)\b[\s\w]{0,20}\b(answer|response|reply|message|output|content|text|chat|conversation|summary|explanation|plan)\b|\b(make|turn|convert|export|save|change|put)\s+(this|that|it|the above)\b/i;
+// Explicit memory commands go to /api/memory/command (it decides for sure).
+const MEMORY_COMMAND_RE = /^\s*(please\s+)?(zara,?\s+)?(remember|forget|note that|keep in mind|don'?t forget|what (do|did) you (remember|know) about me|what('s| is) in your memory|show (me )?(my|your) memor)/i;
+
+/** Small "Memory updated" note under a reply, linking to Settings → Memory. */
+function memoryNoteHtml(note) {
+  return note ? `<button type="button" class="mem-note" data-open-memory><span class="material-symbols-outlined" aria-hidden="true">psychology</span>${escHtml(note)}</button>` : '';
+}
+
 const DOC_FILE_EXTS = ['pdf', 'docx', 'pptx', 'txt', 'md', 'markdown', 'csv', 'html', 'htm'];
 
 function docFormatOf(word) {
@@ -1500,6 +1509,27 @@ async function runDocumentJob(job, conv, text) {
   const file = fileFromResult(r);
   appendZaraReply(conv, { role: 'assistant', content: `Here is your ${label}: **${r.title}**.`, file });
   toast(`${DOC_BADGE[r.format]} ready: ${r.filename}`);
+}
+
+/**
+ * After a Zara answer: ask the server to learn lasting facts. When something
+ * changed, put a "Memory updated" note under that answer.
+ */
+function learnFromTurn(conv, userText, assistantText) {
+  if (!userText || userText.split(/\s+/).length < 4) return; // the server filters too
+  // Called just before the reply is pushed, so the reply's index is the current length.
+  const idx = conv ? conv.messages.length : -1;
+  memoryLearn(userText, assistantText).then((r) => {
+    if (!r || !r.changed) return;
+    const first = (r.added && r.added[0]) || (r.updated && r.updated[0]);
+    const note = first ? `Remembered: ${first.text}` : 'Memory updated';
+    if (conv && conv.messages[idx] && conv.messages[idx].role === 'assistant') {
+      conv.messages[idx].memoryNote = note;
+      saveConversationCache();
+    }
+    const bubble = els.conversationMessages?.querySelector(`.msg.agent[data-idx="${idx}"] .msg-body`);
+    if (bubble && !bubble.querySelector('.mem-note')) bubble.insertAdjacentHTML('beforeend', memoryNoteHtml(note));
+  }).catch(() => { /* learning is best effort */ });
 }
 
 /** Save an assistant message and show it in the open conversation. */
@@ -1603,6 +1633,8 @@ function attachAnswerActions(bubble, index) {
 }
 
 els.conversationMessages?.addEventListener('click', async (e) => {
+  // "Remembered: …" note → Settings → Memory
+  if (e.target.closest('[data-open-memory]')) { openSettings('memory'); return; }
   // Generated document: Download button on the file card
   const dl = e.target.closest('[data-doc-download]');
   if (dl) {
@@ -2136,6 +2168,24 @@ async function sendZaraMessage() {
   // Live status: show a "thinking" bubble right away so the wait is visible
   showThinking('Thinking…');
 
+  // ---- Memory commands: "remember that …", "forget …", "what do you remember about me?"
+  if (MEMORY_COMMAND_RE.test(text) && !(state.attachments || []).length) {
+    try {
+      const mc = await memoryCommand(text);
+      if (mc && mc.handled) {
+        // Name a new chat after the request, not after "Got it. I'll remember…".
+        if (conv && isPlaceholderTitle(conv.title)) {
+          conv.title = truncate(text, 48);
+          if (els.conversationTitle) els.conversationTitle.textContent = conv.title;
+        }
+        appendZaraReply(conv, { role: 'assistant', content: mc.reply, memoryNote: mc.changed ? 'Memory updated' : '' });
+        return; // finally{} restores the composer
+      }
+    } catch { /* not handled: answer normally */ }
+  }
+  // What Zara remembers about this person, fetched alongside the rest of the setup.
+  const memoryPromise = memoryContext(text).then((r) => (r && r.context) || '').catch(() => '');
+
   // ---- Documents: "create a PDF / Word doc / PowerPoint", "convert this to PDF",
   //      or an attached .docx/.pptx/.txt to convert. Handled without the chat stream.
   const docJob = detectDocumentRequest(text, state.attachments, conv);
@@ -2230,8 +2280,10 @@ async function sendZaraMessage() {
   state.abortCtrl = new AbortController();
   let acc = '';
     // Build messages with proper image serialization
+    const memoryText = await memoryPromise;
     const chatMessages = [
       { role: 'system', content: SYSTEM_PROMPTS.zara },
+      ...(memoryText ? [{ role: 'system', content: memoryText }] : []),
       ...(integrationSystem ? [{ role: 'system', content: integrationSystem }] : []),
       ...(fileContext ? [{ role: 'system', content: fileContext }] : []),
     ];
@@ -2280,6 +2332,9 @@ async function sendZaraMessage() {
       },
     });
     const finalText = res.content || acc || '(no response)';
+
+    // Learn lasting facts from this turn in the background (never blocks the reply).
+    learnFromTurn(conv, text, finalText);
 
     // Save assistant message to cache
     if (conv) {
@@ -7075,6 +7130,7 @@ function closeSettings() {
   setView('home');
 }
 function showSettingsPage(page) {
+  if (page === 'memory' && typeof memorySettingsView !== 'undefined' && memorySettingsView) memorySettingsView.load();
   $$('.spanel').forEach((s) => s.classList.toggle('active', s.dataset.page === page));
   $$('.snav-item').forEach((b) => {
     const p = b.dataset.page;
@@ -8091,6 +8147,7 @@ function refreshTasks() { return tasksView ? tasksView.refresh() : undefined; }
 function chiefOnOpen() { if (chiefView) chiefView.onOpen(); }
 var executiveView = initExecutiveView({ toast, confirm: showAppConfirm });
 var customerView = initCustomerView({ toast, confirm: showAppConfirm });
+var memorySettingsView = initMemorySettings({ toast, confirm: showAppConfirm });
 var automationsView = initAutomationsView({
   toast,
   confirm: showAppConfirm,

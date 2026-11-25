@@ -1230,6 +1230,9 @@ app.use('/api/computer', createComputerRouter({ dataDir: path.join(__dirname, 'd
 // the SAME existing search provider and synthesizes via the existing LLM provider.
 app.use('/api/orchestrator', createOrchestratorRouter({ searchProvider, llm: provider }));
 
+// ============ MEMORY (what Zara and AI employees remember about each person) ============
+app.use('/api/memory', require('./src/memory/routes').createMemoryRouter({ dataDir: DATA_DIR, llm: provider }));
+
 // ============ ZARA DOCUMENTS (PDF / DOCX / PPTX create + convert) ============
 app.use('/api/documents', require('./src/documents/routes').createDocumentsRouter({ llm: provider }));
 
