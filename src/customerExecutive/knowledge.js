@@ -13,6 +13,8 @@ function generateKnowledgeId() {
 }
 
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     const dataDir = process.env.ACULYZE_DATA_DIR;
     const file = path.join(dataDir || '.', 'data', 'customer', 'customer_knowledge.json');
@@ -109,6 +111,13 @@ async function addKnowledge(dataDir, { workspaceId, sourceUrl, content, contentT
   return knowledgeItem;
 }
 
+/** JSONB comes back parsed from node-pg, as text from older rows. */
+function asList(v) {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } }
+  return [];
+}
+
 function extractTextFromContent(content) {
   if (typeof content === 'string') return content;
   if (!content) return '';
@@ -157,22 +166,26 @@ async function getKnowledgeBySource(dataDir, workspaceId, sourceUrl) {
 }
 
 async function updateKnowledge(dataDir, workspaceId, knowledgeId, updates) {
+  // Whitelisted columns only: names are never taken from the request.
+  const ALLOWED = ['source_url', 'content_content', 'content_headings', 'content_links', 'contact_emails', 'contact_phones', 'content_type'];
+  const JSONB = new Set(['content_headings', 'content_links', 'contact_emails', 'contact_phones']);
+  const clean = {};
+  for (const [k, v] of Object.entries(updates || {})) if (ALLOWED.includes(k) && v !== undefined) clean[k] = v;
+  updates = clean;
+
   if (pg.enabled()) {
     const fields = [];
     const params = [];
-    let idx = 1;
-
-    for (const [k, v] of Object.entries(updates)) {
-      if (k === 'version') continue; // Version is auto-incremented
-      fields.push(`${k} = $${idx++}`);
-      params.push(v);
+    for (const [k, v] of Object.entries(clean)) {
+      params.push(JSONB.has(k) ? JSON.stringify(v ?? []) : v);
+      fields.push(`${k} = $${params.length}`);
     }
-
+    fields.push('version = version + 1');
     params.push(knowledgeId, workspaceId);
 
     const result = await pg.query(
-      `UPDATE customer_knowledge SET ${fields.join(', ')}, version = version + 1 WHERE id = $${idx} AND workspace_id = $${idx + 1} RETURNING *`,
-      [...params, knowledgeId, workspaceId]
+      `UPDATE customer_knowledge SET ${fields.join(', ')} WHERE id = $${params.length - 1} AND workspace_id = $${params.length} RETURNING *`,
+      params
     );
 
     if (result.rows.length === 0) return null;
@@ -183,10 +196,10 @@ async function updateKnowledge(dataDir, workspaceId, knowledgeId, updates) {
       workspace_id: row.workspace_id,
       source_url: row.source_url,
       content_content: row.content_content,
-      content_headings: JSON.parse(row.content_headings || '[]'),
-      content_links: JSON.parse(row.content_links || '[]'),
-      contact_emails: JSON.parse(row.contact_emails || '[]'),
-      contact_phones: JSON.parse(row.contact_phones || '[]'),
+      content_headings: asList(row.content_headings),
+      content_links: asList(row.content_links),
+      contact_emails: asList(row.contact_emails),
+      contact_phones: asList(row.contact_phones),
       content_type: row.content_type,
       extracted_at: Number(row.extracted_at),
       version: row.version
@@ -198,9 +211,10 @@ async function updateKnowledge(dataDir, workspaceId, knowledgeId, updates) {
   const found = items.find(k => k.id === knowledgeId && k.workspace_id === workspaceId);
   if (!found) return null;
 
-  items[items.indexOf(found)] = { ...found, ...updates, version: (found.version || 0) + 1 };
+  const at = items.indexOf(found);
+  items[at] = { ...found, ...updates, version: (found.version || 0) + 1 };
   writeKnowledge(dataDir, items);
-  return items[items.length - 1];
+  return items[at];
 }
 
 async function deleteKnowledge(dataDir, workspaceId, id) {
@@ -225,22 +239,20 @@ async function deleteKnowledge(dataDir, workspaceId, id) {
  */
 async function searchKnowledge(dataDir, workspaceId, query) {
   const knowledge = await getKnowledge(dataDir, workspaceId);
-
-  // Simple keyword matching - can be enhanced with embeddings later
-  const queryTerms = String(query || '').toLowerCase().split(/\s+/).filter(t => t.length > 3);
-  if (!queryTerms.length) return [];
-
-  const results = knowledge
-    .map(k => {
-      const contentToSearch = k.content_content || '';
-      const matches = queryTerms.filter(t => contentToSearch.toLowerCase().includes(t));
-      return { ...k, matchScore: matches.length / queryTerms.length };
-    })
-    .filter(k => k.matchScore > 0)
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, 5); // Top 5 results
-
-  return results;
+  // Passage-level BM25 (Phase 04.4): each result is the best passage of a page,
+  // not the whole page. matchScore is the passage's share of the top score.
+  const { indexFor, search } = require('./retrieval');
+  const { results } = search(indexFor(workspaceId, knowledge), query, { limit: 5, perPage: 1 });
+  const top = results.length ? results[0].score : 1;
+  const byId = new Map(knowledge.map((k) => [k.id, k]));
+  return results.map((r) => ({
+    ...(byId.get(r.knowledgeId) || {}),
+    id: r.knowledgeId,
+    source_url: r.url,
+    title: r.title,
+    content_content: r.text,
+    matchScore: Math.round((r.score / top) * 100) / 100,
+  }));
 }
 
 /**

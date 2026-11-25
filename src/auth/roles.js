@@ -65,7 +65,7 @@ const PAGE_LIST = ['home', 'inbox', 'zara', 'sales', 'apps', 'store', 'command',
 const ROLE_PAGES = {
   founder: [...PAGE_LIST],
   admin: [...PAGE_LIST],
-  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command', 'chief', 'executive', 'automations'],
+  manager: ['home', 'apps', 'inbox', 'settings', 'tasks', 'command', 'chief', 'customer', 'executive', 'automations'],
   employee: ['home', 'inbox', 'tasks', 'automations'],
 };
 

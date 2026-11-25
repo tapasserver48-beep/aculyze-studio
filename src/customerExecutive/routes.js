@@ -25,6 +25,9 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
+const { answerVisitor } = require('./answer');
+const crawlJobs = require('./crawlJobs');
 const { requireUser } = require('../auth/authorize');
 const pg = require('../db/pg');
 const {
@@ -43,12 +46,140 @@ const {
   addMessage, listMessages
 } = require('./conversations');
 
-function createCustomerExecutiveRouter({ dataDir }) {
+function createCustomerExecutiveRouter({ dataDir, llm = null }) {
   const router = express.Router();
 
   // Ensure database schema on mount
   ensureSchema();
   ensureConversationsSchema();
+
+  // ---- Public Visitor Endpoints (no sign-in) ----
+  // Registered BEFORE requireUser: website visitors are anonymous. (They used
+  // to sit after it, so every visitor got "Please sign in".)
+
+  // Anonymous visitors trigger AI calls, so cap them per visitor IP and per chatbot.
+  const visitorHits = new Map(); // `${key}:${ip}` → [timestamps]
+  const botHits = new Map(); // key → { day, count }
+  const VISITOR_PER_MIN = Number(process.env.CUSTOMER_BOT_PER_MIN || 12);
+  const BOT_PER_DAY = Number(process.env.CUSTOMER_BOT_PER_DAY || 2000);
+  function rateLimited(key, ip) {
+    const now = Date.now();
+    const vk = `${key}:${ip}`;
+    const recent = (visitorHits.get(vk) || []).filter((t) => now - t < 60000);
+    if (recent.length >= VISITOR_PER_MIN) return 'Too many messages. Please wait a minute and try again.';
+    recent.push(now);
+    visitorHits.set(vk, recent);
+    if (visitorHits.size > 5000) visitorHits.delete(visitorHits.keys().next().value);
+    const day = new Date().toISOString().slice(0, 10);
+    const b = botHits.get(key);
+    const entry = b && b.day === day ? b : { day, count: 0 };
+    if (entry.count >= BOT_PER_DAY) return 'This assistant has reached its daily limit. Please try again tomorrow.';
+    entry.count += 1;
+    botHits.set(key, entry);
+    return null;
+  }
+
+  router.get('/public/:publishKey', async (req, res) => {
+    try {
+      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
+      await updateChatbot(dataDir, chatbot.workspace_id, chatbot.id, {
+        visitor_count: (Number(chatbot.visitor_count) || 0) + 1,
+      }).catch(() => {});
+      // Public data only: the business's private instructions stay on the server.
+      res.json({ chatbot: { id: chatbot.id, name: chatbot.name, description: chatbot.description } });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/public/:publishKey/converse', async (req, res) => {
+    try {
+      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
+
+      const message = String((req.body && req.body.message) || '').trim();
+      if (!message) return res.status(400).json({ error: 'Message required' });
+      if (message.length > 1000) return res.status(400).json({ error: 'Message is too long (1000 characters max).' });
+      const limited = rateLimited(chatbot.publish_key, req.ip || (req.socket && req.socket.remoteAddress) || 'unknown');
+      if (limited) return res.status(429).json({ error: limited });
+
+      updateChatbot(dataDir, chatbot.workspace_id, chatbot.id, { last_used_at: Date.now() }).catch(() => {});
+
+      // Continue a conversation only if it belongs to this chatbot; history comes
+      // from the server, never from the browser.
+      let conversationId = req.body && req.body.conversationId;
+      let history = [];
+      const existing = conversationId ? await getConversation(dataDir, conversationId) : null;
+      if (existing && existing.chatbot_id === chatbot.id) {
+        history = (await listMessages(dataDir, conversationId)).map((m) => ({ role: m.role, content: m.content }));
+      } else {
+        const conv = await createConversation(dataDir, { chatbotId: chatbot.id, publishKey: chatbot.publish_key, visitorId: null });
+        conversationId = conv.id;
+      }
+
+      await addMessage(dataDir, { conversationId, role: 'user', content: message });
+      const result = await answerVisitor({ dataDir, chatbot, message, history, llm });
+      await addMessage(dataDir, {
+        conversationId,
+        role: 'assistant',
+        content: result.answer,
+        sourceRefs: result.sources.map((s) => ({ knowledgeId: s.knowledgeId, url: s.url })),
+        tokens: result.answer.split(/\s+/).length,
+      });
+      await updateConversation(dataDir, conversationId, { last_activity: Date.now() }).catch(() => {});
+
+      res.json({
+        response: result.answer,
+        sources: result.sources.map((s) => s.url),
+        sourceDetails: result.sources.map((s) => ({ url: s.url, title: s.title })),
+        grounded: result.grounded,
+        offerContact: !result.grounded,
+        conversationId,
+      });
+    } catch (e) {
+      console.error('[customer] converse failed:', e.message);
+      res.status(500).json({ error: 'The assistant could not answer just now. Please try again.' });
+    }
+  });
+
+  router.post('/public/:publishKey/leads', async (req, res) => {
+    try {
+      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
+      const limited = rateLimited(chatbot.publish_key, req.ip || 'unknown');
+      if (limited) return res.status(429).json({ error: limited });
+
+      const { email, name, phone, company, consent, consentText, conversationId } = req.body || {};
+      const consentTextHash = consent && consentText
+        ? crypto.createHash('sha256').update(String(consentText)).digest('hex')
+        : null;
+      // Attach the chat transcript when the conversation belongs to this chatbot.
+      let conversation = [];
+      const conv = conversationId ? await getConversation(dataDir, conversationId) : null;
+      if (conv && conv.chatbot_id === chatbot.id) {
+        conversation = (await listMessages(dataDir, conversationId)).slice(-20).map((m) => ({ role: m.role, content: String(m.content).slice(0, 1000) }));
+      }
+
+      const lead = await createLead(dataDir, {
+        chatbotId: chatbot.id,
+        email,
+        name,
+        phone,
+        company,
+        conversation,
+        consent: consent === true,
+        consentTextHash,
+        sourceUrl: req.get('Referer') || req.get('Origin') || '',
+        userAgent: req.get('User-Agent'),
+        ipAddress: req.ip || (req.socket && req.socket.remoteAddress),
+      });
+      if (lead.error) return res.status(400).json({ error: lead.error });
+      res.status(201).json({ lead: { id: lead.id, consent: lead.consent } });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // ---- Authenticated Management APIs ----
   router.use(requireUser);
@@ -400,7 +531,7 @@ function createCustomerExecutiveRouter({ dataDir }) {
   // ---- Chatbot Management Endpoints ----
   const {
     createChatbot, getChatbot, listChatbots, updateChatbot, deleteChatbot,
-    approveChatbot, publishChatbot, unpublishChatbot
+    approveChatbot, publishChatbot, unpublishChatbot, getChatbotByPublishKey
   } = require('./chatbots');
 
   const {
@@ -484,7 +615,17 @@ function createCustomerExecutiveRouter({ dataDir }) {
       }
       if (!found) return res.status(404).json({ error: 'Chatbot not found' });
 
-      const updated = await updateChatbot(dataDir, found.workspace.id, req.params.id, req.body);
+      // Only the content can be edited here. State, publish key and approval
+      // go through /approve, /publish and /unpublish.
+      const { name, description, instructions } = req.body || {};
+      const changes = {};
+      if (typeof name === 'string') {
+        if (!name.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
+        changes.name = name.trim().slice(0, 80);
+      }
+      if (typeof description === 'string') changes.description = description.slice(0, 500);
+      if (typeof instructions === 'string') changes.instructions = instructions.slice(0, 4000);
+      const updated = await updateChatbot(dataDir, found.workspace.id, req.params.id, changes);
       res.json({ chatbot: updated });
     } catch (e) {
       res.status(500).json({ error: e.message });
@@ -499,6 +640,136 @@ function createCustomerExecutiveRouter({ dataDir }) {
         if (deleted) return res.json({ success: true });
       }
       res.status(404).json({ error: 'Chatbot not found' });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ---- Customer Executive page (Phase 04.4) ----
+  async function ownWorkspace(req, res) {
+    const workspace = await getWorkspace(dataDir, req.params.id);
+    if (!workspace) { res.status(404).json({ error: 'Workspace not found' }); return null; }
+    if (!canAccessWorkspace(req.user.role, req.user.id, workspace.creator_id)) { res.status(403).json({ error: 'Access denied' }); return null; }
+    return workspace;
+  }
+
+  // Everything the page needs for one workspace, in one call.
+  router.get('/workspaces/:id/overview', async (req, res) => {
+    try {
+      const workspace = await ownWorkspace(req, res);
+      if (!workspace) return;
+      const { pageTitle } = require('./retrieval');
+      const items = await getKnowledge(dataDir, workspace.id);
+      const pages = items.map((k) => ({
+        id: k.id,
+        url: k.source_url,
+        title: pageTitle(k),
+        words: String(k.content_content || '').split(/\s+/).filter(Boolean).length,
+        extractedAt: Number(k.extracted_at) || null,
+      }));
+      const bots = await listChatbots(dataDir, workspace.id);
+      const chatbots = [];
+      for (const b of bots) {
+        const full = await getChatbot(dataDir, workspace.id, b.id);
+        const leadList = await listLeads(dataDir, b.id).catch(() => []);
+        chatbots.push({ ...full, leadCount: leadList.length });
+      }
+      res.json({ workspace, pages, chatbots, crawl: crawlJobs.status(dataDir, workspace.id) });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/workspaces/:id/site-crawl', async (req, res) => {
+    try {
+      const workspace = await ownWorkspace(req, res);
+      if (!workspace) return;
+      let url = String((req.body && req.body.url) || '').trim();
+      if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+      url = url.replace(/^http:\/\//i, 'https://');
+      const { validateUrl } = require('./crawler');
+      const v = validateUrl(url);
+      if (!v.valid) return res.status(400).json({ error: `That website address can't be crawled: ${v.error}` });
+      const r = crawlJobs.start({ dataDir, workspaceId: workspace.id, url, maxPages: req.body && req.body.maxPages, userId: req.user.id });
+      if (r.error) return res.status(409).json({ error: r.error, job: r.job });
+      res.status(202).json({ job: r.job });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.get('/workspaces/:id/site-crawl', async (req, res) => {
+    try {
+      const workspace = await ownWorkspace(req, res);
+      if (!workspace) return;
+      res.json({ job: crawlJobs.status(dataDir, workspace.id) });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.delete('/workspaces/:id/site-crawl', async (req, res) => {
+    try {
+      const workspace = await ownWorkspace(req, res);
+      if (!workspace) return;
+      res.json({ cancelled: crawlJobs.cancel(workspace.id) });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/chatbots/:id/unpublish', async (req, res) => {
+    try {
+      const { workspace, chatbot } = await findChatbot(req.user, req.params.id);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found' });
+      const updated = await unpublishChatbot(dataDir, workspace.id, chatbot.id);
+      res.json({ chatbot: updated });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Recent visitor conversations with their messages (owner only).
+  router.get('/chatbots/:id/conversations', async (req, res) => {
+    try {
+      const { chatbot } = await findChatbot(req.user, req.params.id);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found' });
+      const all = await listConversations(dataDir, { chatbotId: chatbot.id });
+      const recent = (all || [])
+        .sort((a, b) => Number(b.last_activity || b.started_at || 0) - Number(a.last_activity || a.started_at || 0))
+        .slice(0, 30);
+      const conversations = [];
+      for (const c of recent) {
+        const msgs = await listMessages(dataDir, c.id);
+        conversations.push({
+          id: c.id,
+          startedAt: Number(c.started_at) || null,
+          lastActivity: Number(c.last_activity) || null,
+          messages: msgs.slice(-40).map((m) => ({ role: m.role, content: m.content, at: Number(m.created_at) || null })),
+        });
+      }
+      res.json({ conversations, total: (all || []).length });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Owner's preview: same answer engine as the public widget, works in draft too.
+  // History comes from the request (nothing is stored for previews).
+  router.post('/chatbots/:id/test', async (req, res) => {
+    try {
+      const { chatbot } = await findChatbot(req.user, req.params.id);
+      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found' });
+      const message = String((req.body && req.body.message) || '').trim();
+      if (!message) return res.status(400).json({ error: 'Message required' });
+      const result = await answerVisitor({ dataDir, chatbot, message: message.slice(0, 1000), history: (req.body && req.body.history) || [], llm });
+      res.json({
+        response: result.answer,
+        sourceDetails: result.sources.map((s) => ({ url: s.url, title: s.title })),
+        grounded: result.grounded,
+        confidence: result.confidence,
+        retrieval: result.retrieval,
+      });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -555,138 +826,6 @@ function createCustomerExecutiveRouter({ dataDir }) {
 
       const leads = await listLeads(dataDir, chatbot.id);
       res.json({ leads });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // ---- Public Visitor Endpoints (no auth required) ----
-  // Mount at /public/:publishKey
-
-  router.get('/public/:publishKey', async (req, res) => {
-    try {
-      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
-      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
-
-      // Update visitor count
-      const publishKey = chatbot.publish_key;
-      await updateChatbot(dataDir, chatbot.workspace_id, chatbot.id, {
-        visitor_count: (chatbot.visitor_count || 0) + 1
-      }).catch(() => {});
-
-      // Return only public data
-      res.json({
-        chatbot: {
-          id: chatbot.id,
-          name: chatbot.name,
-          description: chatbot.description,
-          instructions: chatbot.instructions,
-          knowledge_ids: chatbot.knowledge_ids
-        }
-      });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  router.post('/public/:publishKey/converse', async (req, res) => {
-    try {
-      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
-      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
-
-      const { message, history, conversationId } = req.body;
-      if (!message) return res.status(400).json({ error: 'Message required' });
-
-      // Update last_used_at
-      await updateChatbot(dataDir, chatbot.workspace_id, chatbot.id, {
-        last_used_at: Date.now()
-      }).catch(() => {});
-
-      // Get chatbot response from knowledge
-      const workspaceId = chatbot.workspace_id;
-      let answer = "I don't have information to answer that question.";
-      let sources = [];
-      let newConversationId = conversationId;
-
-      // Create or continue conversation
-      if (!conversationId) {
-        const conv = await createConversation(dataDir, {
-          chatbotId: chatbot.id,
-          publishKey: chatbot.publish_key,
-          visitorId: null
-        });
-        newConversationId = conv.id;
-      }
-
-      // Store user message
-      await addMessage(dataDir, {
-        conversationId: newConversationId,
-        role: 'user',
-        content: message
-      });
-
-      if (chatbot.instructions) {
-        // Process the question through the knowledge
-        const knowledge = await searchKnowledge(dataDir, workspaceId, message);
-        if (knowledge.length > 0) {
-          answer = knowledge.map(k => k.content_content).join(' ');
-          sources = knowledge.slice(0, 3).map(k => k.source_url);
-        }
-      }
-
-      // Store assistant response
-      await addMessage(dataDir, {
-        conversationId: newConversationId,
-        role: 'assistant',
-        content: answer,
-        sourceRefs: sources.map((url, i) => ({ knowledgeId: knowledge[i]?.id, url })),
-        tokens: answer.split(' ').length
-      });
-
-      // Update last activity
-      await updateConversation(dataDir, newConversationId, { last_activity: Date.now() });
-
-      res.json({
-        response: answer,
-        sources,
-        conversationId: newConversationId
-      });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  router.post('/public/:publishKey/leads', async (req, res) => {
-    try {
-      const chatbot = await getChatbotByPublishKey(dataDir, req.params.publishKey);
-      if (!chatbot) return res.status(404).json({ error: 'Chatbot not found or not published' });
-
-      const { email, name, phone, company, consent, consentText } = req.body;
-
-      // Hash consent text for verification
-      const consentTextHash = consent && consentText
-        ? crypto.createHash('sha256').update(consentText).digest('hex')
-        : null;
-
-      const lead = await createLead(dataDir, {
-        chatbotId: chatbot.id,
-        email,
-        name,
-        phone,
-        company,
-        conversation: [],
-        consent: consent === true,
-        consentTextHash,
-        sourceUrl: req.protocol + '://' + req.get('host') + req.originalUrl,
-        userAgent: req.get('User-Agent'),
-        ipAddress: req.ip || req.socket.remoteAddress
-      });
-
-      if (lead.error) {
-        return res.status(400).json({ error: lead.error });
-      }
-
-      res.status(201).json({ lead: { id: lead.id, consent: lead.consent } });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }

@@ -1199,7 +1199,7 @@ app.use('/api/chief', createChiefOfStaffRouter({ dataDir: DATA_DIR }));
 app.use('/api/executive', require('./src/executive/routes').createExecutiveRouter({ dataDir: DATA_DIR }));
 // Automations: "when X happens → an AI employee does Y" (Phase 04.2).
 app.use('/api/automations', require('./src/automations/routes').createAutomationsRouter({ dataDir: DATA_DIR }));
-app.use('/api/customer', require('./src/customerExecutive/routes').createCustomerExecutiveRouter({ dataDir: DATA_DIR }));
+app.use('/api/customer', require('./src/customerExecutive/routes').createCustomerExecutiveRouter({ dataDir: DATA_DIR, llm: provider }));
 // The broadcast hook is filled in once the HTTP server exists (see below).
 let chatBroadcast = null;
 app.use('/api/chat', createChatRouter({ dataDir: DATA_DIR, broadcast: (...a) => chatBroadcast && chatBroadcast(...a) }));
@@ -1297,6 +1297,8 @@ async function initStorage() {
     const { ensureSchema: ensureTasksSchema } = require('./src/tasks/store');
     await ensureEmployeesSchema();
     await ensureTasksSchema();
+    // Customer Executive tables: created, or repaired from the older design.
+    await require('./src/customerExecutive/schema').ensureAll();
     const a = await authStore.migrateToPostgres(DATA_DIR);
     const b = await inboxStore.migrateToPostgres(DATA_DIR);
     // Keys, app connections, automations, approvals, check-ins, plans, usage.

@@ -510,6 +510,8 @@ async function preValidateDestination(hostname) {
  * Initialize database schema for crawl jobs
  */
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     const dataDir = process.env.ACULYZE_DATA_DIR;
     const file = path.join(dataDir || '.', 'data', 'customer', 'customer_crawl_jobs.json');

@@ -19,6 +19,7 @@ import { initTasksView } from './tasks-view.js';
 import { initChiefView } from './chief-view.js';
 import { initExecutiveView } from './executive-view.js';
 import { initAutomationsView } from './automations-view.js';
+import { initCustomerView } from './customer-view.js';
 import { createMascot } from './mascot.js';
 import { loadConversations, saveConversations, createConversation, autoTitleFrom, groupConversations, loadSettings, saveSettings, uid } from './store.js';
 
@@ -294,6 +295,7 @@ const els = {
   navChief: document.getElementById('navChief'),
   navExecutive: document.getElementById('navExecutive'),
   navAutomations: document.getElementById('navAutomations'),
+  navCustomer: document.getElementById('navCustomer'),
   navInbox: document.getElementById('navInbox'),
   agentSales: document.getElementById('agentSales'),
   viewHome: document.getElementById('view-home'),
@@ -309,6 +311,7 @@ const els = {
   viewChief: document.getElementById('view-chief'),
   viewExecutive: document.getElementById('view-executive'),
   viewAutomations: document.getElementById('view-automations'),
+  viewCustomer: document.getElementById('view-customer'),
   copilot: document.getElementById('copilot'),
   zaraConversations: document.getElementById('zaraConversations'),
   zaraEmptyState: document.getElementById('zaraEmptyState'),
@@ -509,6 +512,7 @@ els.navAdmin?.addEventListener('click', () => setView('admin'));
 els.navTasks?.addEventListener('click', () => setView('tasks'));
 els.navChief?.addEventListener('click', () => setView('chief'));
 els.navExecutive?.addEventListener('click', () => setView('executive'));
+els.navCustomer?.addEventListener('click', () => setView('customer'));
 els.navAutomations?.addEventListener('click', () => setView('automations'));
 
 /* ---------- Aculyze Store — contact / free-trial dialog ---------- */
@@ -863,7 +867,7 @@ document.querySelectorAll('.home-card[data-open]').forEach((card) => {
 });
 
 /* ---------- View/agent switching ---------- */
-const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true, executive: true, automations: true };
+const VIEW_META = { home: true, inbox: true, zara: true, sales: true, apps: true, store: true, command: true, settings: true, admin: true, tasks: true, chief: true, executive: true, automations: true, customer: true };
 function switchAgent(agent) {
   if (agent !== 'sales' && agent !== 'zara') return;
   setView(agent);
@@ -899,7 +903,7 @@ function setView(view) {
   state.activeView = next;
 
   // Keep sidebar active highlight in sync with the current view
-  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief, executive: els.navExecutive, automations: els.navAutomations };
+  const navMap = { home: els.navHome, inbox: els.navInbox, sales: els.agentSales, apps: els.navApps, store: els.navStore, command: els.navCommand, settings: els.navSettings, admin: els.navAdmin, tasks: els.navTasks, chief: els.navChief, executive: els.navExecutive, automations: els.navAutomations, customer: els.navCustomer };
   Object.entries(navMap).forEach(([key, el]) => {
     if (!el) return;
     const isActive = key === next;
@@ -924,6 +928,8 @@ function setView(view) {
   if (next === 'executive' && typeof executiveView !== 'undefined' && executiveView) executiveView.onOpen();
   els.viewAutomations?.classList.toggle('active', next === 'automations');
   if (next === 'automations' && typeof automationsView !== 'undefined' && automationsView) automationsView.onOpen();
+  els.viewCustomer?.classList.toggle('active', next === 'customer');
+  if (next === 'customer' && typeof customerView !== 'undefined' && customerView) customerView.onOpen();
 
   // On compact viewports the Zara panel is an overlay: close it on navigation.
   // On desktop the persisted open/closed state is left untouched.
@@ -1112,6 +1118,12 @@ function setView(view) {
     showConversationList();
     if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
     if (els.workspaceTitle) els.workspaceTitle.textContent = 'Automations';
+  }
+  // --- Customer Executive view ---
+  else if (next === 'customer') {
+    showConversationList();
+    if (els.zaraEmptyState) els.zaraEmptyState.style.display = 'none';
+    if (els.workspaceTitle) els.workspaceTitle.textContent = 'Customer Executive';
   }
   // --- Home view ---
   else {
@@ -6137,6 +6149,7 @@ const NAV_PAGE_EL = {
   chief: () => els.navChief,
   executive: () => els.navExecutive,
   automations: () => els.navAutomations,
+  customer: () => els.navCustomer,
 };
 
 function applyNavGating() {
@@ -8077,6 +8090,7 @@ var chiefView = initChiefView({
 function refreshTasks() { return tasksView ? tasksView.refresh() : undefined; }
 function chiefOnOpen() { if (chiefView) chiefView.onOpen(); }
 var executiveView = initExecutiveView({ toast, confirm: showAppConfirm });
+var customerView = initCustomerView({ toast, confirm: showAppConfirm });
 var automationsView = initAutomationsView({
   toast,
   confirm: showAppConfirm,

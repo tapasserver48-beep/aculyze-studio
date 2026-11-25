@@ -37,6 +37,8 @@ function writeChatbots(dataDir, items) {
 }
 
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     const file = chatbotsFile(process.env.ACULYZE_DATA_DIR);
     if (!fs.existsSync(file)) {
@@ -150,36 +152,46 @@ async function listChatbots(dataDir, workspaceId) {
     .sort((a, b) => b.updated_at - a.updated_at);
 }
 
+// Columns an update may touch. Anything else is ignored: column names are never
+// taken from the request (they used to be pasted into the SQL: SQL injection).
+const UPDATABLE = ['name', 'description', 'instructions', 'knowledge_ids', 'state', 'publish_key',
+  'approved_by', 'approved_at', 'published_at', 'visitor_count', 'last_used_at'];
+const JSONB_COLUMNS = new Set(['knowledge_ids']);
+
 async function updateChatbot(dataDir, workspaceId, chatbotId, updates, userId) {
+  const clean = {};
+  for (const [k, v] of Object.entries(updates || {})) {
+    if (UPDATABLE.includes(k) && v !== undefined) clean[k] = v;
+  }
+
   if (pg.enabled()) {
     const fields = [];
     const params = [];
-    let idx = 1;
-
-    for (const [k, v] of Object.entries(updates)) {
-      if (['id', 'workspace_id', 'created_at', 'created_by'].includes(k)) continue;
-      fields.push(`${k} = $${idx++}`);
-      params.push(v);
+    for (const [k, v] of Object.entries(clean)) {
+      params.push(JSONB_COLUMNS.has(k) && v !== null ? JSON.stringify(v) : v);
+      fields.push(`${k} = $${params.length}`);
     }
-
-    params.push(chatbotId, workspaceId);
+    params.push(Date.now());
+    fields.push(`updated_at = $${params.length}`);
+    params.push(chatbotId);
+    const idParam = params.length;
+    params.push(workspaceId);
+    const wsParam = params.length;
 
     const result = await pg.query(
-      `UPDATE customer_chatbots SET ${fields.join(', ')}, updated_at = ${idx} WHERE id = $${idx + 1} AND workspace_id = $${idx + 2} RETURNING *`,
-      [...params, Date.now()]
+      `UPDATE customer_chatbots SET ${fields.join(', ')} WHERE id = $${idParam} AND workspace_id = $${wsParam} RETURNING *`,
+      params
     );
-
-    if (result.rows.length === 0) return null;
-    return result.rows[0];
+    return result.rows[0] || null;
   }
 
   const items = readChatbots(dataDir);
-  const found = items.find(c => c.id === chatbotId && c.workspace_id === workspaceId);
-  if (!found) return null;
+  const idx = items.findIndex(c => c.id === chatbotId && c.workspace_id === workspaceId);
+  if (idx === -1) return null;
 
-  items[items.indexOf(found)] = { ...found, ...updates, updated_at: Date.now() };
+  items[idx] = { ...items[idx], ...clean, updated_at: Date.now() };
   writeChatbots(dataDir, items);
-  return items[items.length - 1];
+  return items[idx];
 }
 
 async function deleteChatbot(dataDir, workspaceId, id) {
@@ -227,14 +239,9 @@ async function approveChatbot(dataDir, workspaceId, chatbotId, approverId, appro
   return updateChatbot(dataDir, workspaceId, chatbotId, updates, approverId);
 }
 
+// Used to read only the JSON file, so on Postgres no chatbot could be approved.
 async function getWorkspaceInfo(dataDir, workspaceId) {
-  const file = path.join(CUSTOMER_DATA_DIR(dataDir), 'customer_workspaces.json');
-  try {
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return data.items.find(w => w.id === workspaceId) || null;
-  } catch {
-    return null;
-  }
+  return require('./store').getWorkspace(dataDir, workspaceId);
 }
 
 async function publishChatbot(dataDir, workspaceId, chatbotId, userId) {

@@ -25,6 +25,8 @@ function generateMessageId() {
 
 // ---------- PostgreSQL Schema ----------
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     // Initialize JSON files for local development
     const dataDir = process.env.ACULYZE_DATA_DIR;

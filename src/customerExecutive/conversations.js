@@ -37,6 +37,8 @@ function writeConversations(dataDir, items) {
 }
 
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     const file = conversationsFile(process.env.ACULYZE_DATA_DIR);
     if (!fs.existsSync(file)) {
@@ -110,8 +112,10 @@ async function getConversation(dataDir, id) {
 }
 
 async function listConversations(dataDir, filters = {}) {
-  const { rows } = await pg.query('SELECT * FROM customer_conversations WHERE chatbot_id = $1 ORDER BY last_activity DESC LIMIT 100', [filters.chatbotId]);
-  // Fallback to JSON for non-Postgres
+  if (pg.enabled()) {
+    const { rows } = await pg.query('SELECT * FROM customer_conversations WHERE chatbot_id = $1 ORDER BY last_activity DESC LIMIT 100', [filters.chatbotId]);
+    return rows;
+  }
   const all = readConversations(dataDir);
   return all
     .filter(c => !filters.chatbotId || c.chatbot_id === filters.chatbotId)

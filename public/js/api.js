@@ -1171,6 +1171,27 @@ export function agentAsk({ text, employeeId, source, priority } = {}) {
   return postJson('/api/agents/ask', { text, employeeId, source, priority });
 }
 
+/* ---------------- Customer Executive (website chatbots) ---------------- */
+const customerSend = (method, url, body) => agentJson(`/api/customer${url}`, {
+  method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
+});
+export const customerWorkspaces = () => agentJson('/api/customer/workspaces');
+export const customerCreateWorkspace = (name) => customerSend('POST', '/workspaces', { name });
+export const customerOverview = (wsId) => agentJson(`/api/customer/workspaces/${encodeURIComponent(wsId)}/overview`);
+export const customerStartCrawl = (wsId, url, maxPages) => customerSend('POST', `/workspaces/${encodeURIComponent(wsId)}/site-crawl`, { url, maxPages });
+export const customerCrawlStatus = (wsId) => agentJson(`/api/customer/workspaces/${encodeURIComponent(wsId)}/site-crawl`);
+export const customerCancelCrawl = (wsId) => customerSend('DELETE', `/workspaces/${encodeURIComponent(wsId)}/site-crawl`);
+export const customerDeletePage = (wsId, id) => customerSend('DELETE', `/workspaces/${encodeURIComponent(wsId)}/knowledge/${encodeURIComponent(id)}`);
+export const customerCreateChatbot = (body) => customerSend('POST', '/chatbots', body);
+export const customerUpdateChatbot = (id, body) => customerSend('PUT', `/chatbots/${encodeURIComponent(id)}`, body);
+export const customerDeleteChatbot = (id) => customerSend('DELETE', `/chatbots/${encodeURIComponent(id)}`);
+export const customerApproveChatbot = (id) => customerSend('POST', `/chatbots/${encodeURIComponent(id)}/approve`);
+export const customerPublishChatbot = (id) => customerSend('POST', `/chatbots/${encodeURIComponent(id)}/publish`);
+export const customerUnpublishChatbot = (id) => customerSend('POST', `/chatbots/${encodeURIComponent(id)}/unpublish`);
+export const customerTestChatbot = (id, message, history) => customerSend('POST', `/chatbots/${encodeURIComponent(id)}/test`, { message, history });
+export const customerLeads = (id) => agentJson(`/api/customer/chatbots/${encodeURIComponent(id)}/leads`);
+export const customerConversations = (id) => agentJson(`/api/customer/chatbots/${encodeURIComponent(id)}/conversations`);
+
 /* ---------------- Zara documents (PDF / DOCX / PPTX) ---------------- */
 /** POST JSON with error messages that say what actually failed (not "Something went wrong"). */
 async function documentsPost(url, body, signal) {

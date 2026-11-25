@@ -25,7 +25,7 @@ Each AI employee has a role, permissions and its own colour, and does real work 
 |---|---|
 | **Chief of Staff** | Plans work, delegates to people and AI employees, watches progress |
 | **Executive Agent** | Daily check-ins in the Inbox, chases late replies, team performance with Excel export |
-| **Customer Executive** | Website chatbot trained on your site; captures leads |
+| **Customer Executive** | Reads your website and answers visitors from it with sources, via a one-line chat widget; collects leads when it can't help |
 | **Sales Agent** | Answers sales, lead and customer questions from Aculyze LMS data only, never invented numbers |
 
 ### Work together
@@ -92,6 +92,7 @@ node test/executive.test.js
 | 04.2 Automations | [docs/phase-04.2-automations.md](docs/phase-04.2-automations.md) |
 | 04.2a Executive Agent | [docs/phase-04.2a-executive-agent.md](docs/phase-04.2a-executive-agent.md) |
 | 04.3 Zara documents (PDF, Word, PowerPoint) | [docs/phase-04.3-documents.md](docs/phase-04.3-documents.md) |
+| 04.4 Customer Executive website assistant | [docs/phase-04.4-customer-executive.md](docs/phase-04.4-customer-executive.md) |
 | Next: new AI employees from awesome-llm-apps | [docs/plan-awesome-llm-apps.md](docs/plan-awesome-llm-apps.md) |
 | Next: Travel Planner | [docs/plan-travel-planner.md](docs/plan-travel-planner.md) |
 

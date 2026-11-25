@@ -33,6 +33,8 @@ function writeLeads(dataDir, items) {
 }
 
 async function ensureSchema() {
+  // One definition for all Customer Executive tables (creates + repairs): ./schema.js
+  if (pg.enabled()) return require('./schema').ensureAll();
   if (!pg.enabled()) {
     const file = leadsFile(process.env.ACULYZE_DATA_DIR);
     if (!fs.existsSync(file)) {
